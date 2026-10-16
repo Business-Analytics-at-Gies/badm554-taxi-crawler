@@ -129,7 +129,7 @@ test('first engine load explains the download size while the engine import is pe
   await page.route('**/game/db/db.js', async route => { await gate; await route.continue(); });
   await page.goto('/learn/');
   await showTab(page, 'Guide');
-  await page.locator('#room-map').getByRole('button', { name: 'Play floor 1' }).click();
+  await page.locator('#room-map').getByRole('button', { name: 'Start floor 1' }).click();
   const frame = page.frameLocator('#game-frame');
   try {
     await expect(frame.locator('#engine-status')).toHaveText('Loading the SQL engine (about 35 MB the first time)…', { timeout: 2000 });

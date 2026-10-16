@@ -20,7 +20,7 @@ export async function showTab(page, name) {
 export async function openFloor(page, n) {
   await showTab(page, 'Guide');
   await page.locator('.rooms a[data-room="map"]').click();
-  await page.locator('#room-map').getByRole('button', { name: `Play floor ${n}` }).click();
+  await page.locator('#room-map').getByRole('button', { name: `Start floor ${n}` }).click();
   const frame = page.frameLocator('#game-frame');
   await expect(frame.locator('#engine-status')).toHaveText(`Floor ${n} is ready.`, { timeout: 30000 });
   return frame;

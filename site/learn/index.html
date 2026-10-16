@@ -53,24 +53,25 @@
         <p class="habit">Every floor ends on one habit: <strong>say the row count before and after, and make them reconcile.</strong></p>
       </div>
       <p>Each floor has slides at three levels. Lv 1 gives the big idea, Lv 2 shows how the check works, Lv 3 shows the real SQL. Start at Lv 1, and switch to Lv 3 when you want to see the code. The tutor follows the level you pick. Use the <a href="#level-picker">Detail level</a> picker above to change levels.</p>
+      <p><strong>To play:</strong> press <strong>Start floor</strong> on a card. It opens that floor's slides here and the game next to them. The Floor 1, Floor 2 and Floor 3 tabs above only show the slides.</p>
       <ol class="floor-cards">
         <li class="floor-card" data-floor="1">
           <h4>Floor 1: The double shift</h4>
           <p>One day's load ran twice.</p>
           <p class="cleared" data-cleared-floor="1" hidden>Cleared</p>
-          <p class="card-actions js-only"><a href="#room=floor1">Enter the room</a> <button type="button" class="play" data-floor="1">Play floor 1</button></p>
+          <p class="card-actions js-only"><button type="button" class="play" data-floor="1">Start floor 1</button></p>
         </li>
         <li class="floor-card" data-floor="2">
           <h4>Floor 2: Nowhere zones</h4>
           <p>Some trips start or end in a zone that is not on the map.</p>
           <p class="cleared" data-cleared-floor="2" hidden>Cleared</p>
-          <p class="card-actions js-only"><a href="#room=floor2">Enter the room</a> <button type="button" class="play" data-floor="2">Play floor 2</button></p>
+          <p class="card-actions js-only"><button type="button" class="play" data-floor="2">Start floor 2</button></p>
         </li>
         <li class="floor-card" data-floor="3">
           <h4>Floor 3: Impossible rides</h4>
           <p>Some rides cannot have happened.</p>
           <p class="cleared" data-cleared-floor="3" hidden>Cleared</p>
-          <p class="card-actions js-only"><a href="#room=floor3">Enter the room</a> <button type="button" class="play" data-floor="3">Play floor 3</button></p>
+          <p class="card-actions js-only"><button type="button" class="play" data-floor="3">Start floor 3</button></p>
         </li>
       </ol>
       <div class="lv" data-lv="2">
@@ -413,7 +414,7 @@ WHERE row_id NOT IN (SELECT row_id FROM quarantine);</code></pre>
   <div id="game-slot" class="game-slot">
     <div class="game-empty" id="game-empty">
       <p>The game is not open.</p>
-      <p><button type="button" class="play" data-floor="1">Play floor 1</button></p>
+      <p><button type="button" class="play" data-floor="1">Start floor 1</button></p>
     </div>
   </div>
 </section>

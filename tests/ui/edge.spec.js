@@ -43,7 +43,7 @@ test('when the SQL engine cannot load, the game says so and the tutor still work
   await page.route('**/game/db/db.js', r => r.fulfill({ status: 404, body: 'gone' }));
   await page.goto('/learn/');
   await showTab(page, 'Guide');
-  await page.locator('#room-map').getByRole('button', { name: 'Play floor 1' }).click();
+  await page.locator('#room-map').getByRole('button', { name: 'Start floor 1' }).click();
   const frame = page.frameLocator('#game-frame');
   await expect(frame.locator('#engine-status')).toContainText('The SQL engine could not start');
   await expect(frame.locator('#run-btn')).toBeDisabled();
