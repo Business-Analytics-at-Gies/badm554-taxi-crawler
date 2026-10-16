@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Taxi Crawler · game</title>
+<link rel="stylesheet" href="/game/ui/game.css">
+<script type="module" src="/game/ui/game.js"></script>
+</head>
+<body>
+<noscript><p class="noscript">The game needs JavaScript. Please turn JavaScript on to play.</p></noscript>
+<header class="g-head">
+  <h1 id="floor-title">Taxi Crawler</h1>
+  <div class="floor-pick" role="group" aria-label="Floor">
+    <button type="button" data-floor="1" aria-pressed="false">Floor 1</button>
+    <button type="button" data-floor="2" aria-pressed="false">Floor 2</button>
+    <button type="button" data-floor="3" aria-pressed="false">Floor 3</button>
+  </div>
+  <p id="engine-status" class="engine-status" role="status">Loading the SQL engine…</p>
+</header>
+<main class="g-main">
+  <section class="g-map" aria-labelledby="map-h">
+    <h2 id="map-h">Map of trips</h2>
+    <div id="map" class="map" tabindex="-1"></div>
+    <p id="map-summary" class="map-summary" aria-live="polite"></p>
+    <div id="map-legend" class="legend"></div>
+    <details class="map-table">
+      <summary>Map as a table</summary>
+      <div class="table-wrap"><table id="map-table"></table></div>
+    </details>
+  </section>
+
+  <section class="g-console" aria-labelledby="console-h">
+    <h2 id="console-h">SQL console</h2>
+    <p id="floor-task" class="task"></p>
+    <div id="tables" class="tables-list" tabindex="-1">
+      <h3>Tables</h3>
+      <ul id="tables-ul"></ul>
+    </div>
+    <label for="sql-input" class="sql-label">Your SQL</label>
+    <textarea id="sql-input" rows="6" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="sql-help"></textarea>
+    <div class="row">
+      <button type="button" id="run-btn" class="btn">Run</button>
+      <button type="button" id="cancel-btn" class="btn btn-quiet" hidden>Cancel</button>
+      <span id="sql-help" class="help">Ctrl+Enter or ⌘+Enter runs the SQL.</span>
+    </div>
+    <div id="result" class="result" tabindex="-1">
+      <h3 id="result-h">Result</h3>
+      <p id="result-status" class="result-status" role="status"></p>
+      <div class="table-wrap" id="result-wrap" tabindex="0" role="region" aria-labelledby="result-h"><table id="result-table"></table></div>
+    </div>
+  </section>
+
+  <section class="g-check" aria-labelledby="check-h">
+    <h2 id="check-h">Check this floor</h2>
+    <div class="row">
+      <button type="button" id="check-btn" class="btn">Check floor</button>
+      <button type="button" id="undo-btn" class="btn btn-quiet">Undo tutor changes</button>
+      <button type="button" id="restart-btn" class="btn btn-quiet">Restart floor</button>
+    </div>
+    <div id="check-result" class="check-result" aria-live="polite"></div>
+    <section id="receipt" class="receipt" hidden aria-labelledby="receipt-h" tabindex="-1">
+      <h3 id="receipt-h">Floor cleared</h3>
+      <p id="receipt-line"></p>
+      <p class="code-row"><code id="receipt-code"></code> <button type="button" id="copy-btn" class="btn btn-quiet">Copy code</button> <span id="copy-status" role="status"></span></p>
+      <p class="credit-line">1% extra credit for all three floors; paste your three codes into the Canvas assignment by 7:00 PM CDT Saturday.</p>
+      <ul id="receipt-all" class="receipt-all"></ul>
+      <p class="help">Copy each code now. This page does not keep codes after a reload; checking the floor again shows the same code.</p>
+      <p><button type="button" id="next-floor" class="btn" hidden>Go to the next floor</button></p>
+    </section>
+  </section>
+</main>
+<footer class="g-foot"><p id="engine-version"></p></footer>
+</body>
+</html>
