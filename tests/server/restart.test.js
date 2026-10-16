@@ -40,3 +40,13 @@ test('history reload interrupts pending tools so a lost browser turn cannot leav
   assert.equal((await f.request('/api/tutor/ask', { question: 'A new synthetic question after reload', page: '' })).status, 200);
   assert.equal((await f.request('/api/tutor/continue', { turn: started.body.turn, results: [{ id: started.body.tool_calls[0].id, ok: true, output: 'replay' }] })).body.error, 'bad_turn');
 });
+
+test('restart recovers an interrupted automatic tool repair with no browser calls pending', async t => {
+  const f = await fixture(t);
+  f.app.store.saveTurn('dev', { id: 'repair-gap', inflight: false, done: false, pending: [], internalResults: [], messages: [{ role: 'user', content: 'Synthetic repair gap' }] });
+  await f.app.close();
+  const { createApp } = require('../../server/index');
+  const app = createApp({ env: f.env, now: () => Date.parse('2026-10-16T22:01:00Z') });
+  t.after(() => app.close());
+  assert.equal((await app.tutor.ask('dev', { question: 'Recover after restart', page: '' })).done, true);
+});

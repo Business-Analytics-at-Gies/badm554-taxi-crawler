@@ -24,7 +24,7 @@ test('keeps the server-owned conversation and drops oldest whole questions withi
   assert.equal(payload.messages.at(-1).content, 'Keep this current question');
   assert.ok(!payload.messages.some(m => typeof m.content === 'string' && m.content.startsWith('0:')));
   assert.equal(payload.messages[0].role, 'user');
-  assert.equal(payload.max_tokens, 1500);
+  assert.equal(payload.max_tokens, 3000);
   assert.throws(() => requestPayload(f.app.config, [{ role: 'user', content: 'x'.repeat(30000) }]), /input limit/);
 });
 
@@ -43,7 +43,7 @@ test('fetch transport builds the Anthropic request without making any network re
   const body = JSON.parse(captured.options.body);
   assert.equal(body.system, cfg.prompt);
   assert.deepEqual(body.tools, cfg.tools);
-  assert.equal(body.max_tokens, 1500);
+  assert.equal(body.max_tokens, 3000);
   assert.equal(Object.hasOwn(body, 'stream'), false);
   assert.ok(captured.options.signal instanceof AbortSignal);
   assert.equal(reply.content[0].text, 'Synthetic response');

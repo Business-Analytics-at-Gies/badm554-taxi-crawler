@@ -142,7 +142,9 @@ class Store {
       this.chat.prepare("UPDATE request_log SET status='unknown' WHERE status='reserved'").run();
       for (const row of this.chat.prepare('SELECT * FROM turns').all()) {
         const state = JSON.parse(row.state);
-        if (state.inflight) this.saveTurn(row.session, { ...state, inflight: false, done: true, pending: [], messages: [] });
+        if (state.inflight || (!state.done && !state.pending.length)) {
+          this.saveTurn(row.session, { ...state, inflight: false, done: true, pending: [], internalResults: [], messages: [] });
+        }
       }
     });
   }

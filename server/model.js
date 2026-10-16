@@ -1,12 +1,11 @@
 const { randomUUID } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 
-// PLACEHOLDERS, NOT VERIFIED SONNET/HAIKU 5.5 LIST PRICES.
-// Claude must replace these and mark confirmed:true before live integration.
 // USD per million tokens, maintained only in this table.
+// Source: docs/server-live-fixes.md, Claude's bundled API reference (2026-10-06).
 const PRICES = {
-  'claude-sonnet-5-5': { input: 3, output: 15, cacheWrite: 3.75, cacheWriteHour: 6, cacheRead: 0.3, confirmed: false },
-  'claude-haiku-5-5': { input: 1, output: 5, cacheWrite: 1.25, cacheWriteHour: 2, cacheRead: 0.1, confirmed: false },
+  'claude-sonnet-5-5': { input: 2, output: 10, cacheWrite: 2.5, cacheWriteHour: 4, cacheRead: 0.2, confirmed: true },
+  'claude-haiku-5-5': { input: 0.1, output: 0.5, cacheWrite: 0.125, cacheWriteHour: 0.2, cacheRead: 0.01, confirmed: true },
 };
 function costUsd(usage, price) {
   for (const key of ['input_tokens', 'output_tokens']) {
@@ -25,11 +24,15 @@ function costUsd(usage, price) {
 }
 function inputBound(payload) {
   // Every UTF-8 byte can be a token; include 4096 for protocol/tool scaffolding.
-  // No prompt caching is requested, so input price bounds this request.
+  // Reservations price this bound at the cache-write rate for automatic caching.
   return Buffer.byteLength(JSON.stringify(payload), 'utf8') + 4096;
 }
 function requestPayload(config, messages) {
-  const payload = { model: config.model, system: config.prompt, tools: config.tools, max_tokens: 1500, messages: structuredClone(messages) };
+  const payload = {
+    model: config.model, system: config.prompt, tools: config.tools, max_tokens: 3000,
+    output_config: { effort: 'low' }, cache_control: { type: 'ephemeral' },
+    messages: structuredClone(messages),
+  };
   while (inputBound(payload) > 30000) {
     const next = payload.messages.findIndex((m, i) => i > 0 && m.role === 'user' && typeof m.content === 'string');
     if (next < 0) throw new Error('Current question exceeds input limit');
@@ -60,8 +63,10 @@ function fakeResponse(messages) {
   const result = Array.isArray(last.content) && last.content.some(b => b.type === 'tool_result');
   const text = typeof last.content === 'string' ? last.content : '';
   const name = text.match(/tool:([a-z_]+)/)?.[1];
+  const tool = !result && Object.hasOwn(SAMPLES, name || '');
   return {
-    content: !result && Object.hasOwn(SAMPLES, name || '')
+    stop_reason: tool ? 'tool_use' : 'end_turn',
+    content: tool
       ? [{ type: 'tool_use', id: `tool_${randomUUID()}`, name, input: SAMPLES[name] }]
       : [{ type: 'text', text: result ? 'The map has updated. What do you notice about those rows?' : 'Start with the row count. What do you expect it to show?' }],
     usage: { input_tokens: 100, output_tokens: 30, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },

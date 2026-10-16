@@ -42,3 +42,30 @@ trailer with the inherited pane actor `dpi-ai`. The hook supports an explicit `F
 override; subsequent commits set it to `crew-codex`. The two pushed commit messages remain
 unchanged because the crew runbook prohibits history rewrites. This record corrects their
 attribution without changing either delivered package or the shared hook configuration.
+
+## Live-model follow-up (docs/server-live-fixes.md)
+
+Finishing criteria: all seven requested items covered by behavior tests; full server suite green
+on Node 24; scoped commit `server: fix live model handling` with correct crew trailer and push.
+
+- [x] Confirm the supplied Sonnet/Haiku input, output and cache prices in the one price table.
+- [x] Preserve thinking/redacted blocks unchanged in model context; never expose them in replies.
+- [x] Send low effort and 3000 output tokens; reserve the full allowance including thinking.
+- [x] Handle refusal/max_tokens before tool validation/dispatch; stop safely and retain raw content.
+- [x] Leave tool choice automatic; never disable thinking or force any/named tool selection.
+- [x] Add automatic ephemeral caching and reserve every input token at its cache-write rate.
+- [x] Validate every frozen tool-schema keyword; invalid calls return error results to the model.
+
+The regression suite reproduced the original failures before implementation. Added mixed-call,
+automatic-repair round-limit, reload and restart-gap cases. Restart recovery now also closes an
+interrupted automatic repair with no browser tool pending, preventing a permanently busy session.
+The docs-only origin/main merge 4a67ace inherited the previously diagnosed dpi-ai hook trailer;
+the requested fix commit uses the supported explicit FLEET_AGENT=crew-codex override.
+
+Fresh follow-up review found that an all-invalid repair loop still made a ninth model request
+before refusing the ninth tool round. Tightened the test to require eight requests/reservations;
+it failed 9 vs 8 before the fix, then passed with the pre-request repair cutoff. The reviewer
+reported no other material issues in the seven requested fixes.
+
+Final verification for this follow-up: full server folder 49/49 on Node 24 and 49/49 on
+Node 22, including the stricter eight-request repair cutoff; syntax and whitespace checks clean.

@@ -27,17 +27,19 @@ WASM is served as `application/wasm`; path traversal, hidden files and escaping 
   are limited to 10 per rolling minute and 120 over the pilot, including revoked sessions.
 - `FAKE_MODEL=1`: never reads a key or contacts Anthropic. `tool:<name>` issues that tool with a
   fixed sample input; its result gets a short text reply. Greeting/history/login spend nothing.
-- Live integration: **replace the clearly marked placeholder prices in `server/model.js`, and set
-  the chosen entry's `confirmed` to `true`**. Unknown or unconfirmed models refuse startup.
-  The one table has input, output, cache-write (5-minute/1-hour) and cache-read prices. Then use
+- Live integration: the prices in `server/model.js` are now confirmed from Claude's supplied
+  API reference in `docs/server-live-fixes.md`. Unknown or unconfirmed models refuse startup.
+  The one table has input, output, cache-write (5-minute/1-hour) and cache-read prices. Use
   `ANTHROPIC_API_KEY` or explicitly set `ANTHROPIC_KEY_FILE`; there is no implicit key-file path.
-  `MODEL` defaults to `claude-sonnet-5-5`; a placeholder `claude-haiku-5-5` entry is also supplied.
-  The crew has made no live calls and has not verified provider model names or prices.
+  `MODEL` defaults to `claude-sonnet-5-5`; `claude-haiku-5-5` is also supported. Requests use low
+  effort, a 3,000-token output allowance (including thinking), and automatic ephemeral caching.
+  Tool choice is left automatic, and thinking is not forcibly disabled. The crew has made no
+  live calls; provider facts come from the orchestrator's supplied reference.
 - `TUTOR_OFF=1` disables tutor calls. `TUTOR_CLOSES_AT` defaults to `2026-10-17T23:30:00Z`.
   `RECEIPTS_CLOSE_AT` defaults to `2026-10-18T00:00:00Z`. The game files remain available.
 - `BUDGET_TOTAL_USD=140`, `CAP_DAILY_USD=1.5`, `CAP_QUESTIONS=40`; daily boundaries use
   America/Chicago. Four new questions per rolling minute, 1,500 characters per question,
-  8,000 per page/result, 1,500 output tokens and eight tool rounds are enforced separately.
+  8,000 per page/result, 3,000 output tokens and eight tool rounds are enforced separately.
 - `RECEIPT_SECRET` optionally mixes an HMAC into random receipt generation. Codes are stored,
   not recomputed; keep the databases to preserve repeat issuance and grading verification.
 
@@ -55,8 +57,10 @@ owner-only file permissions:
 Before each model call, an immediate SQLite transaction reserves the entire worst-case request
 cost. Monetary amounts use integer nanodollars. The input-token estimate conservatively counts
 UTF-8 bytes plus 4,096 tokens for protocol/tool scaffolding; whole oldest questions are removed
-until the bound fits 30,000. Current-question context that cannot fit is refused. No caching is
-requested. The response's usage settles the reservation at the appropriate prices. Missing usage,
+until the bound fits 30,000. Current-question context that cannot fit is refused. Each request
+uses top-level ephemeral caching; the reservation charges every input token at the cache-write
+rate plus the full 3,000-token output allowance. The response's usage settles the reservation at
+the appropriate input/output/cache prices. Missing usage,
 timeouts, failed calls and interrupted calls keep their reservation. An unexpected underestimate
 sets a persistent budget hold. No automatic request retries or refunds occur.
 
@@ -67,6 +71,20 @@ instance**; spend reservations also remain atomic across independent database co
 
 Only the server builds conversation history. Extra request fields (including browser-supplied
 messages or learner ids) are refused. Tool results must match every issued id exactly once.
+Thinking and redacted-thinking blocks remain unchanged in server-held model context and never
+appear in browser replies or text history. A refusal ends the turn with the fixed floor reminder.
+An output-limit stop returns any visible text plus a short retry notice. Neither stop dispatches
+tools; truncated tool inputs never reach the browser. Suppressed tool calls are closed as errors
+for future context, or the unusable question context is omitted on the next ask.
+
+The server also validates tool inputs against the frozen `tools.json` schemas. Invalid inputs
+return to the model as `is_error` tool results. If all calls are invalid, repair is automatic;
+each call reserves spend and checks shutdown. Automatic repair loops stop before a ninth
+model request, while ordinary tool dispatch retains its eight-tool-round bound.
+For mixed responses, the browser receives only valid calls. Their results are combined with the
+server's validation errors before the next model call. Browser reloads interrupt pending valid
+calls and preserve all validation errors without replaying a side effect.
+
 History is text-only. Loading history after a browser reload completes pending tools internally
 as `interrupted`, without rerunning them or making a model call, so a lost browser turn cannot
 leave the tutor stuck. A browser can also return `ok:false, output:"interrupted"` for a known turn.
@@ -116,5 +134,5 @@ MIME/traversal, transport construction and code-verifier ownership/duplicate cas
 transport test uses a local function in place of fetch; it makes no network call.
 
 The full browser game, real Easy Auth/tenant configuration, Azure persistent-share behavior, model
-prices/names, three real conversation costs and live deployment are integration checks for Claude.
+provider behavior, three real conversation costs and live deployment are integration checks for Claude.
 The approved plan still requires its separate server security review before learners get a link.
