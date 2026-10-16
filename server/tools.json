@@ -1,0 +1,213 @@
+[
+  {
+    "name": "run_sql",
+    "description": "Run a read-only SQL query on your own copy of this floor's tables (DuckDB). The learner does not see the result unless you tell them. Use it to check a claim before you make it.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "sql": {
+          "type": "string",
+          "maxLength": 4000
+        }
+      },
+      "required": [
+        "sql"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "lens",
+    "description": "Light up rows on the learner's map. The query must return row_id (and runs on your copy). Use it to show the learner where the dirty rows are.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "sql": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 60
+        }
+      },
+      "required": [
+        "sql",
+        "label"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "plant",
+    "description": "Add a few dirty rows to the learner's input table for an experiment (they are removed before any floor check). Ask the learner to predict what changes first.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "duplicate",
+            "unmatched_zone",
+            "negative_fare",
+            "time_travel"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        }
+      },
+      "required": [
+        "kind",
+        "count"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "unplant",
+    "description": "Remove rows you planted.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "row_ids": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "maxItems": 20
+        }
+      },
+      "required": [
+        "row_ids"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "undo_experiments",
+    "description": "Remove all your plants and lenses. Never touches the learner's own tables.",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "navigate",
+    "description": "Move the guide to a room or slide. Say why first.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "room": {
+          "type": "string",
+          "enum": [
+            "map",
+            "floor1",
+            "floor2",
+            "floor3"
+          ]
+        },
+        "slide": {
+          "type": "string",
+          "maxLength": 60
+        }
+      },
+      "required": [
+        "room"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "highlight",
+    "description": "Put a glowing frame and a short note on something on the learner's screen.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "enum": [
+            "console",
+            "run-button",
+            "check-button",
+            "result-table",
+            "map",
+            "tables-list",
+            "level-picker"
+          ]
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 120
+        }
+      },
+      "required": [
+        "target",
+        "note"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "game",
+    "description": "Open or close the game window at a floor.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "open",
+            "close"
+          ]
+        },
+        "floor": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "show_code",
+    "description": "Show the learner a real file in your panel: a floor's reference SQL (only after they have tried, or asked twice), the floor-check code, or the floor rules.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "enum": [
+            "floor1-reference",
+            "floor2-reference",
+            "floor3-reference",
+            "floor-check",
+            "floors-rules"
+          ]
+        }
+      },
+      "required": [
+        "file"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "look",
+    "description": "Get the full current page state (the short one comes with every question).",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    }
+  }
+]
