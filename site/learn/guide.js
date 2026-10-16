@@ -1,6 +1,7 @@
 // The guide: rooms (map + three floors), slides, and the detail level. State lives in the URL hash
 // (#room=floor1&slide=f1-key&lv=2), so a reload keeps the place without browser storage.
 export const ROOMS = ['map', 'floor1', 'floor2', 'floor3'];
+import { readCodes, validCode, CODES_KEY } from './codes.js';
 
 export function createGuide(root = document) {
   const guide = root.getElementById('guide');
@@ -90,6 +91,12 @@ export function createGuide(root = document) {
     go(a.dataset.room, undefined, { focus: true });
   });
   guide.addEventListener('click', e => {
+    const pointer = e.target.closest('a[href="#level-picker"]');
+    if (pointer) {
+      e.preventDefault();
+      guide.querySelector('#level-picker input:checked')?.focus();
+      return;
+    }
     const a = e.target.closest('.card-actions a');
     if (!a) return;
     e.preventDefault();
@@ -104,6 +111,18 @@ export function createGuide(root = document) {
     return { room: cur.room, roomTitle: rooms[cur.room].dataset.title, slide: cur.slide, slideTitle: list[i]?.dataset.title || '', index: i + 1, count: list.length, level: cur.level };
   }
   const outline = room => slides(room).map(s => `${s.id} "${s.dataset.title}"`);
-  const markCleared = floor => guide.querySelectorAll(`[data-cleared-floor="${floor}"]`).forEach(el => { el.hidden = false; });
+  const markCleared = (floor, code) => {
+    if (!validCode(floor, code)) return;
+    guide.querySelectorAll(`[data-cleared-floor="${floor}"]`).forEach(el => {
+      const value = root.createElement('code'); value.textContent = code;
+      el.replaceChildren('Cleared ', value); el.hidden = false;
+    });
+  };
+  function restoreCodes() {
+    guide.querySelectorAll('[data-cleared-floor]').forEach(el => { el.hidden = true; el.replaceChildren('Cleared'); });
+    for (const [floor, code] of Object.entries(readCodes())) markCleared(floor, code);
+  }
+  restoreCodes();
+  window.addEventListener('storage', e => { if (e.key === CODES_KEY || e.key === null) restoreCodes(); });
   return { go, setLevel, state, outline, markCleared, onChange: fn => listeners.add(fn), element: guide };
 }

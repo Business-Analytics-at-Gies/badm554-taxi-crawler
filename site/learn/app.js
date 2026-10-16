@@ -80,8 +80,9 @@ const layout = createLayout();
 const guide = createGuide();
 const game = createGameWindow({
   onEvent(e) {
-    if (e.type === 'cleared') guide.markCleared(e.floor);
+    if (e.type === 'cleared') guide.markCleared(e.floor, e.code);
   },
+  onToggle(open, floor) { if (open) guide.go(`floor${floor}`); },
 });
 const panel = createPanel();
 const snapshot = createSnapshot({ guide, game });

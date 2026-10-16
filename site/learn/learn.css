@@ -43,6 +43,7 @@ html:not(.js) .js-only { display: none !important; }
 .level-picker { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .1rem .6rem; font-size: .9rem; }
 .level-picker legend { float: left; margin-right: .5rem; font-weight: 600; }
 .level-picker label { white-space: nowrap; }
+.level-help { flex-basis: 100%; margin: .1rem 0; color: var(--muted); font-size: .85rem; }
 .lv-name { color: var(--muted); }
 .guide-body:focus { outline: none; }
 .room h2 { font-size: 1.35rem; margin: 1rem 0 .25rem; color: var(--navy); }
@@ -92,7 +93,7 @@ body.tutor-collapsed .tutor { display: none; }
 .msg .body pre { white-space: pre-wrap; }
 .msg-learner .body { background: var(--soft); border-radius: 8px; padding: .4rem .6rem; }
 .msg-tool { font-size: .85rem; color: var(--muted); margin: .25rem 0; }
-.msg-tool button { font-size: .85rem; margin-left: .3rem; background: none; border: 1px solid var(--navy); color: var(--navy); border-radius: 4px; padding: 0 .4rem; }
+.msg-tool button { display: block; font-size: .85rem; margin: .3rem 0; background: none; border: 1px solid var(--navy); color: var(--navy); border-radius: 4px; padding: .2rem .5rem; }
 .msg-error { color: var(--bad); font-size: .9rem; }
 .code-card { border: 1px solid var(--line); border-radius: 6px; margin: .5rem 0; }
 .code-card h3 { font-size: .85rem; margin: 0; padding: .3rem .6rem; background: var(--soft); }

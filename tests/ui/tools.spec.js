@@ -73,7 +73,7 @@ test('plant, look, unplant and undo_experiments', async ({ page, request }) => {
   [r] = await tool(page, request, 'tool:look');
   expect(r.output).toMatch(/^<page>\n/);
   expect(r.output).toContain(`planted: 2 rows (row_id ${ids.join(', ')})`);
-  expect(r.output).toContain('slides in this room: overview');
+  expect(r.output).toContain('slides in this room: f1-task');
   [r] = await tool(page, request, `tool:unplant {"row_ids":[${ids[0]}]}`);
   expect(r).toMatchObject({ ok: true, output: expect.stringMatching(/^removed 1 planted rows/) });
   await tool(page, request, 'tool:lens');
@@ -156,13 +156,15 @@ test('the <page> block stays under 8,000 characters and cuts each query to 1,000
   for (let i = 0; i < 3; i++) { await frame.locator('#sql-input').fill(long); await frame.locator('#run-btn').click(); await expect(frame.locator('#result-status')).not.toHaveText(/Running/); }
   await showTab(page, 'Guide');
   await page.evaluate(() => {
-    const sel = getSelection(); const r = document.createRange(); r.selectNodeContents(document.getElementById('guide')); sel.removeAllRanges(); sel.addRange(r);
+    const target = document.createElement('p'); target.textContent = 'S'.repeat(750);
+    document.getElementById('guide-body').append(target);
+    const sel = getSelection(); const r = document.createRange(); r.selectNodeContents(target); sel.removeAllRanges(); sel.addRange(r);
   });
-  await expect.poll(() => page.evaluate(() => window.taxiLearn.snapshot())).toContain('selected text: "');
+  await expect.poll(() => page.evaluate(() => window.taxiLearn.snapshot())).toContain(`selected text: "${'S'.repeat(500)}… [cut]"`);
   const block = await page.evaluate(() => window.taxiLearn.snapshot({ full: true }));
   expect(block.length).toBeLessThanOrEqual(8000);
   const qlines = block.split('\n').filter(l => l.startsWith('- ') && l.includes('| SELECT'));
   expect(qlines).toHaveLength(3);
   for (const l of qlines) expect(l.split(' | ')[1].length).toBeLessThanOrEqual(1000 + '… [cut]'.length);
-  expect(block).toMatch(/selected text: "[^"]{1,500}… \[cut\]"/);
+  expect(block).toContain(`selected text: "${'S'.repeat(500)}… [cut]"`);
 });
