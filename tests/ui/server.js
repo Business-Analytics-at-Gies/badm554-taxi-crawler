@@ -20,7 +20,7 @@ const ROOT = resolve(HERE, '../..');
 const SITE = join(ROOT, 'site');
 const DATA = join(ROOT, 'data');
 const DB_SITE = process.env.DB_SITE ? resolve(process.env.DB_SITE) : null;
-const PORT = Number(process.env.PORT || 4173);
+const PORT = Number(process.env.PORT || 4183);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
