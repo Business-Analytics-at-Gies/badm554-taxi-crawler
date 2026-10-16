@@ -66,7 +66,7 @@ zone "N/A". Location 265 is zone "Outside of NYC" (a real place, outside the zon
 - **Valid solutions (tests):** (a) the reference; (b) correlated subqueries for each zone name and a
   `CASE` that tests `pu_zone IS NULL OR do_zone IS NULL` first.
 - **Wrong solutions (tests):** (a) inner joins (7,146 rows); (b) 265 flagged `'unknown'`;
-  (c) only the pickup side checked; (d) `'unmatched'` tested after `'unknown'` (wrong order).
+  (c) only the pickup side checked; (d) `'unmatched'` only when an id IS NULL (misses the 15 drop-off ids of 0, which match nothing).
 - **Aha line:** a join can drop rows without an error. "Unknown" (264) is in the lookup, so an anti-join cannot find it; a missing id (0, NULL) is not, so only a left join shows it. Flag, do not delete.
 
 ## Floor 3: Impossible rides (range checks and quarantine)
@@ -106,3 +106,4 @@ the fix. A learner can cheat by reading the served reference SQL; accepted for t
 ## Change log
 
 - 2026-10-16 16:45 CDT: frozen (Claude, from the counts above).
+- 2026-10-16 17:35 CDT: floor 2 wrong solution (d) replaced. The old one ('unmatched' tested after 'unknown') equals the reference on this data, because no trip has both an unmatched id and 264/265 (found by crew-devin's test). The new (d) differs on 15 rows (checked with DuckDB).
