@@ -1,0 +1,27 @@
+{
+  "package": "@duckdb/duckdb-wasm",
+  "version": "1.33.1-dev57.0",
+  "license": "MIT",
+  "apacheArrow": "17.0.0",
+  "apacheArrowLicense": "Apache-2.0",
+  "bundle": "eh (single-threaded)",
+  "built": "tests/db/vendor.mjs",
+  "files": {
+    "duckdb-browser.mjs": {
+      "bytes": 227436,
+      "sha256": "1cbebabd31839c9660cd3c4dd2f773436ae0f06e147bc3720e4f4240c33207bf"
+    },
+    "duckdb-browser-eh.worker.js": {
+      "bytes": 773170,
+      "sha256": "b7b64dbe9fc6bae275271ee15afaa81017a145be59bb98027b6d3eeaf56adad9"
+    },
+    "duckdb-eh.wasm": {
+      "bytes": 35913747,
+      "sha256": "3abdec74989dcc54d2f2ea5621f611f3c45db1e7dff2f408476014d82beb2029"
+    },
+    "extensions/v1.5.4/wasm_eh/parquet.duckdb_extension.wasm": {
+      "bytes": 3218307,
+      "sha256": "4845705bbd69fc9ad52878d96a505c73cae4a6c509822079cc2413e5eb437f95"
+    }
+  }
+}

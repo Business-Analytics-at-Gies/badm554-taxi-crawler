@@ -1,0 +1,17 @@
+{
+  "name": "db",
+  "version": "1.0.0",
+  "description": "Headless tests for site/game/db (DuckDB-WASM in Playwright Chromium)",
+  "scripts": {
+    "vendor": "node vendor.mjs",
+    "test": "node --test --test-concurrency=1 *.test.mjs"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@duckdb/duckdb-wasm": "1.33.1-dev57.0",
+    "esbuild": "0.28.2",
+    "playwright": "1.64.0"
+  },
+  "type": "module",
+  "private": true
+}
