@@ -16,7 +16,6 @@ function config(env = process.env) {
   const authMode = env.AUTH_MODE || 'entra';
   if (!['entra', 'join', 'dev'].includes(authMode)) throw new Error('Invalid AUTH_MODE');
   if (authMode === 'dev' && env.WEBSITE_SITE_NAME) throw new Error('Dev authentication is local only');
-  if (env.FAKE_MODEL !== '1') throw new Error('Thin path supports FAKE_MODEL=1 only');
   return {
     root: ROOT, authMode, fake: env.FAKE_MODEL === '1', tutorOff: env.TUTOR_OFF === '1',
     closesAt: date('TUTOR_CLOSES_AT', '2026-10-17T23:30:00Z'),
