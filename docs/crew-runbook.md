@@ -14,7 +14,7 @@ Plan: `docs/plan-as-approved.md` (approved 16:34 CDT). Read before you start, in
 2. **Your branch, your worktree.** Commit on your branch only; push it (`git push -u origin <branch>`).
    Never commit to or merge into `main`; Claude integrates.
 3. **Every commit message ends with a trailer line `Agent: <your pane name>`** (`crew-codex`,
-   `crew-devin`, `crew-cursor`). No other attribution needed.
+   `crew-devin`, `crew-devin-ui`). No other attribution needed.
 4. **No external actions.** No deploys, no Azure, no Canvas, no email, no posting, no new GitHub
    issues or PRs. Network use: package and DuckDB-WASM downloads only.
 5. **No real learner data, no live model.** Use `FAKE_MODEL=1` and `AUTH_MODE=dev`. Never read
@@ -24,7 +24,7 @@ Plan: `docs/plan-as-approved.md` (approved 16:34 CDT). Read before you start, in
 7. **Tests that can fail.** For each test, the production change that would break it should be
    obvious. Run your full test folder before every milestone commit and paste the result in the
    commit body.
-8. **Accessibility and size** (Cursor mostly, everyone where it applies): WCAG 2.1 AA, keyboard
+8. **Accessibility and size** (crew-devin-ui mostly, everyone where it applies): WCAG 2.1 AA, keyboard
    operable, visible focus, no horizontal scroll at 375px, `prefers-reduced-motion` honored.
 9. **If you are blocked or an input is missing, stop and ask in your pane.** Do not invent data,
    counts or rules; `docs/floors.md` has them.
@@ -64,7 +64,10 @@ solution listed in `docs/floors.md` (they must pass and fail as stated), run hea
 `@duckdb/duckdb-wasm` or Playwright, your choice; say which in `tests/db/README.md`).
 Model: frontier (`opt+m`).
 
-### crew-cursor: guide and game UI (branch `crew/ui`, worktree `../badm554-taxi-crawler-ui`)
+### crew-devin-ui: guide and game UI (branch `crew/ui`, worktree `../badm554-taxi-crawler-ui`)
+
+(Was crew-cursor. Cursor's account allows only the Auto model, so per Vishal (16:45 CDT) a second
+Devin builds this package. The branch, files and rules are unchanged.)
 
 Owns `site/index.html`, `site/learn/`, `site/game/index.html`, `site/game/ui/` and `tests/ui/`.
 Builds the interface in spec section 3 and `docs/interfaces.md` parts 2 and 4: `/learn/` landing
@@ -77,10 +80,17 @@ check button and the receipt screen ("1% extra credit for all three floors; past
 into the Canvas assignment by 7:00 PM CDT Saturday"), the tool dispatcher for every tool in part 2,
 and the `<page>` snapshot. Until `crew/db` lands, code against the db interface with a small stub.
 Tests: Playwright at 1280px and 375px (no horizontal scroll), keyboard path through floor 1 with
-the stub. Model: frontier (`/model`).
+the stub. Model: frontier (Devin default, Claude Opus 5.5).
 
 ## Run log (Claude keeps this as it happens)
 
 | Time CDT | Event |
 |---|---|
-| 16:50 | Runbook, floors, interfaces, prompt and tools committed on `main` |
+| 16:41 | Runbook, floors, interfaces, prompt and tools committed on `main` (`c8b8c50`) |
+| 16:42 | crew-codex (GPT-6.1-Sol high) and crew-devin (Claude Opus 5.5 XHigh) dispatched; approvals so far: Codex trust 1, Devin trust 1, Devin command 2 |
+| 16:44 | crew-codex: `server: thin path` (`ad827cd`); its commit trailer says `Agent: dpi-ai` (set by the fleet hook), not `crew-codex`: the branch name is the attribution |
+| 16:45 | crew-devin is in bypass mode (Vishal: keep it, for speed). Cursor: free plan, Auto only; replaced by crew-devin-ui (Vishal: "use one more devin agent, if cursor runs out") |
+| 16:52 | Vishal: yes to the Azure actions; bypass mode OK for crew-devin-ui (already on) |
+| 16:55 | Azure: `dl-taxi-crawler` created on `dl-appplan-01` (no new plan), Node 24, HTTPS only. Entra app "Taxi Crawler (BADM 554)" `dac56b33-7b63-4e5c-acbb-a25a8e98cf94`, single tenant (Illinois); Easy Auth v2, redirect to login. App settings set from files (key, Entra secret, receipt secret: never printed); `TUTOR_OFF=1` until Vishal's smoke test |
+| 16:58 | Checked: anonymous `/learn/` returns 401, `/.auth/login/aad` returns 302 to the Illinois tenant sign-in |
+| 16:59 | crew-codex asked whether `/api/receipt {floor}` without proof is OK; Claude: yes, keep the frozen API and document it (the spec already accepts browser cheating) |

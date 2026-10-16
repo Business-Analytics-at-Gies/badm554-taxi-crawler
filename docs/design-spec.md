@@ -169,7 +169,7 @@ The greeting when the panel opens is static text, not a model call.
 - **Deletion:** chats, the identity table, server backups and request logs are deleted after final
   grades post. The browser keeps only the open panel state and the session cookie; "Forget me"
   clears them.
-- **Who sees real data:** the build crew (Claude, Codex, Devin, Cursor) uses synthetic test traffic
+- **Who sees real data:** the build crew (Claude, Codex, two Devin sessions) uses synthetic test traffic
   only. Real chats and grading records go only to Codex Edu.
 - **Extra credit receipts** (Codex review P2): when a floor clears, the server writes a receipt
   record (pilot id, dataset version, session id, floor, time, code) and shows the code, format
