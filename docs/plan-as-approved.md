@@ -9,57 +9,87 @@ Spec: `docs/design-spec.md`. Decisions: `docs/decisions/2026-10-16-kickoff.md`.
 ## Goal
 
 In-person BADM 554 learners (both sections) test a three-floor taxi data-quality game with a
-live tutor, as opt-in extra credit, on Sat 2026-10-17, closing 23:59 CDT.
+live tutor, as opt-in extra credit, on Sat 2026-10-17.
 
 **Cost, in plain terms:** the $200 promo credit lasts through Saturday 2026-10-17, so it covers the
 pilot day. The Console states the expiry in UTC: the end of Oct 17 UTC is **19:00 CDT Saturday**.
 Play after that may bill your card (auto-reload is on). The most it can ever cost is the $150
 workspace limit; the server stops the tutor at $140.
 
-## Review
-
-Codex reviewed this plan and the spec before approval (Vishal, 2026-10-16); its findings and what changed are in the section "Codex plan review" below.
-
-## Steps (times are CDT, targets, not promises)
-
-| # | When | Step | Who | Gate |
-|---|---|---|---|---|
-| 1 | Fri 17:00 | Approve this plan | Vishal | his yes in chat |
-| 2 | Fri 17:00 | Make the taxi extract from January 2024 yellow trips; count each kind of real dirt; plant what is missing; write `data/PLANTED.md` | Claude | counts pasted into the spec |
-| 3 | Fri 17:00 | Anthropic Console (API org): new workspace, $150 spend limit, new key into `~/.taxi-crawler-anthropic-key` (not `~/.anthropic-promo-key`, which has no limit) | **Vishal** (Claude cannot create keys) | key file exists, `wc -c` only |
-| 4 | Fri 17:30 | Azure: `az login`, then app service + Entra Easy Auth | **Vishal runs login**; Claude does the rest | login page works; if blocked at 19:00, switch to the join-code fallback |
-| 5 | Fri 18:00 | Build `/learn/` (landing: map page + three floor rooms, tutor open by default) and the game window (map, console, three floors); the tutor | Crew: Codex, Devin, Cursor (Claude orchestrates and checks) | floor tests pass |
-| 6 | Fri 18:00 | Build the proxy, caps, ledger, logs, completion codes (in parallel with 5) | Crew | proxy tests pass |
-| 7 | Fri 21:30 | Codex review of server and proxy (a different Codex session from the builder); fix P1/P2 | Claude | a clean round |
-| 8 | Fri 22:00 | Deploy; check the running site, not the deploy log | Claude | live URL serves this commit |
-| 9 | Fri 22:30 or Sat 08:00 | Vishal plays floor 1 with the tutor | **Vishal** | his OK |
-| 10 | after 9 | Canvas (in-person course 70436, owned by the inperson agent): Claude sends a committed `_agent-inbox/` item in `~/teaching/badm554` asking inperson to make an unpublished extra-credit assignment (codes + three feedback questions) and an announcement in Vishal's voice, scheduled 30 minutes out; body edits go through `~/.claude/scripts/canvas_inplace_edit.py` | Claude drafts the text; inperson makes the items | Vishal says "publish" to each one separately |
-| 11 | Sat all day | Watch spend and the log; turn the tutor off if anything goes wrong | Claude + Vishal | spend under $140 |
-| 12 | Sat 23:59 (or 18:30, see decision 1) | Close: `TUTOR_OFF=1`; the game stays up without a tutor | Claude | tutor refuses requests |
-| 13 | Sun | Verify codes with the script; aggregate feedback via Codex Edu; write the outcome here | Claude + Codex Edu | outcome header |
-
-If step 8 slips past Sat 10:00, the pilot moves, and the announcement says so; it does not
-shrink below floor 1.
-
-## Decisions Vishal still owns
+## Decisions Vishal owns (1 and 2 are needed before the build starts)
 
 1. **Closing time** (the credit gap above):
    - (a) close at **18:30 CDT Saturday**, inside the credit, with no card charge; or
    - (b) close at **23:59 CDT**, and accept a small card charge for 19:00-23:59 play (at most the
      $150 limit, and likely far less).
-   Steps 11 and 12 use 23:59 until you choose; with (a) the tutor turns off at 18:30.
-2. **Extra-credit points**, and whether they need one floor or all three.
-3. The wording of the announcement and the start-screen data notice (Claude drafts both).
+   The server enforces it (`TUTOR_CLOSES_AT`); the default is (b) until you choose.
+2. **Extra credit:** points, how many floors earn them (one, or all three), and the deadline for
+   pasting codes into Canvas.
+3. The wording of the announcement and the start-screen data notice (Claude drafts both; before step 9).
 4. Whether the online section gets it later (default: not in this pilot).
+
+## Steps (times are CDT, targets, not promises)
+
+| # | By | Step | Who | Gate |
+|---|---|---|---|---|
+| 1 | Fri 17:30 | Approve this plan; decisions 1 and 2 | Vishal | his yes in chat |
+| 2 | Fri 17:30 | Anthropic Console (API org): new workspace, $150 limit, key into `~/.taxi-crawler-anthropic-key` (not `~/.anthropic-promo-key`, which has no limit) | **Vishal** | file exists, `wc -c` only |
+| 3 | Fri 17:30 | `az login`; Claude checks whether an Entra app can be registered | **Vishal** runs login | Entra or join code decided by 19:00 |
+| 4 | Fri 17:30 | Freeze `docs/floors.md` (data schema, floor rules, valid and wrong solutions) and `docs/interfaces.md` (the three contracts below); write `docs/crew-runbook.md` | Claude | committed before any crew dispatch |
+| 5 | Fri 17:30-21:00 | Build: three agents in parallel, one branch each (split below) | Crew | each package's tests pass |
+| 6 | Fri 19:00 | One complete path on Azure: login → floor 1 → one tutor tool → receipt | Claude integrates | works on the live URL |
+| 7 | Fri 21:00 | All three floors integrated; caps, ledger and receipts survive a restart. Feature freeze | Claude | the spec's Verification list |
+| 8 | Fri 21:00-23:00 | Codex review of the server (a different session from the builder) until a round is clean; failure tests; Chrome and Safari at 1280px and 375px | Claude + Codex | no open P1/P2 |
+| 9 | Fri 23:00 | A committed `_agent-inbox/` item in `~/teaching/badm554` for the inperson agent (owner of Canvas 70436): an unpublished extra-credit assignment (codes + three feedback questions) and an announcement in Vishal's voice, scheduled 30 minutes out; body edits through `~/.claude/scripts/canvas_inplace_edit.py` | Claude drafts; inperson makes the items | items exist, unpublished |
+| 10 | Sat 08:00-09:00 | Vishal plays floor 1 with the tutor on the live site | **Vishal** | his OK |
+| 11 | Sat 09:00 | Publish the assignment, then the announcement | inperson, on Vishal's "publish" for each | Vishal's yes per item |
+| 12 | Sat | Watch spend and the request log; `TUTOR_OFF=1` on any stop condition | Claude + Vishal | spend under $140 |
+| 13 | Sat close | The tutor refuses after `TUTOR_CLOSES_AT`; the game stays up | server | a refused request after the time |
+| 14 | Sun | Verify codes and aggregate feedback in Codex Edu; write the outcome here | Codex Edu + Claude | outcome header |
+
+**Postponement:** if step 7 is not done by Sat 10:00 CDT, the pilot moves to Week 11 and no
+announcement goes out. All three floors ship, or none do.
+
+## Build split (from the Codex review)
+
+| Agent | Package and files it owns | Interface it supplies |
+|---|---|---|
+| Codex | `server/`: login (Entra headers or join code), sessions, `/api/tutor` (conversation, prompt, tools, step count), ledger, caps, shutdown, request log, `/api/receipt`, the grading verifier | session identity; tutor turn in and out; receipt; stable error codes |
+| Devin | `data/`, `site/game/db/`: the extract and `PLANTED.md`, the DuckDB-WASM worker, the three floor checks, the tutor's copy and experiment isolation | dataset version and schema; query results; floor state; clear result; undo |
+| Cursor | `site/learn/`, `site/game/ui/`: the guide rooms, the map, the SQL console, the tutor panel, browser tool dispatch, layout at 375px | `<page>` snapshot; tool execution and results; game-ready signal |
+
+Claude owns `docs/interfaces.md`, shared config, integration on `main`, deployment and the final
+checks. Models: the Codex builder on a frontier model at high effort (security code); Devin and
+Cursor on frontier models; the review Codex session is separate from the builder. Every commit
+carries an `Agent: <pane-name>` trailer. The crew gets synthetic test traffic only, never real
+learner data.
 
 ## What learners see
 
-The game URL, the start screen (what the game is, that tutor messages go to Anthropic, do not
-type personal information), three floors, the tutor, completion codes, and a Canvas assignment
-and announcement. Nothing else changes in Canvas.
+The site (landing at `/learn/` with the tutor open), the start-screen data notice, three floors,
+completion codes, one Canvas assignment and one announcement. Nothing else changes in Canvas.
 
 ## Stop conditions
 
-Spend reaches $140; a learner reports personal data in a log; the tutor gives wrong SQL that a
-floor relies on; the site is down for more than 30 minutes. Each one means `TUTOR_OFF=1` and a
-note to Vishal.
+Spend reaches $140; personal data shows up in a log; the tutor gives wrong SQL that a floor relies
+on; the site is down for more than 30 minutes. Each one means `TUTOR_OFF=1` and a note to Vishal.
+
+## Codex plan review (2026-10-16, before approval)
+
+Opinion review on the personal Codex account (no learner data in the repo), thread
+`01a1469d-bad9-7e93-9f98-9e6c8070e40f`. Each finding was checked against the spec before it was used.
+
+| Finding | Disposition | Where it landed |
+|---|---|---|
+| P1 The $140 stop does not bound spend (charged after the fact; concurrency; cache tokens) | Accepted | spec 5: reserve first, persisted ledger, $1.50 per learner |
+| P1 Easy Auth is authentication, not authorization; fallback caps can be reset | Accepted. Roster gate left out (it would put the roster on the server); cost caps bound outsiders instead, as an accepted risk | spec 5: login, fallback |
+| P1 A pinned system prompt is not an abuse boundary while the browser sends the history | Accepted | spec 4: the server owns the conversation |
+| P1 Learner-data separation needs operational rules | Accepted | spec 6: two stores, deletion, synthetic data for the crew |
+| P2 Completion codes prove issuance, not ownership | Accepted | spec 6: receipts; decision 2 |
+| P2 Floor rules ambiguous; counts alone pass wrong answers | Accepted | spec 2: `docs/floors.md` frozen first; spec 3: membership check |
+| P2 "Under 3 MB" says nothing about browser reliability | Accepted | spec 3: 5,000-10,000 rows, single-threaded worker, timeouts |
+| P2 The hand-written loop needs a reliability contract | Accepted | spec 4 |
+| Schedule too optimistic; a thin path by 19:00; cut cab replay, zone shapes, streaming, notes | Accepted | steps above; spec 3 and 8 |
+| P3 Credit-expiry contradiction | Already fixed: Codex read the docs during the control correction (`e16eae4`) | Goal |
+| P3 One-floor fallback contradicts the brief | Accepted as a wording fix: no one-floor version; postpone instead | Postponement; decision log Scope row |
+| P3 Review section promised but missing | Fixed | this section |
