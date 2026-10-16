@@ -90,3 +90,7 @@ the stub. Model: frontier (Devin default, Claude Opus 5.5).
 | 16:42 | crew-codex (GPT-6.1-Sol high) and crew-devin (Claude Opus 5.5 XHigh) dispatched; approvals so far: Codex trust 1, Devin trust 1, Devin command 2 |
 | 16:44 | crew-codex: `server: thin path` (`ad827cd`); its commit trailer says `Agent: dpi-ai` (set by the fleet hook), not `crew-codex`: the branch name is the attribution |
 | 16:45 | crew-devin is in bypass mode (Vishal: keep it, for speed). Cursor: free plan, Auto only; replaced by crew-devin-ui (Vishal: "use one more devin agent, if cursor runs out") |
+| 16:52 | Vishal: yes to the Azure actions; bypass mode OK for crew-devin-ui (already on) |
+| 16:55 | Azure: `dl-taxi-crawler` created on `dl-appplan-01` (no new plan), Node 24, HTTPS only. Entra app "Taxi Crawler (BADM 554)" `dac56b33-7b63-4e5c-acbb-a25a8e98cf94`, single tenant (Illinois); Easy Auth v2, redirect to login. App settings set from files (key, Entra secret, receipt secret: never printed); `TUTOR_OFF=1` until Vishal's smoke test |
+| 16:58 | Checked: anonymous `/learn/` returns 401, `/.auth/login/aad` returns 302 to the Illinois tenant sign-in |
+| 16:59 | crew-codex asked whether `/api/receipt {floor}` without proof is OK; Claude: yes, keep the frozen API and document it (the spec already accepts browser cheating) |
