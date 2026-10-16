@@ -50,6 +50,10 @@ Settings (environment): `AUTH_MODE`, `JOIN_CODE`, `ANTHROPIC_KEY_FILE` or `ANTHR
 `TUTOR_CLOSES_AT` (default `2026-10-17T23:30:00Z`), `RECEIPTS_CLOSE_AT` (default `2026-10-18T00:00:00Z`),
 `BUDGET_TOTAL_USD` (140), `CAP_DAILY_USD` (1.5), `CAP_QUESTIONS` (40), `DB_PATH`, `RECEIPT_SECRET`, `PORT`.
 
+Hosting facts (added 16:58 CDT): Azure App Service Linux, runtime `NODE|24-lts`, one instance.
+`DB_PATH` default `/home/data/taxi.db` (`/home` is the persistent share; create the folder).
+SQLite on that share: `journal_mode=DELETE`, not WAL. Listen on `process.env.PORT`. Health check: `GET /healthz` → `ok`.
+
 ## 2. Tutor tools (`server/tools.json`; Cursor executes them in the browser)
 
 | Tool | Input | Output to the tutor |
