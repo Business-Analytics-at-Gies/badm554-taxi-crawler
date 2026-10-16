@@ -101,3 +101,4 @@ the stub. Model: frontier (Devin default, Claude Opus 5.5).
 | 17:35 | floors.md floor 2 wrong (d) replaced (found by crew-devin's test) |
 | 17:38 | Vishal: inperson schedules the post; inbox item `8e3bec8f` in badm554; control told |
 | 17:43 | UX review (local, 1280 + 375). Devin daily quota exhausted (both Devin agents). UI fixes 1-6 reassigned to crew-codex. Vishal: inperson holds the announcement until the redeploy is confirmed |
+| 17:58 | `24dae17` live (UX fixes 1-7 by crew-codex; "Start floor" by Claude after Vishal flagged Enter the room vs Play floor). Five live files match by checksum. Control told inperson may release on Vishal's go |
