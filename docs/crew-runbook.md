@@ -102,3 +102,7 @@ the stub. Model: frontier (Devin default, Claude Opus 5.5).
 | 17:38 | Vishal: inperson schedules the post; inbox item `8e3bec8f` in badm554; control told |
 | 17:43 | UX review (local, 1280 + 375). Devin daily quota exhausted (both Devin agents). UI fixes 1-6 reassigned to crew-codex. Vishal: inperson holds the announcement until the redeploy is confirmed |
 | 17:58 | `24dae17` live (UX fixes 1-7 by crew-codex; "Start floor" by Claude after Vishal flagged Enter the room vs Play floor). Five live files match by checksum. Control told inperson may release on Vishal's go |
+| 18:15 | Opus subagent's graphics (`39d8085`) live |
+| 18:2x | Vishal: improvement as GitHub issue, required; repo public. Tutor status fixed to say Saturday (`c3a663b`, live). inperson told to hold the 6:42 PM announcement; new texts in badm554 inbox `e7040ba2` |
+| 18:34 | Devin agents closed (worktrees clean, all merged); workspaces crew-db and crew-ui closed. Remote crew branches deleted. History rewritten to the GitHub noreply author (`git filter-repo --mailmap`, tree unchanged; backup bundle in the session scratchpad); force-pushed with lease (`15ab937`) |
+| 18:36 | Repo made public; template and repo pages load |
