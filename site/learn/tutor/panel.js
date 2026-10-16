@@ -81,7 +81,7 @@ export function createPanel() {
       joinForm.hidden = true;
       const t = me.tutor;
       if (!t.open) { setEnabled(false, 'The tutor has closed. You can still play the game.'); return me; }
-      const closes = new Date(t.closes_at).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' });
+      const closes = new Date(t.closes_at).toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'long', hour: 'numeric', minute: '2-digit' });
       setEnabled(true, `Open until ${closes} CDT · ${t.questions_left} questions left today`);
       return me;
     } catch (e) {

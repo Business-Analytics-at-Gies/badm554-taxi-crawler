@@ -42,7 +42,7 @@ test('floor 1 end to end: query, tutor lens, check, receipt', async ({ page, req
   const receipt = frame.locator('#receipt');
   await expect(receipt).toBeVisible();
   await expect(frame.locator('#receipt-code')).toHaveText(/^TAXI-1-[A-Z]{8}$/);
-  await expect(receipt).toContainText('1% extra credit for all three floors; paste your three codes into the Canvas assignment by 7:00 PM CDT Saturday.');
+  await expect(receipt).toContainText('1% extra credit for all three floors plus one improvement: file it as a GitHub issue, then paste your three codes and the issue link into the Canvas assignment by 7:00 PM CDT Saturday.');
   const code = await frame.locator('#receipt-code').textContent();
   await expect(page.locator('[data-cleared-floor="1"]').first()).toBeAttached();
 

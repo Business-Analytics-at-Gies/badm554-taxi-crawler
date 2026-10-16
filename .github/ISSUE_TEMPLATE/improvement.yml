@@ -1,0 +1,31 @@
+name: Improvement (BADM 554 pilot)
+description: Suggest one improvement to Taxi Crawler. Required for the extra credit.
+title: "Improvement: "
+labels: ["pilot-feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing Taxi Crawler. This repository is **public**: anyone can read this issue, and it shows your GitHub username.
+        Do not include your name, NetID, email, grades or anything else personal. Paste the link to this issue into the Canvas assignment.
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options: ["Floor 1: The double shift", "Floor 2: Nowhere zones", "Floor 3: Impossible rides", "The tutor", "The guide and slides", "The map", "Something else"]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What should change?
+      description: One improvement, as concrete as you can make it.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would it help?
+      description: What happened when you played that made you want this?
+    validations:
+      required: true
