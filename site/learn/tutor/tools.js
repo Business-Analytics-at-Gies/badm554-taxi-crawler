@@ -65,7 +65,11 @@ export function createTools({ guide, game, panel, layout, snapshot }) {
     if (g.ui.status().engine !== 'ready') throw new Error('the SQL engine is not ready yet; try again in a moment');
     return g;
   }
-  const changedGame = what => { panel.tool(what, layout.narrow() ? { label: 'Show the game', onClick: () => layout.show('game') } : null); layout.markChanged('game'); };
+  const changedGame = what => {
+    const action = layout.narrow() && layout.active() === 'tutor'
+      ? { label: 'Show the game', onClick: () => layout.show('game', true) } : null;
+    panel.tool(what, action); layout.markChanged('game');
+  };
 
   const run = {
     async run_sql({ sql }) {

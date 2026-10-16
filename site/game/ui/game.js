@@ -2,6 +2,7 @@
 // Exposes window.taxiGame = { db, ui, ready, events } for the guide page (docs/interfaces.md part 4).
 import { createMap } from './map.js';
 import { friendlyError } from './errors.js';
+import { readCodes, writeCodes, validCode, CODES_KEY } from '/learn/codes.js';
 
 const FLOORS = {
   1: { title: 'Floor 1: The double shift', input: 'trips_raw', task: 'Create trips_clean with exactly one row per trip key, and every column of trips_raw.',
@@ -30,7 +31,34 @@ if (![1, 2, 3].includes(floor)) floor = 1;
 let engine = 'loading';
 let lastCheck = null;
 let running = false;
-const codes = {};
+let codes = readCodes();
+
+function renderCodeList() {
+  const all = $('receipt-all');
+  all.replaceChildren();
+  for (const f of [1, 2, 3]) {
+    const li = document.createElement('li');
+    li.textContent = `Floor ${f}: ${codes[f] || 'not cleared yet'}`;
+    all.append(li);
+  }
+}
+function showSavedCodes(n) {
+  renderCodeList();
+  const any = Object.keys(codes).length > 0;
+  $('receipt').hidden = !any;
+  if (!any) return;
+  const code = codes[n];
+  $('receipt-h').textContent = code ? `Floor ${n} cleared` : 'Saved completion codes';
+  $('receipt-line').textContent = code ? `Your code for floor ${n}:` : 'Codes saved in this browser:';
+  $('receipt-code').textContent = code || '';
+  $('copy-btn').hidden = !code;
+  $('copy-status').textContent = '';
+  $('next-floor').hidden = !code || n === 3;
+}
+$('receipt').querySelector('.help').textContent = 'Your codes are saved in this browser. “Forget me” clears them.';
+window.addEventListener('storage', e => {
+  if (e.key === CODES_KEY || e.key === null) { codes = readCodes(); showSavedCodes(floor); }
+});
 
 function setEngine(state, text) {
   engine = state;
@@ -149,9 +177,10 @@ async function checkFloor() {
     map.clearLens();
     await refreshTables();
     emit({ type: 'check', floor: n, pass: !!r.pass });
-    if (r.pass) await receipt(n);
+    if (r.pass) { out.scrollIntoView({ block: 'nearest' }); await receipt(n); }
   } finally {
     $('check-btn').disabled = engine !== 'ready';
+    if (!lastCheck?.pass) out.scrollIntoView({ block: 'nearest' });
   }
 }
 
@@ -164,24 +193,20 @@ async function receipt(n) {
     const res = await fetch('/api/receipt', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ floor: n }) });
     const data = await res.json().catch(() => null);
     if (!res.ok) throw new Error(data?.message || 'The completion code could not be issued. Please try again.');
-    codes[n] = data.code;
+    if (!validCode(n, data?.code)) throw new Error('The completion code could not be read. Please try checking again.');
+    codes = { ...readCodes(), ...codes, [n]: data.code };
+    writeCodes(codes);
     $('receipt-line').textContent = `Your code for floor ${n}:`;
     $('receipt-code').textContent = data.code;
     $('copy-btn').hidden = false;
+    emit({ type: 'cleared', floor: n, code: data.code });
   } catch (e) {
     $('receipt-line').textContent = e.message;
     $('receipt-code').textContent = '';
     $('copy-btn').hidden = true;
   }
-  const all = $('receipt-all');
-  all.replaceChildren();
-  for (const f of [1, 2, 3]) {
-    const li = document.createElement('li');
-    li.textContent = `Floor ${f}: ${codes[f] || 'not cleared yet'}`;
-    all.append(li);
-  }
+  renderCodeList();
   $('next-floor').hidden = n === 3;
-  emit({ type: 'cleared', floor: n });
   box.focus();
 }
 
@@ -193,7 +218,7 @@ async function setFloor(n) {
   $('floor-task').textContent = f.task;
   $('check-btn').textContent = `Check floor ${n}`;
   for (const b of document.querySelectorAll('.floor-pick button')) b.setAttribute('aria-pressed', String(Number(b.dataset.floor) === n));
-  $('receipt').hidden = true;
+  showSavedCodes(n);
   $('check-result').replaceChildren();
   $('result-table').replaceChildren();
   $('result-status').textContent = '';
@@ -254,7 +279,8 @@ const ui = {
 };
 
 const ready = (async () => {
-  setEngine('loading', 'Loading the SQL engine…');
+  showSavedCodes(floor);
+  setEngine('loading', 'Loading the SQL engine (about 35 MB the first time)…');
   try {
     const mod = await import('/game/db/db.js');
     db = typeof mod.default?.init === 'function' ? mod.default : mod;
@@ -262,7 +288,8 @@ const ready = (async () => {
     map = await createMap({ container: $('map'), summary: $('map-summary'), table: $('map-table'), legend: $('map-legend') });
     const r = await db.init();
     if (!r?.ok) throw new Error(r?.error || 'The SQL engine did not start.');
-    $('engine-version').textContent = `SQL engine: DuckDB ${r.version || ''} in your browser. The data stays on this computer.`;
+    const version = String(r.version || '').replace(/^(?:DuckDB\s+)+/i, '');
+    $('engine-version').textContent = `SQL engine: DuckDB ${version} in your browser. The data stays on this computer.`;
     (db.addEventListener || (() => {}))('db', e => {
       if (e.detail?.type === 'worker-restarted') { $('result-status').textContent = 'The SQL engine restarted and reloaded the floor.'; refreshTables(); }
       if (e.detail?.type === 'plant' || e.detail?.type === 'restart') refreshTables();

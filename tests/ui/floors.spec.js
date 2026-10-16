@@ -26,6 +26,7 @@ test('floors 1-3 clear in order and the receipt lists three codes', async ({ pag
   await expect(frame.locator('#receipt-all')).toHaveText(codes.map((c, i) => `Floor ${i + 1}: ${c}`).join(''));
   await expect(frame.locator('#next-floor')).toBeHidden();
   await showTab(page, 'Guide');
+  await page.locator('.rooms a[data-room="map"]').click();
   for (const n of [1, 2, 3]) await expect(page.locator(`#room-map [data-cleared-floor="${n}"]`)).toBeVisible();
   await noHorizontalScroll(page);
 });

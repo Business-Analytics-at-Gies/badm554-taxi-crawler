@@ -39,7 +39,7 @@ export function createGameWindow({ onEvent = () => {}, onToggle = () => {} } = {
     document.body.classList.add('game-open');
     title.textContent = `Game window: floor ${n}`;
     iframe.title = `Game window: floor ${n}`;
-    onToggle(true);
+    onToggle(true, n);
     const g = await loaded;
     await g.ready;
     if (floor !== n) { floor = n; await g.ui.setFloor(n); }

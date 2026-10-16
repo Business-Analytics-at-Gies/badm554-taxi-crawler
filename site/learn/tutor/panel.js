@@ -3,6 +3,7 @@
 import { get, post, ApiError } from './api.js';
 import { renderMarkdown } from './markdown.js';
 import { clearSelection } from './page.js';
+import { clearCodes } from '../codes.js';
 
 const PENDING = 'tc.pendingTurn';
 const MAX_ROUNDS = 10;
@@ -173,7 +174,8 @@ export function createPanel() {
   document.getElementById('forget').addEventListener('click', async () => {
     if (!confirm('Forget me? This deletes your tutor chat and signs you out of this browser.')) return;
     try { await post('/api/forget', {}); } catch (e) { error(e.message); return; }
-    localStorage.removeItem('tc.tutorOpen');
+    clearCodes();
+    try { localStorage.removeItem('tc.tutorOpen'); } catch { /* unavailable storage */ }
     sessionStorage.removeItem(PENDING);
     location.reload();
   });

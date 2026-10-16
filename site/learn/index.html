@@ -32,12 +32,13 @@
         <li><a href="#room=floor3" data-room="floor3">Floor 3</a></li>
       </ul>
     </nav>
-    <fieldset id="level-picker" class="level-picker">
+    <fieldset id="level-picker" class="level-picker" aria-describedby="level-help">
       <legend>Detail level</legend>
       <label><input type="radio" name="lv" value="1" checked> Lv 1 <span class="lv-name">Big idea</span></label>
       <label><input type="radio" name="lv" value="2"> Lv 2 <span class="lv-name">How the check works</span></label>
       <label><input type="radio" name="lv" value="3"> Lv 3 <span class="lv-name">The real SQL</span></label>
     </fieldset>
+    <p id="level-help" class="level-help">Pick how deep the guide and the tutor go. You can change it any time.</p>
   </div>
 
   <div id="guide-body" class="guide-body" tabindex="-1">
@@ -51,6 +52,7 @@
         <p>Before the morning report, you check the feed. There are three shifts and three problems. Each floor is one problem.</p>
         <p class="habit">Every floor ends on one habit: <strong>say the row count before and after, and make them reconcile.</strong></p>
       </div>
+      <p>Each floor has slides at three levels. Lv 1 gives the big idea, Lv 2 shows how the check works, Lv 3 shows the real SQL. Start at Lv 1, and switch to Lv 3 when you want to see the code. The tutor follows the level you pick. Use the <a href="#level-picker">Detail level</a> picker above to change levels.</p>
       <ol class="floor-cards">
         <li class="floor-card" data-floor="1">
           <h4>Floor 1: The double shift</h4>
@@ -92,6 +94,7 @@ SELECT * FROM zones LIMIT 5;</code></pre>
 
   <section class="room" id="room-floor1" data-room="floor1" data-title="Floor 1: The double shift" aria-labelledby="h-floor1">
     <h2 id="h-floor1">Floor 1: The double shift</h2>
+    <p class="cleared" data-cleared-floor="1" hidden>Cleared</p>
     <article class="slide" id="f1-task" data-title="The feed came in twice" aria-labelledby="h-f1-task">
       <h3 id="h-f1-task">The feed came in twice</h3>
       <div class="lv" data-lv="1">
@@ -187,6 +190,7 @@ FROM trips_clean;</code></pre>
 
   <section class="room" id="room-floor2" data-room="floor2" data-title="Floor 2: Nowhere zones" aria-labelledby="h-floor2">
     <h2 id="h-floor2">Floor 2: Nowhere zones</h2>
+    <p class="cleared" data-cleared-floor="2" hidden>Cleared</p>
     <article class="slide" id="f2-task" data-title="Trips to nowhere" aria-labelledby="h-f2-task">
       <h3 id="h-f2-task">Trips to nowhere</h3>
       <div class="lv" data-lv="1">
@@ -293,6 +297,7 @@ ORDER BY trips DESC;</code></pre>
 
   <section class="room" id="room-floor3" data-room="floor3" data-title="Floor 3: Impossible rides" aria-labelledby="h-floor3">
     <h2 id="h-floor3">Floor 3: Impossible rides</h2>
+    <p class="cleared" data-cleared-floor="3" hidden>Cleared</p>
     <article class="slide" id="f3-task" data-title="Impossible rides" aria-labelledby="h-f3-task">
       <h3 id="h-f3-task">Impossible rides</h3>
       <div class="lv" data-lv="1">
@@ -423,6 +428,7 @@ WHERE row_id NOT IN (SELECT row_id FROM quarantine);</code></pre>
       <p class="who">Tutor</p>
       <div class="body">
         <p>Hi. I am the tutor for Taxi Crawler. I can see the guide and the game. I can light up rows on the map and run queries on my own copy of the data.</p>
+        <p>Use the Detail level picker (Lv 1 to 3) to choose how deep I go.</p>
         <p class="notice"><strong>Your messages to the tutor go to Anthropic's API. Do not type personal information.</strong></p>
         <p>Where would you like to start: the story of the depot, or floor 1?</p>
       </div>

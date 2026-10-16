@@ -17,7 +17,7 @@ export function trackSelection(doc) {
     const text = sel ? String(sel) : '';
     if (!text.trim()) return;
     const node = sel.anchorNode?.nodeType === 1 ? sel.anchorNode : sel.anchorNode?.parentElement;
-    if (node?.closest?.('#receipt, .receipt, #tutor-form, #join-form')) return;
+    if (node?.closest?.('#receipt, .receipt, [data-cleared-floor], #tutor-form, #join-form')) return;
     selected = text.trim();
   });
 }
