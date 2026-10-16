@@ -94,3 +94,10 @@ the stub. Model: frontier (Devin default, Claude Opus 5.5).
 | 16:55 | Azure: `dl-taxi-crawler` created on `dl-appplan-01` (no new plan), Node 24, HTTPS only. Entra app "Taxi Crawler (BADM 554)" `dac56b33-7b63-4e5c-acbb-a25a8e98cf94`, single tenant (Illinois); Easy Auth v2, redirect to login. App settings set from files (key, Entra secret, receipt secret: never printed); `TUTOR_OFF=1` until Vishal's smoke test |
 | 16:58 | Checked: anonymous `/learn/` returns 401, `/.auth/login/aad` returns 302 to the Illinois tenant sign-in |
 | 16:59 | crew-codex asked whether `/api/receipt {floor}` without proof is OK; Claude: yes, keep the frozen API and document it (the spec already accepts browser cheating) |
+| 17:05 | crew-devin-ui: `ui: thin path`. crew-codex: `server: feature complete` (37 tests); its body says "Vishal explicitly accepted" the receipt limitation: it was Claude's call (16:59), not Vishal's |
+| 17:10 | Claude found that live Sonnet 5.5 replies with thinking blocks would throw; wrote `docs/server-live-fixes.md`; crew-codex `server: fix live model handling` (`573da60`, 49 tests) |
+| 17:13 | crew-devin `db: thin path` (`4601b5d`). Integrated on `main` (`c0ebab4`): server 49/49, db 62 + 1 todo, ui 40 + 2 skipped. First zip deploy, status 4 at 22:13Z |
+| 17:30 | `/healthz` excluded from Easy Auth (first attempt stored the literal `[/healthz]`; fixed). Second deploy `8f51c7f` (ui feature complete), checksums of three live files match; `TUTOR_OFF=0` |
+| 17:35 | floors.md floor 2 wrong (d) replaced (found by crew-devin's test) |
+| 17:38 | Vishal: inperson schedules the post; inbox item `8e3bec8f` in badm554; control told |
+| 17:43 | UX review (local, 1280 + 375). Devin daily quota exhausted (both Devin agents). UI fixes 1-6 reassigned to crew-codex. Vishal: inperson holds the announcement until the redeploy is confirmed |
