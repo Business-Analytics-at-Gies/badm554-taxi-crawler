@@ -34,3 +34,11 @@ syntax checks and git diff --check clean. A separate real CLI smoke passed PORT,
 dev login, a lens round trip, receipt issuance, public reference SQL and graceful shutdown.
 The npm verification initially caught a test subprocess that assumed the root working directory;
 its script path is now absolute and both invocation forms pass.
+
+Attribution correction (history preserved): commits ad827cd (thin path) and 3e0d80a
+(feature complete) were authored by crew-codex. Both git commit commands explicitly supplied
+`Agent: crew-codex`, but the installed fleet prepare-commit-msg/commit-msg hooks replaced that
+trailer with the inherited pane actor `dpi-ai`. The hook supports an explicit `FLEET_AGENT`
+override; subsequent commits set it to `crew-codex`. The two pushed commit messages remain
+unchanged because the crew runbook prohibits history rewrites. This record corrects their
+attribution without changing either delivered package or the shared hook configuration.
