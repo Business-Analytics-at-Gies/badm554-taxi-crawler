@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Taxi Crawler Decisions</title>
 <style>
-:root{--bg:#fbfaf7;--fg:#1d1f22;--mut:#5b6068;--line:#d9d5cc;--acc:#a8630a;--card:#fff}
+:root{--bg:#fbfaf7;--fg:#1d1f22;--mut:#5b6068;--line:#d9d5cc;--acc:#8a5108;--card:#fff}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#16181b;--fg:#e8e6e1;--mut:#a3a8b0;--line:#33373d;--acc:#f0b04a;--card:#1e2125}}
 :root[data-theme="dark"]{--bg:#16181b;--fg:#e8e6e1;--mut:#a3a8b0;--line:#33373d;--acc:#f0b04a;--card:#1e2125}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 "Source Sans 3","Source Sans Pro",Georgia,serif;padding:24px 16px}
@@ -13,7 +13,7 @@ summary:focus-visible{outline:3px solid var(--acc);outline-offset:2px}dl{margin:
 code{font-size:.9em;overflow-wrap:anywhere}
 </style></head><body><main>
 <h1>Taxi crawler: decision tree</h1>
-<p class="meta">Created 2026-10-16. Last updated 2026-10-16. Companion to <code>docs/decisions/2026-10-16-kickoff.md</code>, which wins if they differ. Open a row to see what was rejected and when to revisit.</p>
+<p class="meta">Created 2026-10-16. Last updated 2026-10-16. Built from <code>docs/decisions/2026-10-16-kickoff.md</code> by <code>tools/decision_html.py</code>; the markdown wins if they differ. Open a row to see what was rejected and when to revisit.</p>
 <h2>Kickoff (control session, 2026-10-16)</h2>
 <details><summary><span class="q">Base scenario</span> <span class="c">NYC TLC taxi trips (learners already used 2022 yellow trips + zone lookup in M2a and an extract in M4)</span></summary>
 <dl><dt>Chosen</dt><dd>NYC TLC taxi trips (learners already used 2022 yellow trips + zone lookup in M2a and an extract in M4)</dd><dt>Rejected</dt><dd>a new dataset</dd><dt>Revisit if</dt><dd>the data cannot be served small enough to run in a browser</dd></dl></details>
@@ -32,10 +32,10 @@ code{font-size:.9em;overflow-wrap:anywhere}
 <dl><dt>Chosen</dt><dd>Always-on, Illinois Azure App Service + Entra Easy Auth; fallback a class join code if the Entra registration is blocked Friday night</dd><dt>Rejected</dt><dd>class-time-only server; instructor screen only; VPS + Shibboleth</dd><dt>Revisit if</dt><dd>Entra registration takes more than a day; then the VPS</dd></dl></details>
 <details><summary><span class="q">Chat logs</span> <span class="c">Keep, de-identified (random session id); analysis only through Codex Edu; delete after final grades</span></summary>
 <dl><dt>Chosen</dt><dd>Keep, de-identified (random session id); analysis only through Codex Edu; delete after final grades</dd><dt>Rejected</dt><dd>keep none; research with IRB</dd><dt>Revisit if</dt><dd>the pilot data is wanted for a paper: then IRB first</dd></dl></details>
-<details><summary><span class="q">Spend cap</span> <span class="c">$150 Console workspace limit; server ledger stops at $140</span></summary>
-<dl><dt>Chosen</dt><dd>$150 Console workspace limit; server ledger stops at $140</dd><dt>Rejected</dt><dd>$50; $300</dd><dt>Revisit if</dt><dd>spend passes $100 before Sat noon</dd></dl></details>
-<details><summary><span class="q">Pilot timing</span> <span class="c">Now, as extra credit, Sat 2026-10-17, closing 23:59 CDT, while the credit lasts</span></summary>
-<dl><dt>Chosen</dt><dd>Now, as extra credit, Sat 2026-10-17, closing 23:59 CDT, while the credit lasts</dd><dt>Rejected</dt><dd>Week 11 Thu lab; Week 13 review; optional with no class time</dd><dt>Revisit if</dt><dd>the build slips past Sat 10:00 CDT: then Week 11</dd></dl></details>
+<details><summary><span class="q">Spend cap</span> <span class="c">$150 limit on a separate Console workspace in the API org (not <code>~/.anthropic-promo-key</code>, which has no workspace limit); server ledger stops at $140; after credit expiry this is card money (auto-reload is on)</span></summary>
+<dl><dt>Chosen</dt><dd>$150 limit on a separate Console workspace in the API org (not <code>~/.anthropic-promo-key</code>, which has no workspace limit); server ledger stops at $140; after credit expiry this is card money (auto-reload is on)</dd><dt>Rejected</dt><dd>$50; $300</dd><dt>Revisit if</dt><dd>spend passes $100 before Sat noon</dd></dl></details>
+<details><summary><span class="q">Pilot timing</span> <span class="c">Now, as extra credit, Sat 2026-10-17, closing 23:59 CDT. The $200 promo credit expires 2026-10-17 UTC (19:00 CDT Fri at worst, 19:00 CDT Sat at best), so Saturday play bills Vishal&#x27;s card</span></summary>
+<dl><dt>Chosen</dt><dd>Now, as extra credit, Sat 2026-10-17, closing 23:59 CDT. The $200 promo credit expires 2026-10-17 UTC (19:00 CDT Fri at worst, 19:00 CDT Sat at best), so Saturday play bills Vishal&#x27;s card</dd><dt>Rejected</dt><dd>Week 11 Thu lab; Week 13 review; optional with no class time</dd><dt>Revisit if</dt><dd>the build slips past Sat 10:00 CDT: then Week 11</dd></dl></details>
 <details><summary><span class="q">Game form</span> <span class="c">Dispatch map + SQL: SVG zone map, SQL console, dirty rows shown as glitches</span></summary>
 <dl><dt>Chosen</dt><dd>Dispatch map + SQL: SVG zone map, SQL console, dirty rows shown as glitches</dd><dt>Rejected</dt><dd>escape-room text rooms; 2D tile crawler</dd><dt>Revisit if</dt><dd>learners say it is not a game; then more game on the map</dd></dl></details>
 <details><summary><span class="q">Scope</span> <span class="c">3 floors (duplicates; unknown zones/NULLs; impossible rides), English only</span></summary>
@@ -52,5 +52,4 @@ code{font-size:.9em;overflow-wrap:anywhere}
 <dl><dt>Chosen</dt><dd>Typed tools (run_sql read-only, lens, plant/unplant, pace, navigate, highlight, game, show_code, note, reset)</dd><dt>Rejected</dt><dd>raw run_js as in Cube Crawler</dd><dt>Revisit if</dt><dd>a teaching move needs a tool that is missing</dd></dl></details>
 <details><summary><span class="q">Code reuse</span> <span class="c">Copy the Cube Crawler pattern, not its code (no license file in the repo); pi-durable is MIT if needed</span></summary>
 <dl><dt>Chosen</dt><dd>Copy the Cube Crawler pattern, not its code (no license file in the repo); pi-durable is MIT if needed</dd><dt>Rejected</dt><dd>fork dungeon-crawler</dd><dt>Revisit if</dt><dd>the author adds a license</dd></dl></details>
-
 </main></body></html>

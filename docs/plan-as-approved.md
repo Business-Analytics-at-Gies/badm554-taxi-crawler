@@ -11,6 +11,10 @@ Spec: `docs/design-spec.md`. Decisions: `docs/decisions/2026-10-16-kickoff.md`.
 In-person BADM 554 learners (both sections) test a three-floor taxi data-quality game with a
 live tutor, as opt-in extra credit, on Sat 2026-10-17, closing 23:59 CDT.
 
+**Cost, in plain terms:** the $200 promo credit expires 2026-10-17 UTC, which is 19:00 CDT tonight
+at worst and 19:00 CDT Saturday at best. Saturday play is therefore billed to your card (auto-reload
+is on). The most it can cost is the $150 workspace limit; the server stops the tutor at $140.
+
 ## Review
 
 Codex reviewed this plan and the spec before approval (Vishal, 2026-10-16); its findings and what changed are in the section "Codex plan review" below.
@@ -21,14 +25,14 @@ Codex reviewed this plan and the spec before approval (Vishal, 2026-10-16); its 
 |---|---|---|---|---|
 | 1 | Fri 17:00 | Approve this plan | Vishal | his yes in chat |
 | 2 | Fri 17:00 | Make the taxi extract from January 2024 yellow trips; count each kind of real dirt; plant what is missing; write `data/PLANTED.md` | Claude | counts pasted into the spec |
-| 3 | Fri 17:00 | Anthropic Console: new workspace, $150 spend limit, new key into `~/.taxi-crawler-anthropic-key` | **Vishal** (Claude cannot create keys) | key file exists, `wc -c` only |
+| 3 | Fri 17:00 | Anthropic Console (API org): new workspace, $150 spend limit, new key into `~/.taxi-crawler-anthropic-key` (not `~/.anthropic-promo-key`, which has no limit) | **Vishal** (Claude cannot create keys) | key file exists, `wc -c` only |
 | 4 | Fri 17:30 | Azure: `az login`, then app service + Entra Easy Auth | **Vishal runs login**; Claude does the rest | login page works; if blocked at 19:00, switch to the join-code fallback |
 | 5 | Fri 18:00 | Build `/learn/` (landing: map page + three floor rooms, tutor open by default) and the game window (map, console, three floors); the tutor | Crew: Codex, Devin, Cursor (Claude orchestrates and checks) | floor tests pass |
 | 6 | Fri 18:00 | Build the proxy, caps, ledger, logs, completion codes (in parallel with 5) | Crew | proxy tests pass |
 | 7 | Fri 21:30 | Codex review of server and proxy (a different Codex session from the builder); fix P1/P2 | Claude | a clean round |
 | 8 | Fri 22:00 | Deploy; check the running site, not the deploy log | Claude | live URL serves this commit |
 | 9 | Fri 22:30 or Sat 08:00 | Vishal plays floor 1 with the tutor | **Vishal** | his OK |
-| 10 | after 9 | Canvas: an unpublished extra-credit assignment (codes + three feedback questions) and an announcement draft | Claude drafts | Vishal says "publish" to each one separately |
+| 10 | after 9 | Canvas (in-person course 70436, owned by the inperson agent): Claude sends a committed `_agent-inbox/` item in `~/teaching/badm554` asking inperson to make an unpublished extra-credit assignment (codes + three feedback questions) and an announcement in Vishal's voice, scheduled 30 minutes out; body edits go through `~/.claude/scripts/canvas_inplace_edit.py` | Claude drafts the text; inperson makes the items | Vishal says "publish" to each one separately |
 | 11 | Sat all day | Watch spend and the log; turn the tutor off if anything goes wrong | Claude + Vishal | spend under $140 |
 | 12 | Sat 23:59 | Close: `TUTOR_OFF=1`; the game stays up without a tutor | Claude | tutor refuses requests |
 | 13 | Sun | Verify codes with the script; aggregate feedback via Codex Edu; write the outcome here | Claude + Codex Edu | outcome header |

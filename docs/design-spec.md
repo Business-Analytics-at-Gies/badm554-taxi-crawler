@@ -11,8 +11,9 @@ Decisions behind it: `docs/decisions/2026-10-16-kickoff.md` (kickoff and design-
   a shift of dirty trip data that they catch and fix with SQL. A tutor in a side panel sees the
   live game, can change it (with undo), and explains at three levels.
 - **Who:** BADM 554 in-person learners, both sections (Canvas 70436), as opt-in extra credit.
-- **When:** open on Sat 2026-10-17 morning, close Sat 2026-10-17 23:59 CDT (while the Anthropic
-  credit lasts). Week 11 (M7 validation) is the next use, after the pilot is reviewed.
+- **When:** open on Sat 2026-10-17 morning, close Sat 2026-10-17 23:59 CDT (Sun 04:59 UTC). The
+  $200 promo credit expires 2026-10-17 UTC (19:00 CDT Friday at worst, 19:00 CDT Saturday at
+  best), so Saturday play is billed to Vishal's card. Week 11 (M7 validation) is the next use, after the pilot is reviewed.
 - **Success:** at least 15 learners clear floor 1; no spend above the cap; no learner-data
   incident; feedback answers that say where the tutor helped or got in the way.
 
@@ -98,8 +99,10 @@ small hand-written loop over the Messages API format. The conversation is kept i
 - **Fallback login** (if the Entra app registration is blocked by 19:00 CDT Friday): a class join
   code posted in the Canvas announcement (behind Canvas login). Each browser gets a random session
   id; caps apply per session and per IP. The host may then be the VPS instead of Azure.
-- **The key** is a paid key in its own Anthropic Console workspace with a **$150 workspace spend
-  limit**. It lives only in the server's settings, never in the browser or the repo.
+- **The key** is a new key in its own Anthropic Console workspace (in the API org) with a **$150
+  workspace spend limit**. Not `~/.anthropic-promo-key`: that key has no workspace limit. After the
+  promo credit expires, the $150 limit and the $140 ledger stop are real money on Vishal's card
+  (auto-reload is on: below $5 it tops up to $100). It lives only in the server's settings, never in the browser or the repo.
 - **The proxy rewrites every request:** it replaces `system` and `tools` with the server's own
   copies, forces the model to the allowlist, and caps `max_tokens` at 2,000. A learner who calls
   `/llm` by hand gets the tutor, not a free Claude.
