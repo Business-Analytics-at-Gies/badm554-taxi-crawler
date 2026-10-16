@@ -2,6 +2,8 @@
 // state, db.state() with queries cut, what is lit and planted, the last check, selected text.
 // Never cookies, /api/me fields, receipt codes or other page text. Max 8,000 characters.
 export const MAX_PAGE = 8000;
+import { friendlyError } from '/game/ui/errors.js';
+
 const CODE_RE = /TAXI-\d-[A-Z]{8}/gi;
 
 const cut = (s, n) => { s = String(s ?? ''); return s.length > n ? `${s.slice(0, n)}… [cut]` : s; };
@@ -40,11 +42,11 @@ export function createSnapshot({ guide, game }) {
         let st = null;
         try { st = await api.db.state(); } catch { /* engine restarting */ }
         if (st) {
-          lines.push(`tables: ${st.tables.map(t => `${t.name} ${t.rows} rows`).join('; ') || 'none'}`);
+          lines.push(`tables: ${st.tables.map(t => `${t.name} ${t.rows === null || t.rows === undefined ? '(view)' : `${t.rows} rows`}`).join('; ') || 'none'}`);
           const qs = st.lastQueries || [];
           if (qs.length) {
             lines.push('last queries (newest last):');
-            for (const q of qs) lines.push(`- ${q.error ? `error: ${clean(cut(q.error, 300))}` : `${q.rowCount} row${q.rowCount === 1 ? "" : "s"}`} | ${clean(cut(q.sql, 1000))}`);
+            for (const q of qs) lines.push(`- ${q.error ? `error: ${clean(cut(friendlyError(q.error), 300))}` : `${q.rowCount} row${q.rowCount === 1 ? "" : "s"}`} | ${clean(cut(q.sql, 1000))}`);
           } else lines.push('last queries: none');
           const plants = st.plants || [];
           lines.push(`planted: ${plants.length ? `${plants.length} rows (row_id ${plants.slice(0, 20).join(', ')})` : 'none'}`);
@@ -52,7 +54,8 @@ export function createSnapshot({ guide, game }) {
       }
       lines.push(`lit: ${status.lit ? `${status.lit.count} rows, label "${clean(cut(status.lit.label, 60))}"${full && status.lit.zones ? `, zones ${status.lit.zones}` : ''}` : 'nothing'}`);
       const c = status.lastCheck;
-      if (c) {
+      if (c?.error) lines.push(`last check: floor ${c.floor}, could not run: ${clean(cut(c.error, 300))}`);
+      else if (c) {
         const failed = c.rules.filter(r => !r.ok);
         lines.push(`last check: floor ${c.floor}, ${c.pass ? 'passed' : `not passed (${failed.length} of ${c.rules.length} rules failed)`}`);
         for (const r of full ? c.rules : failed.slice(0, 4)) {

@@ -30,8 +30,17 @@ function tableRows(name) {
 }
 
 async function run(sql, max, readOnly) {
+  const stmts = String(sql).replace(/--[^\n]*/g, '').split(';').map(x => x.trim()).filter(Boolean);
+  if (readOnly && stmts.length > 1) return { columns: [], rows: [], rowCount: 0, truncated: false, ms: 0, error: 'Run one statement at a time.' };
+  let r = { columns: [], rows: [], rowCount: 0, truncated: false, ms: 0, error: 'Nothing to run.' };
+  for (const s of stmts) { r = await run1(s, max, readOnly); if (r.error) break; }
+  return r;
+}
+
+async function run1(s, max, readOnly) {
   const t0 = performance.now();
-  const s = String(sql).trim();
+  const drop = s.match(/^drop\s+table\s+(?:if\s+exists\s+)?(\w+)/i);
+  if (drop && !readOnly) { delete work[floor][drop[1].toLowerCase()]; return { columns: ['Success'], rows: [], rowCount: 0, truncated: false, ms: 0 }; }
   const done = r => ({ truncated: false, ...r, ms: Math.round(performance.now() - t0) });
   if (!/^(select|with|create|drop|from|describe|show|summarize|explain)\b/i.test(s)) return done({ columns: [], rows: [], rowCount: 0, error: `Parser Error: syntax error at or near "${s.split(/\s+/)[0] || ''}"` });
   if (readOnly && /^(create|drop)\b/i.test(s)) return done({ columns: [], rows: [], rowCount: 0, error: 'Read-only: the tutor copy cannot be changed.' });

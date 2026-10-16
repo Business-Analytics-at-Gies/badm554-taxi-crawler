@@ -1,6 +1,7 @@
 // Runs the tutor's tool calls in the browser (docs/interfaces.md part 2, server/tools.json).
 // Every input is validated here; a bad input or a failure returns { ok: false, output: why }.
 import { ROOMS } from '../guide.js';
+import { friendlyError } from '/game/ui/errors.js';
 
 export const MAX_OUTPUT = 8000;
 const KINDS = ['duplicate', 'unmatched_zone', 'negative_fare', 'time_travel'];
@@ -9,7 +10,7 @@ const FILES = {
   'floor1-reference': '/data/reference/floor1.sql',
   'floor2-reference': '/data/reference/floor2.sql',
   'floor3-reference': '/data/reference/floor3.sql',
-  'floor-check': '/game/db/checks.js',
+  'floor-check': '/game/db/floors.js',
   'floors-rules': '/learn/floors-rules.txt',
 };
 
@@ -51,7 +52,7 @@ const cap = s => (s.length > MAX_OUTPUT ? `${s.slice(0, MAX_OUTPUT - 20)}\n[outp
 const cell = v => (v === null || v === undefined ? 'NULL' : String(v).replace(/\s+/g, ' '));
 
 export function formatResult(r, maxRows = 50) {
-  if (r.error) return `error: ${r.error}`;
+  if (r.error) return `error: ${friendlyError(r.error)}`;
   const rows = r.rows.slice(0, maxRows);
   const head = `${r.rowCount} row${r.rowCount === 1 ? '' : 's'}${r.rowCount > rows.length ? ` (showing ${rows.length})` : ''}; columns: ${r.columns.join(', ')}`;
   return [head, r.columns.join(' | '), ...rows.map(row => row.map(cell).join(' | '))].join('\n');
@@ -76,7 +77,7 @@ export function createTools({ guide, game, panel, layout, snapshot }) {
     async lens({ sql, label }) {
       const g = await needGame();
       const r = await g.db.lensRows(sql);
-      if (r.error) return { ok: false, output: `error: ${r.error}` };
+      if (r.error) return { ok: false, output: `error: ${friendlyError(r.error)}` };
       const lit = g.ui.lens(r.rows, label);
       changedGame(`The tutor lit ${r.rows.length} rows on the map: ${label}`);
       return { ok: true, output: `lit ${r.rows.length} rows${lit?.zones !== undefined ? ` in ${lit.zones} zones` : ''}${r.rows.length >= 500 ? ' (the map shows at most 500)' : ''}` };
@@ -84,7 +85,7 @@ export function createTools({ guide, game, panel, layout, snapshot }) {
     async plant({ kind, count }) {
       const g = await needGame();
       const r = await g.db.plant(kind, count);
-      if (r.error) return { ok: false, output: `error: ${r.error}` };
+      if (r.error) return { ok: false, output: `error: ${friendlyError(r.error)}` };
       g.ui.refresh?.();
       changedGame(`The tutor planted ${r.row_ids.length} ${kind.replace('_', ' ')} row${r.row_ids.length === 1 ? '' : 's'} for an experiment.`);
       return { ok: true, output: `planted ${r.row_ids.length} rows, row_ids: ${r.row_ids.join(', ')}` };
@@ -92,10 +93,11 @@ export function createTools({ guide, game, panel, layout, snapshot }) {
     async unplant({ row_ids }) {
       const g = await needGame();
       const r = await g.db.unplant(row_ids);
-      if (r?.error) return { ok: false, output: `error: ${r.error}` };
+      if (r?.error) return { ok: false, output: `error: ${friendlyError(r.error)}` };
+      const removed = Array.isArray(r?.row_ids) ? r.row_ids : row_ids;
       g.ui.refresh?.();
-      changedGame(`The tutor removed ${row_ids.length} planted row${row_ids.length === 1 ? '' : 's'}.`);
-      return { ok: true, output: `removed ${row_ids.length} planted rows` };
+      changedGame(`The tutor removed ${removed.length} planted row${removed.length === 1 ? '' : 's'}.`);
+      return { ok: true, output: `removed ${removed.length} planted rows${r?.ignored?.length ? `; not planted, ignored: ${r.ignored.join(', ')}` : ''}` };
     },
     async undo_experiments() {
       const g = await needGame();

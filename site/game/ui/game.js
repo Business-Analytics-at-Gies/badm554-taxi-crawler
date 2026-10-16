@@ -1,6 +1,7 @@
 // The game window (site/game/): map, SQL console, result table, floor check and receipt.
 // Exposes window.taxiGame = { db, ui, ready, events } for the guide page (docs/interfaces.md part 4).
 import { createMap } from './map.js';
+import { friendlyError } from './errors.js';
 
 const FLOORS = {
   1: { title: 'Floor 1: The double shift', input: 'trips_raw', task: 'Create trips_clean with exactly one row per trip key, and every column of trips_raw.',
@@ -47,8 +48,9 @@ async function refreshTables() {
     const li = document.createElement('li');
     const b = document.createElement('button');
     b.type = 'button';
-    b.textContent = `${t.name} (${fmt(t.rows)})`;
-    b.setAttribute('aria-label', `${t.name}, ${fmt(t.rows)} rows. Put a preview query in the console.`);
+    const size = t.rows === null || t.rows === undefined ? 'view' : fmt(t.rows);
+    b.textContent = `${t.name} (${size})`;
+    b.setAttribute('aria-label', `${t.name}, ${size === 'view' ? 'a view' : `${size} rows`}. Put a preview query in the console.`);
     b.addEventListener('click', () => { $('sql-input').value = `SELECT * FROM ${t.name} LIMIT 20;`; $('sql-input').focus(); });
     li.append(b); ul.append(li);
   }
@@ -59,7 +61,7 @@ function renderResult(r) {
   const table = $('result-table');
   table.replaceChildren();
   if (r.error) {
-    status.textContent = `Error: ${r.error}`;
+    status.textContent = `Error: ${friendlyError(r.error)}`;
     status.classList.add('bad');
     return;
   }
@@ -124,6 +126,11 @@ async function checkFloor() {
   out.textContent = 'Checking…';
   try {
     const r = await db.check(n);
+    if (r.error && !(r.rules || []).length) {
+      lastCheck = { floor: n, pass: false, rules: [], error: friendlyError(r.error) };
+      out.textContent = `The check could not run: ${friendlyError(r.error)}`;
+      return;
+    }
     lastCheck = { floor: n, pass: !!r.pass, rules: r.rules || [] };
     out.replaceChildren();
     const head = document.createElement('p');
