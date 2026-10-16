@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Taxi Crawler · BADM 554</title>
+<link rel="stylesheet" href="/learn/learn.css">
+<script>document.documentElement.classList.add('js');</script>
+<script type="module" src="/learn/app.js"></script>
+</head>
+<body>
+<a class="skip" href="#guide-body">Skip to the guide</a>
+<header class="top">
+  <p class="brand"><span class="brand-name">Taxi Crawler</span> <span class="brand-sub">BADM 554 · a data quality game</span></p>
+  <button type="button" id="tutor-toggle" class="top-btn js-only" aria-controls="tutor" aria-expanded="true">Hide tutor</button>
+</header>
+<noscript><p class="noscript">The game and the tutor need JavaScript. You can still read the guide below.</p></noscript>
+<div class="tabs js-only" role="tablist" aria-label="Panels">
+  <button type="button" role="tab" id="tab-guide" aria-controls="guide" aria-selected="false" tabindex="-1">Guide<span class="badge" hidden> (changed)</span></button>
+  <button type="button" role="tab" id="tab-game" aria-controls="gamepane" aria-selected="false" tabindex="-1">Game<span class="badge" hidden> (changed)</span></button>
+  <button type="button" role="tab" id="tab-tutor" aria-controls="tutor" aria-selected="true" tabindex="0">Tutor</button>
+</div>
+<main class="layout" id="layout">
+
+<section id="guide" class="panel guide" data-level="1" aria-label="Guide">
+  <div class="guide-bar js-only">
+    <nav aria-label="Rooms">
+      <ul class="rooms">
+        <li><a href="#room=map" data-room="map">Depot</a></li>
+        <li><a href="#room=floor1" data-room="floor1">Floor 1</a></li>
+        <li><a href="#room=floor2" data-room="floor2">Floor 2</a></li>
+        <li><a href="#room=floor3" data-room="floor3">Floor 3</a></li>
+      </ul>
+    </nav>
+    <fieldset id="level-picker" class="level-picker">
+      <legend>Detail level</legend>
+      <label><input type="radio" name="lv" value="1" checked> Lv 1 <span class="lv-name">Big idea</span></label>
+      <label><input type="radio" name="lv" value="2"> Lv 2 <span class="lv-name">How the check works</span></label>
+      <label><input type="radio" name="lv" value="3"> Lv 3 <span class="lv-name">The real SQL</span></label>
+    </fieldset>
+  </div>
+
+  <div id="guide-body" class="guide-body" tabindex="-1">
+
+  <section class="room" id="room-map" data-room="map" data-title="The depot" aria-labelledby="h-map">
+    <h2 id="h-map">The depot</h2>
+    <article class="slide" id="overview" data-title="Three shifts, three problems" aria-labelledby="h-overview">
+      <h3 id="h-overview">Three shifts, three problems</h3>
+      <div class="lv" data-lv="1">
+        <p>You are the night analyst at a taxi depot. The trip feed for January 2024 has come in, and the dashboard says revenue is up.</p>
+        <p>Before the morning report, you check the feed. There are three shifts and three problems. Each floor is one problem.</p>
+        <p class="habit">Every floor ends on one habit: <strong>say the row count before and after, and make them reconcile.</strong></p>
+      </div>
+      <ol class="floor-cards">
+        <li class="floor-card" data-floor="1">
+          <h4>Floor 1: The double shift</h4>
+          <p>One day's load ran twice.</p>
+          <p class="cleared" data-cleared-floor="1" hidden>Cleared</p>
+          <p class="card-actions js-only"><a href="#room=floor1">Enter the room</a> <button type="button" class="play" data-floor="1">Play floor 1</button></p>
+        </li>
+        <li class="floor-card" data-floor="2">
+          <h4>Floor 2: Nowhere zones</h4>
+          <p>Some trips start or end in a zone that is not on the map.</p>
+          <p class="cleared" data-cleared-floor="2" hidden>Cleared</p>
+          <p class="card-actions js-only"><a href="#room=floor2">Enter the room</a> <button type="button" class="play" data-floor="2">Play floor 2</button></p>
+        </li>
+        <li class="floor-card" data-floor="3">
+          <h4>Floor 3: Impossible rides</h4>
+          <p>Some rides cannot have happened.</p>
+          <p class="cleared" data-cleared-floor="3" hidden>Cleared</p>
+          <p class="card-actions js-only"><a href="#room=floor3">Enter the room</a> <button type="button" class="play" data-floor="3">Play floor 3</button></p>
+        </li>
+      </ol>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>Each floor gives you tables in an SQL console. The console runs DuckDB inside your browser. You write SQL that creates the tables the floor asks for. Then you press <strong>Check</strong>.</p>
+        <p>The check compares your tables with the expected result, row by row, not only the counts. Floor 2 starts from a correct floor 1 result, and floor 3 from a correct floor 2 result. So you always start a floor clean.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <p>The data is 7,345 yellow taxi trips from January 2024, published by the NYC TLC, and the zone lookup with 265 zones. Some dirt is real, as TLC published it. Some is planted for the game: the duplicate load, and 25 drop-off ids that are 0 or empty. Ask the tutor which is which.</p>
+        <pre><code>SELECT count(*) FROM trips_raw;
+SELECT * FROM zones LIMIT 5;</code></pre>
+      </div>
+      <div class="credit">
+        <h4>Extra credit</h4>
+        <p>1% extra credit for all three floors. Each floor you clear gives you a code. Paste your three codes into the Canvas assignment by 7:00 PM CDT Saturday.</p>
+        <p>The tutor on the side sees the guide and the game. It can light up rows on the map and run queries on its own copy of the data. Your messages to the tutor go to Anthropic's API. Do not type personal information.</p>
+      </div>
+    </article>
+  </section>
+
+  <section class="room" id="room-floor1" data-room="floor1" data-title="Floor 1: The double shift" aria-labelledby="h-floor1">
+    <h2 id="h-floor1">Floor 1: The double shift</h2>
+    <article class="slide" id="f1-task" data-title="The feed came in twice" aria-labelledby="h-f1-task">
+      <h3 id="h-f1-task">The feed came in twice</h3>
+      <div class="lv" data-lv="1">
+        <p>The load for trips picked up on 15 January ran twice. Every trip from that day is in the table two times. So revenue looks higher than it was.</p>
+        <p class="task"><strong>Your task:</strong> create a table <code>trips_clean</code> with exactly one row per trip.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>You get two tables: <code>trips_raw</code> (7,345 rows) and <code>zones</code> (265 rows). <code>trips_clean</code> must keep every column of <code>trips_raw</code>, add no columns, and change no values.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT count(*) FROM trips_raw;
+
+SELECT loaded_at, count(*) AS rows
+FROM trips_raw
+GROUP BY loaded_at
+ORDER BY loaded_at;</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f1-distinct" data-title="Why DISTINCT finds nothing" aria-labelledby="h-f1-distinct">
+      <h3 id="h-f1-distinct">Why DISTINCT finds nothing</h3>
+      <div class="lv" data-lv="1">
+        <p><code>SELECT DISTINCT</code> removes rows that are equal in every column. The second copies are not equal: each one has a new <code>row_id</code> and a later <code>loaded_at</code>. So <code>DISTINCT</code> removes nothing.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>A row can be a copy even when some columns differ. Columns added by the load, like <code>row_id</code> and <code>loaded_at</code>, say how the row arrived. They do not say which trip it is.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT count(*)
+FROM (SELECT DISTINCT * FROM trips_raw);  -- still 7,345</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f1-key" data-title="Choose a trip key" aria-labelledby="h-f1-key">
+      <h3 id="h-f1-key">Choose a trip key</h3>
+      <div class="lv" data-lv="1">
+        <p>A duplicate is defined by a key you choose: the columns that together name one trip. Two rows with the same key are the same trip.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>In this game the trip key is <code>vendor_id</code>, <code>pickup_at</code>, <code>dropoff_at</code>, <code>pu_location_id</code>, <code>do_location_id</code> and <code>total_amount</code>. In the full January file, this key has no duplicates.</p>
+        <p>The check: count the rows, then count the distinct keys. If the two counts differ, the table has copies.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT count(*) AS rows FROM trips_raw;
+
+SELECT count(*) AS trips
+FROM (SELECT DISTINCT vendor_id, pickup_at, dropoff_at,
+                      pu_location_id, do_location_id, total_amount
+      FROM trips_raw);</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f1-fix" data-title="Keep one row per key" aria-labelledby="h-f1-fix">
+      <h3 id="h-f1-fix">Keep one row per key</h3>
+      <div class="lv" data-lv="1">
+        <p>Number the rows inside each key, and keep row number 1. Which copy survives does not matter, as long as each trip appears once.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>Do not keep only the keys that occur once: that drops both copies. Do not add up the copies with <code>GROUP BY</code>: the revenue stays doubled, and columns go missing.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>CREATE OR REPLACE TABLE trips_clean AS
+SELECT * FROM trips_raw
+QUALIFY row_number() OVER (
+  PARTITION BY /* your trip key */
+  ORDER BY row_id) = 1;</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f1-reconcile" data-title="Count before and after" aria-labelledby="h-f1-reconcile">
+      <h3 id="h-f1-reconcile">Count before and after</h3>
+      <div class="lv" data-lv="1">
+        <p>Say the count before and after, and explain the difference. Before: 7,345 rows. After: 7,171 rows. The difference, 174, is the rerun.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>The check passes when <code>trips_clean</code> has the columns of <code>trips_raw</code> and no others, every row is an unchanged row of <code>trips_raw</code>, and it has 7,171 rows and 7,171 distinct trip keys.</p>
+        <p>Revenue (<code>sum(total_amount)</code>): 197,977.97 before, 193,403.10 after.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT count(*) AS rows,
+       round(sum(total_amount), 2) AS revenue
+FROM trips_clean;</code></pre>
+      </div>
+    </article>
+    <p class="room-play js-only"><button type="button" class="play" data-floor="1">Play this floor</button></p>
+  </section>
+
+  <section class="room" id="room-floor2" data-room="floor2" data-title="Floor 2: Nowhere zones" aria-labelledby="h-floor2">
+    <h2 id="h-floor2">Floor 2: Nowhere zones</h2>
+    <article class="slide" id="f2-task" data-title="Trips to nowhere" aria-labelledby="h-f2-task">
+      <h3 id="h-f2-task">Trips to nowhere</h3>
+      <div class="lv" data-lv="1">
+        <p>Some trips start or end in a zone that is not a real place on the map. If you join to the zone lookup the wrong way, those trips vanish without an error.</p>
+        <p class="task"><strong>Your task:</strong> create <code>trips_clean</code> with every row of <code>trips</code>, plus three columns: <code>pu_zone</code>, <code>do_zone</code> and <code>zone_flag</code>.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>You get <code>trips</code> (floor 1's correct result, 7,171 rows) and <code>zones</code> (265 rows). <code>pu_zone</code> and <code>do_zone</code> are the zone names from <code>zones</code>, or NULL when there is no match.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT * FROM zones WHERE location_id IN (264, 265);</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f2-kinds" data-title="Three kinds of nowhere" aria-labelledby="h-f2-kinds">
+      <h3 id="h-f2-kinds">Three kinds of nowhere</h3>
+      <div class="lv" data-lv="1">
+        <ul>
+          <li>Zone 264 is "Unknown". The lookup has it, but it names no place.</li>
+          <li>Zone 265 is "Outside of NYC". It is a real place, outside the zone map.</li>
+          <li>Some drop-off ids are 0 or NULL. They match nothing in the lookup.</li>
+        </ul>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>110 trips touch zone 264, and 74 touch zone 265. These are real TLC rows. 25 trips have a drop-off id that matches nothing: 15 are 0 and 10 are NULL. These are planted for the game.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT do_location_id, count(*) AS trips
+FROM trips
+WHERE do_location_id IS NULL
+   OR do_location_id NOT IN (SELECT location_id FROM zones)
+GROUP BY do_location_id;</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f2-join" data-title="A join can drop rows" aria-labelledby="h-f2-join">
+      <h3 id="h-f2-join">A join can drop rows</h3>
+      <div class="lv" data-lv="1">
+        <p>An inner join keeps only rows that match on both sides. The trips with no matching drop-off zone disappear, and nothing warns you.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>With an inner join on both ids, 7,171 trips become 7,146. A <code>LEFT JOIN</code> keeps every trip and puts NULL where there is no match.</p>
+        <p>An anti-join (a <code>LEFT JOIN</code> where the lookup side IS NULL) lists the rows that match nothing. It cannot find zone 264, because 264 is in the lookup.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT count(*) FROM trips t
+JOIN zones pz ON pz.location_id = t.pu_location_id
+JOIN zones dz ON dz.location_id = t.do_location_id;  -- 7,146
+
+SELECT t.row_id, t.do_location_id
+FROM trips t
+LEFT JOIN zones dz ON dz.location_id = t.do_location_id
+WHERE dz.location_id IS NULL;  -- the 25 that match nothing</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f2-flag" data-title="Flag, do not delete" aria-labelledby="h-f2-flag">
+      <h3 id="h-f2-flag">Flag, do not delete</h3>
+      <div class="lv" data-lv="1">
+        <p>Keep every row, and add a flag that says what is wrong. Someone later can choose what to do with it. A deleted row cannot be explained later.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p><code>zone_flag</code> takes the first rule that applies, in this order:</p>
+        <ol>
+          <li><code>'unmatched'</code>: either id is NULL or not in <code>zones</code>;</li>
+          <li><code>'unknown'</code>: either id is 264;</li>
+          <li><code>'outside_nyc'</code>: either id is 265;</li>
+          <li><code>'ok'</code>.</li>
+        </ol>
+        <p>The order matters: test <code>'unmatched'</code> first.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>CASE WHEN /* a pickup or drop-off with no match */ THEN 'unmatched'
+     WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'
+     WHEN /* ... 265 ... */ THEN 'outside_nyc'
+     ELSE 'ok' END AS zone_flag</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f2-reconcile" data-title="Count before and after" aria-labelledby="h-f2-reconcile">
+      <h3 id="h-f2-reconcile">Count before and after</h3>
+      <div class="lv" data-lv="1">
+        <p>7,171 rows in, 7,171 rows out. No row is lost, and each one carries a flag.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>Flags: ok 6,962, unknown 110, outside_nyc 74, unmatched 25. Together they make 7,171.</p>
+        <p>The check passes when <code>trips_clean</code> has 7,171 rows, keeps every column of <code>trips</code> unchanged, and has the expected <code>(row_id, pu_zone, do_zone, zone_flag)</code> values.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT zone_flag, count(*) AS trips
+FROM trips_clean
+GROUP BY zone_flag
+ORDER BY trips DESC;</code></pre>
+      </div>
+    </article>
+    <p class="room-play js-only"><button type="button" class="play" data-floor="2">Play this floor</button></p>
+  </section>
+
+  <section class="room" id="room-floor3" data-room="floor3" data-title="Floor 3: Impossible rides" aria-labelledby="h-floor3">
+    <h2 id="h-floor3">Floor 3: Impossible rides</h2>
+    <article class="slide" id="f3-task" data-title="Impossible rides" aria-labelledby="h-f3-task">
+      <h3 id="h-f3-task">Impossible rides</h3>
+      <div class="lv" data-lv="1">
+        <p>Some rides in the feed cannot have happened: a negative fare, a drop-off before the pick-up, a pick-up outside January, or a trip of zero miles with a big fare. These are real rows, as TLC published them.</p>
+        <p class="task"><strong>Your task:</strong> move the failing rows to a table <code>quarantine</code>, with a <code>reason</code>, and keep the other rows in <code>trips_clean</code>.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>You get <code>trips</code> (floor 2's correct result, 7,171 rows, with <code>zone_flag</code>) and <code>zones</code>. <code>quarantine</code> has every column of <code>trips</code> plus <code>reason</code>. <code>trips_clean</code> has the columns of <code>trips</code>.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT min(pickup_at), max(pickup_at), min(fare_amount)
+FROM trips;</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f3-rules" data-title="Four range rules" aria-labelledby="h-f3-rules">
+      <h3 id="h-f3-rules">Four range rules</h3>
+      <div class="lv" data-lv="1">
+        <p>Write one rule per problem. Count each rule on its own before you combine them.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>The rules, in this order:</p>
+        <ol>
+          <li><code>negative_fare</code>: <code>fare_amount &lt; 0</code></li>
+          <li><code>time_travel</code>: <code>dropoff_at &lt; pickup_at</code></li>
+          <li><code>outside_january</code>: the pick-up is before 1 January 2024, or on or after 1 February 2024</li>
+          <li><code>zero_distance_high_fare</code>: <code>trip_distance = 0</code> and <code>fare_amount &gt;= 50</code></li>
+        </ol>
+        <p>These four columns have no NULLs. <code>zone_flag</code> is not a quarantine reason.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT
+  count(*) FILTER (WHERE fare_amount &lt; 0) AS negative_fare,
+  count(*) FILTER (WHERE dropoff_at &lt; pickup_at) AS time_travel,
+  count(*) FILTER (WHERE pickup_at &lt; TIMESTAMP '2024-01-01'
+                      OR pickup_at &gt;= TIMESTAMP '2024-02-01') AS outside_january,
+  count(*) FILTER (WHERE trip_distance = 0
+                     AND fare_amount &gt;= 50) AS zero_distance_high_fare
+FROM trips;</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f3-first" data-title="The first rule wins" aria-labelledby="h-f3-first">
+      <h3 id="h-f3-first">The first rule wins</h3>
+      <div class="lv" data-lv="1">
+        <p>One row fails two rules. It goes to quarantine once, with the first reason it fails.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>If you stack the four rules with <code>UNION ALL</code> and do not exclude earlier rules, that row appears twice: 217 rows instead of 216. A <code>CASE</code> tests the rules in order and stops at the first match.</p>
+        <p>Watch the January bound: <code>pickup_at &lt;= '2024-01-31'</code> loses every trip on 31 January after midnight.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>CASE WHEN fare_amount &lt; 0 THEN 'negative_fare'
+     WHEN dropoff_at &lt; pickup_at THEN 'time_travel'
+     WHEN /* outside January */ THEN 'outside_january'
+     WHEN /* zero miles, fare of 50 or more */ THEN 'zero_distance_high_fare'
+END AS reason  -- NULL: the row passes every rule</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f3-quarantine" data-title="Quarantine, do not delete" aria-labelledby="h-f3-quarantine">
+      <h3 id="h-f3-quarantine">Quarantine, do not delete</h3>
+      <div class="lv" data-lv="1">
+        <p>Do not delete what you cannot explain. A quarantine table keeps the failing rows and the reason, so someone can check them later.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>A <code>DELETE</code> leaves no record of what was removed or why. With a quarantine table, every row is in exactly one place: <code>trips_clean</code> or <code>quarantine</code>.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>CREATE OR REPLACE TABLE quarantine AS
+SELECT *, /* your CASE */ AS reason
+FROM trips
+WHERE /* the row fails a rule */;
+
+CREATE OR REPLACE TABLE trips_clean AS
+SELECT * FROM trips
+WHERE row_id NOT IN (SELECT row_id FROM quarantine);</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f3-reconcile" data-title="Clean plus quarantine equals raw" aria-labelledby="h-f3-reconcile">
+      <h3 id="h-f3-reconcile">Clean plus quarantine equals raw</h3>
+      <div class="lv" data-lv="1">
+        <p>6,955 clean rows plus 216 quarantined rows make 7,171. If your two counts do not add up to the count you started with, a row is lost or counted twice.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>By reason: negative_fare 132, zero_distance_high_fare 47, time_travel 20, outside_january 17.</p>
+        <p>The check passes when the two tables share no <code>row_id</code>, together hold all 7,171 <code>row_id</code> values of <code>trips</code>, and <code>quarantine</code> has the expected <code>(row_id, reason)</code> pairs.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT (SELECT count(*) FROM trips_clean) AS clean,
+       (SELECT count(*) FROM quarantine)  AS quarantined,
+       (SELECT count(*) FROM trips)       AS raw;</code></pre>
+      </div>
+    </article>
+    <p class="room-play js-only"><button type="button" class="play" data-floor="3">Play this floor</button></p>
+  </section>
+
+  </div>
+</section>
+
+<section id="gamepane" class="panel gamepane" aria-labelledby="game-h">
+  <div class="game-bar">
+    <h2 id="game-h">Game window</h2>
+    <button type="button" id="game-close" class="small-btn">Close game</button>
+  </div>
+  <div id="game-slot" class="game-slot">
+    <div class="game-empty" id="game-empty">
+      <p>The game is not open.</p>
+      <p><button type="button" class="play" data-floor="1">Play floor 1</button></p>
+    </div>
+  </div>
+</section>
+
+<aside id="tutor" class="panel tutor" aria-labelledby="tutor-h">
+  <div class="tutor-head">
+    <h2 id="tutor-h">Tutor</h2>
+    <p id="tutor-status" class="tutor-status" role="status"></p>
+  </div>
+  <div id="tutor-log" class="tutor-log" role="log" aria-live="polite" aria-label="Conversation with the tutor" tabindex="0">
+    <div class="msg msg-tutor greeting">
+      <p class="who">Tutor</p>
+      <div class="body">
+        <p>Hi. I am the tutor for Taxi Crawler. I can see the guide and the game. I can light up rows on the map and run queries on my own copy of the data.</p>
+        <p class="notice"><strong>Your messages to the tutor go to Anthropic's API. Do not type personal information.</strong></p>
+        <p>Where would you like to start: the story of the depot, or floor 1?</p>
+      </div>
+    </div>
+  </div>
+  <p id="tutor-thinking" class="thinking" hidden>The tutor is thinking…</p>
+  <form id="join-form" class="join-form" hidden>
+    <p>Sign in to use the tutor and get completion codes.</p>
+    <label for="join-code">Class code</label>
+    <div class="form-row"><input id="join-code" name="code" autocomplete="off" required><button type="submit">Join</button></div>
+    <p id="join-error" class="error" role="alert"></p>
+  </form>
+  <form id="tutor-form" class="tutor-form js-only">
+    <label for="tutor-input">Ask the tutor</label>
+    <textarea id="tutor-input" rows="3" maxlength="1500" aria-describedby="tutor-help"></textarea>
+    <div class="form-row">
+      <span id="tutor-help" class="help"><span id="tutor-count">0 / 1500</span>. Enter sends; Shift+Enter adds a line.</span>
+      <button type="submit" id="tutor-send">Send</button>
+    </div>
+  </form>
+  <div class="tutor-foot js-only">
+    <button type="button" id="forget" class="link-btn">Forget me</button>
+  </div>
+</aside>
+
+</main>
+</body>
+</html>
