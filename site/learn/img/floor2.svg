@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+<circle cx="32" cy="32" r="31" fill="#eef2f7"/>
+<g stroke="#13294b" stroke-width="2" stroke-linejoin="round">
+<path d="M7 18L20 14L33 18L46 14V48L33 52L20 48L7 52Z" fill="#fbf3dc"/>
+<path d="M20 14V48L33 52V18Z" fill="#efe0b8"/>
+</g>
+<path d="M10 28L18 26M22 34L31 37M35 26L44 23M11 42L18 40" stroke="#c9b48a" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M12 46C18 38 24 40 28 33S38 26 46 24" fill="none" stroke="#b45309" stroke-width="2" stroke-dasharray="3 2.5" stroke-linecap="round"/>
+<path d="M46 24L53 21" fill="none" stroke="#b45309" stroke-width="2" stroke-dasharray="1.5 3" stroke-linecap="round" opacity=".6"/>
+<circle cx="12" cy="46" r="2.4" fill="#13294b"/>
+<circle cx="53" cy="13" r="8.5" fill="#fff" stroke="#13294b" stroke-width="1.8" stroke-dasharray="3 2"/>
+<path d="M50 11Q50 7.5 53 7.5Q56 7.5 56 10.5Q56 12.5 53.5 13.5V15.5" fill="none" stroke="#13294b" stroke-width="2" stroke-linecap="round"/>
+<circle cx="53.5" cy="18.3" r="1.2" fill="#13294b"/>
+<g transform="translate(36 24) rotate(-14)">
+<path d="M0 6L1 3L5 2L7 0H13L15 3H18Q19 3.6 19 6Z" fill="#f5b82e" stroke="#13294b" stroke-width="1.4" stroke-linejoin="round"/>
+<circle cx="4.5" cy="6.4" r="1.7" fill="#13294b"/><circle cx="15" cy="6.4" r="1.7" fill="#13294b"/>
+</g>
+</svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+<defs>
+<symbol id="t" viewBox="0 0 36 24">
+<path d="M1.5 1.5H34.5V9A3 3 0 0 0 34.5 15V22.5H1.5V15A3 3 0 0 0 1.5 9Z" fill="#fff7e0" stroke="#13294b" stroke-width="2" stroke-linejoin="round"/>
+<path d="M27 3V21" stroke="#13294b" stroke-width="1.4" stroke-dasharray="2 2"/>
+<path d="M5 15L6 12L10 11L12 8H18L20 11H23Q24.5 11.5 24.5 15Z" fill="#f5b82e" stroke="#13294b" stroke-width="1.4" stroke-linejoin="round"/>
+<circle cx="9" cy="15.5" r="1.9" fill="#13294b"/><circle cx="20.5" cy="15.5" r="1.9" fill="#13294b"/>
+<path d="M5 5.5H16" stroke="#b45309" stroke-width="1.6" stroke-linecap="round"/>
+<circle cx="31" cy="6" r="1.1" fill="#b45309"/><circle cx="31" cy="12" r="1.1" fill="#b45309"/><circle cx="31" cy="18" r="1.1" fill="#b45309"/>
+</symbol>
+</defs>
+<circle cx="32" cy="32" r="31" fill="#eef2f7"/>
+<g transform="rotate(-9 32 32)"><use href="#t" x="16" y="9" width="38" height="25"/></g>
+<g transform="rotate(5 32 32)"><use href="#t" x="9" y="27" width="38" height="25"/></g>
+</svg>
