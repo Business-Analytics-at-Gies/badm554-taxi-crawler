@@ -24,7 +24,7 @@ Plan: `docs/plan-as-approved.md` (approved 16:34 CDT). Read before you start, in
 7. **Tests that can fail.** For each test, the production change that would break it should be
    obvious. Run your full test folder before every milestone commit and paste the result in the
    commit body.
-8. **Accessibility and size** (Cursor mostly, everyone where it applies): WCAG 2.1 AA, keyboard
+8. **Accessibility and size** (crew-devin-ui mostly, everyone where it applies): WCAG 2.1 AA, keyboard
    operable, visible focus, no horizontal scroll at 375px, `prefers-reduced-motion` honored.
 9. **If you are blocked or an input is missing, stop and ask in your pane.** Do not invent data,
    counts or rules; `docs/floors.md` has them.

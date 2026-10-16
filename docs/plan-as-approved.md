@@ -54,11 +54,11 @@ announcement goes out. All three floors ship, or none do.
 |---|---|---|
 | Codex | `server/`: login (Entra headers or join code), sessions, `/api/tutor` (conversation, prompt, tools, step count), ledger, caps, shutdown, request log, `/api/receipt`, the grading verifier | session identity; tutor turn in and out; receipt; stable error codes |
 | Devin | `data/`, `site/game/db/`: the extract and `PLANTED.md`, the DuckDB-WASM worker, the three floor checks, the tutor's copy and experiment isolation | dataset version and schema; query results; floor state; clear result; undo |
-| Cursor | `site/learn/`, `site/game/ui/`: the guide rooms, the map, the SQL console, the tutor panel, browser tool dispatch, layout at 375px | `<page>` snapshot; tool execution and results; game-ready signal |
+| Devin (second session, `crew-devin-ui`) | `site/learn/`, `site/game/ui/`: the guide rooms, the map, the SQL console, the tutor panel, browser tool dispatch, layout at 375px | `<page>` snapshot; tool execution and results; game-ready signal |
 
 Claude owns `docs/interfaces.md`, shared config, integration on `main`, deployment and the final
-checks. Models: the Codex builder on a frontier model at high effort (security code); Devin and
-Cursor on frontier models; the review Codex session is separate from the builder. Every commit
+checks. Models: the Codex builder on a frontier model at high effort (security code); both Devin
+sessions on Claude Opus 5.5 (Cursor is dropped: free plan, Auto model only; Vishal, 2026-10-16); the review Codex session is separate from the builder. Every commit
 carries an `Agent: <pane-name>` trailer. The crew gets synthetic test traffic only, never real
 learner data.
 
