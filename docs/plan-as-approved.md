@@ -2,8 +2,9 @@
 
 Created: 2026-10-16
 Last Updated: 2026-10-16
-Status: **DRAFT. Not approved.** Vishal approves by saying so in chat; then this header changes to
-"Approved <date time CDT>" and the build starts. Outcome header is added at wrap-up.
+Status: **Approved by Vishal, 2026-10-16 16:34 CDT** ("approved. closing 6:30 pm saturday . extra
+credit 1%. They need to complete all three floors. deadline to paste 7 pm tomorrow."). Outcome
+header is added at wrap-up.
 Spec: `docs/design-spec.md`. Decisions: `docs/decisions/2026-10-16-kickoff.md`.
 
 ## Goal
@@ -16,15 +17,12 @@ pilot day. The Console states the expiry in UTC: the end of Oct 17 UTC is **19:0
 Play after that may bill your card (auto-reload is on). The most it can ever cost is the $150
 workspace limit; the server stops the tutor at $140.
 
-## Decisions Vishal owns (1 and 2 are needed before the build starts)
+## Decisions Vishal owns
 
-1. **Closing time** (the credit gap above):
-   - (a) close at **18:30 CDT Saturday**, inside the credit, with no card charge; or
-   - (b) close at **23:59 CDT**, and accept a small card charge for 19:00-23:59 play (at most the
-     $150 limit, and likely far less).
-   The server enforces it (`TUTOR_CLOSES_AT`); the default is (b) until you choose.
-2. **Extra credit:** points, how many floors earn them (one, or all three), and the deadline for
-   pasting codes into Canvas.
+1. **Closing time: 18:30 CDT Saturday** (decided 16:34 CDT), inside the promo credit. The server
+   enforces it: `TUTOR_CLOSES_AT=2026-10-17T23:30:00Z`.
+2. **Extra credit: 1%, for all three floors** (decided 16:34 CDT). Codes must be pasted into the
+   Canvas assignment by **19:00 CDT Saturday** (`2026-10-18T00:00:00Z`).
 3. The wording of the announcement and the start-screen data notice (Claude drafts both; before step 9).
 4. Whether the online section gets it later (default: not in this pilot).
 

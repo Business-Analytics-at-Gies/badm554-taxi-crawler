@@ -11,7 +11,7 @@ Decisions behind it: `docs/decisions/2026-10-16-kickoff.md` (kickoff and design-
   a shift of dirty trip data that they catch and fix with SQL. A tutor in a side panel sees the
   live game, can change it (with undo), and explains at three levels.
 - **Who:** BADM 554 in-person learners, both sections (Canvas 70436), as opt-in extra credit.
-- **When:** open on Sat 2026-10-17 morning, close Sat 2026-10-17 23:59 CDT (Sun 04:59 UTC). The
+- **When:** open on Sat 2026-10-17 morning, close Sat 2026-10-17 18:30 CDT (Vishal's choice), codes due in Canvas by 19:00 CDT. The
   $200 promo credit lasts through 2026-10-17 (Vishal). The Console states the expiry in UTC, and
   the end of Oct 17 UTC is 19:00 CDT Saturday, so play from 19:00 to 23:59 CDT may bill Vishal's
   card. Vishal chooses: close at 18:30 CDT, or accept a small card charge for the evening. Week 11 (M7 validation) is the next use, after the pilot is reviewed.
@@ -146,8 +146,8 @@ The greeting when the panel opens is static text, not a model call.
   characters per question; the whole request at most 30,000 input tokens (older turns are dropped
   first); `max_tokens` 1,500; 8 tool rounds per question; 4 questions per minute. Measure three
   representative conversations tonight and set these numbers from what they cost.
-- **Shutdown is server-side:** the tutor refuses after `TUTOR_CLOSES_AT` (default
-  `2026-10-18T04:59:00Z` = Sat 23:59 CDT; `2026-10-17T23:30:00Z` if Vishal picks 18:30 CDT). Also a
+- **Shutdown is server-side:** the tutor refuses after `TUTOR_CLOSES_AT=2026-10-17T23:30:00Z`
+  (Sat 18:30 CDT, Vishal's choice, inside the promo credit). Also a
   `TUTOR_OFF=1` kill switch. When the tutor is off or capped, the game still works.
 - **Observability:** a request log with tokens, cost and status per session, without request
   bodies or auth headers. Sentry is not set up for the pilot; this gap is accepted for a one-day
@@ -177,8 +177,8 @@ The greeting when the panel opens is static text, not a model call.
   the Canvas assignment. The grading script (run in Codex Edu) checks each code against the
   records, binds Entra codes to the learner who earned them, and flags any code pasted by more than
   one learner. Join-code receipts prove only that some session cleared the floor; duplicates go to
-  Vishal for review. Points, required floors and the submission deadline are set before the
-  completion screen is built (plan decision 2).
+  Vishal for review. Extra credit is 1% for all three floors (Vishal, 2026-10-16); codes are due
+  in Canvas by 19:00 CDT Saturday. The completion screen says both.
 
 ## 7. Verification
 
