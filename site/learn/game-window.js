@@ -21,7 +21,11 @@ export function createGameWindow({ onEvent = () => {}, onToggle = () => {} } = {
       const poll = () => {
         const g = api();
         if (g?.ready) {
-          g.events?.addEventListener('game', e => onEvent(e.detail));
+          g.events?.addEventListener('game', e => {
+            // A floor switch inside the game renames the window too (issue #4).
+            if (e.detail?.type === 'floor') { floor = e.detail.floor; label(floor); }
+            onEvent(e.detail);
+          });
           return resolve(g);
         }
         if (Date.now() - t0 > 60000) return reject(new Error('The game window did not load.'));
@@ -32,13 +36,17 @@ export function createGameWindow({ onEvent = () => {}, onToggle = () => {} } = {
     slot.appendChild(iframe);
   }
 
+  function label(n) {
+    title.textContent = `Game window: floor ${n}`;
+    iframe.title = `Game window: floor ${n}`;
+  }
+
   async function show(n = floor || 1) {
     if (![1, 2, 3].includes(n)) throw new Error('floor must be 1, 2 or 3');
     if (!iframe) create(n);
     open = true;
     document.body.classList.add('game-open');
-    title.textContent = `Game window: floor ${n}`;
-    iframe.title = `Game window: floor ${n}`;
+    label(n);
     onToggle(true, n);
     const g = await loaded;
     await g.ready;

@@ -176,6 +176,17 @@ test('the game floor buttons move the guide and keep the detail level', async ({
   await expect.poll(() => page.evaluate(() => location.hash)).toContain('lv=3');
 });
 
+// Issue #4: a floor switch inside the game renames the game window.
+test('the game window heading follows a floor switch inside the game', async ({ page }) => {
+  await page.goto('/learn/');
+  const frame = await openFloor(page, 1);
+  await expect(page.locator('#game-h')).toHaveText('Game window: floor 1');
+  await frame.getByRole('button', { name: 'Floor 2', exact: true }).click();
+  await expect(frame.locator('#engine-status')).toHaveText('Floor 2 is ready.', { timeout: 30000 });
+  await expect(page.locator('#game-h')).toHaveText('Game window: floor 2');
+  await expect(page.locator('#game-frame')).toHaveAttribute('title', 'Game window: floor 2');
+});
+
 // Issue #1: floors 2 and 3 state the exact labels, their order and both id columns up front.
 test('floor 2 and 3 tasks name every label in order', async ({ page }) => {
   await page.goto('/learn/');
