@@ -8,11 +8,11 @@ const FLOORS = {
   1: { title: 'Floor 1: The double shift', input: 'trips_raw', task: 'Create trips_clean with exactly one row per trip key, and every column of trips_raw.',
     dirt: `SELECT row_id, pu_location_id, do_location_id FROM trips_raw
 QUALIFY count(*) OVER (PARTITION BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount) > 1` },
-  2: { title: 'Floor 2: Nowhere zones', input: 'trips', task: 'Create trips_clean with every row of trips, plus pu_zone, do_zone and zone_flag.',
+  2: { title: 'Floor 2: Nowhere zones', input: 'trips', task: 'Create trips_clean with every row of trips, plus three columns:\n- pu_zone and do_zone: the zone name from zones (NULL when there is no match)\n- zone_flag: the first label that applies, checking both pu_location_id and do_location_id:\n  1. \'unmatched\' if either id is NULL or not in zones\n  2. \'unknown\' if either id is 264\n  3. \'outside_nyc\' if either id is 265\n  4. \'ok\' otherwise',
     dirt: `SELECT row_id, pu_location_id, do_location_id FROM trips
 WHERE pu_location_id IS NULL OR do_location_id IS NULL OR pu_location_id IN (264, 265) OR do_location_id IN (264, 265)
    OR pu_location_id NOT IN (SELECT location_id FROM zones) OR do_location_id NOT IN (SELECT location_id FROM zones)` },
-  3: { title: 'Floor 3: Impossible rides', input: 'trips', task: 'Create quarantine (the failing rows, every column of trips, plus reason) and trips_clean (the other rows).',
+  3: { title: 'Floor 3: Impossible rides', input: 'trips', task: 'Create two tables from trips. Test the rules in this order; a row gets the first reason it fails:\n  1. \'negative_fare\': fare_amount < 0\n  2. \'time_travel\': dropoff_at < pickup_at\n  3. \'outside_january\': pickup_at before 2024-01-01, or on or after 2024-02-01\n  4. \'zero_distance_high_fare\': trip_distance = 0 and fare_amount >= 50\n- quarantine: the failing rows, every column of trips, plus reason\n- trips_clean: the other rows, with the columns of trips',
     dirt: `SELECT row_id, pu_location_id, do_location_id FROM trips
 WHERE fare_amount < 0 OR dropoff_at < pickup_at OR pickup_at < TIMESTAMP '2024-01-01' OR pickup_at >= TIMESTAMP '2024-02-01'
    OR (trip_distance = 0 AND fare_amount >= 50)` },

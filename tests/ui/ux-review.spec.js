@@ -163,3 +163,29 @@ test('the three detail levels have visible help linked to the radio group and a 
   await showTab(page, 'Tutor');
   await expect(page.locator('#tutor-log')).toContainText('Use the Detail level picker (Lv 1 to 3) to choose how deep I go.');
 });
+
+// Issue #2: switching floors inside the game moves the guide to that floor's slides.
+test('the game floor buttons move the guide and keep the detail level', async ({ page }) => {
+  await page.goto('/learn/');
+  await showTab(page, 'Guide');
+  await page.locator('#level-picker input[value="3"]').check();
+  const frame = await openFloor(page, 3);
+  await frame.getByRole('button', { name: 'Floor 1', exact: true }).click();
+  await expect(frame.locator('#engine-status')).toHaveText('Floor 1 is ready.', { timeout: 30000 });
+  await expect.poll(() => page.evaluate(() => location.hash)).toContain('room=floor1');
+  await expect.poll(() => page.evaluate(() => location.hash)).toContain('lv=3');
+});
+
+// Issue #1: floors 2 and 3 state the exact labels, their order and both id columns up front.
+test('floor 2 and 3 tasks name every label in order', async ({ page }) => {
+  await page.goto('/learn/');
+  let frame = await openFloor(page, 2);
+  const task2 = await frame.locator('#floor-task').innerText();
+  for (const s of ["'unmatched'", "'unknown'", "'outside_nyc'", "'ok'", 'pu_location_id and do_location_id', 'pu_zone and do_zone']) expect(task2).toContain(s);
+  expect(task2.indexOf("'unmatched'")).toBeLessThan(task2.indexOf("'unknown'"));
+  await frame.getByRole('button', { name: 'Floor 3', exact: true }).click();
+  await expect(frame.locator('#engine-status')).toHaveText('Floor 3 is ready.', { timeout: 30000 });
+  const task3 = await frame.locator('#floor-task').innerText();
+  const order = ["'negative_fare'", "'time_travel'", "'outside_january'", "'zero_distance_high_fare'"];
+  for (let i = 1; i < order.length; i++) expect(task3.indexOf(order[i - 1])).toBeLessThan(task3.indexOf(order[i]));
+});

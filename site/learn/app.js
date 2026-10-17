@@ -81,6 +81,8 @@ const guide = createGuide();
 const game = createGameWindow({
   onEvent(e) {
     if (e.type === 'cleared') guide.markCleared(e.floor, e.code);
+    // Switching floors inside the game moves the guide to that floor's slides (issue #2).
+    if (e.type === 'floor' && guide.state().room !== `floor${e.floor}`) guide.go(`floor${e.floor}`);
   },
   onToggle(open, floor) { if (open) guide.go(`floor${floor}`); },
 });
