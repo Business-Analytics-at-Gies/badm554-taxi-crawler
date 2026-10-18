@@ -3,10 +3,14 @@
 Created: 2026-10-18
 Last Updated: 2026-10-18
 Agent: crew-codex-proxy
-Proxy under test: approved P2 commit `d7b2f07ce7308418da3bd750b92a6673999510d6`
-Status: **BLOCKED on Claude Code compatibility.** Both official SDKs passed. No contract,
-production code, request, header or model policy was widened. Testing stopped at Claude Code's
-first message refusal, as instructed. This is a P3 evidence report, not release approval.
+Initial proxy: approved P2 commit `d7b2f07ce7308418da3bd750b92a6673999510d6`
+Resumed proxy: `7a6726c` plus the exact newly authorized client-marker addition in this change
+Status: **BLOCKED on the resumed Claude Code trial without the experimental-beta setting.**
+Both official SDKs passed. The initial client-marker blocker was resolved by Claude's exact
+allow-list decision below. Removing the precautionary setting then exposed four other unreviewed
+beta values; testing stopped again at the first message refusal. The setting is retained as
+needed. No other header, field, endpoint, query or model was admitted. This is a P3 evidence
+report, not release approval.
 
 ## Versions and isolation
 
@@ -126,7 +130,7 @@ count calls (eight automatic proxy preflights plus four explicit client counts).
 rows settled: eight generations at $0.000400 each and four zero-cost counts, totaling $0.003200.
 No SDK call remained reserved or unknown, and neither intentional model refusal reached the fake.
 
-## Claude Code: exact setup and blocking evidence
+## Claude Code: initial setup and blocking evidence
 
 Claude Code was launched once, in non-interactive `-p` mode, with an empty working directory and
 a newly created, empty HOME. Its child environment was constructed from scratch; no inherited
@@ -195,11 +199,11 @@ in the installed client. No header was stripped or allowed to get past the refus
 | Sonnet-only successful operation | NOT ESTABLISHED: one main request named the allowed Sonnet; no background model request was observed |
 | 32,000 output allowance | CONFIRMED on the refused main request; successful operation with that allowance is not established |
 
-No further Claude Code invocation or client compatibility workaround was attempted. The remaining
-P3 client matrix requires Claude's decision about this specific beta capability before testing can
-resume. P3 is not green, and this report does not authorize a live smoke call or deployment.
+No further client invocation occurred during that initial attempt. Claude subsequently approved
+the exact client marker; the resumption below supersedes this initial blocker. P3 remains
+incomplete, and this report does not authorize a live smoke call or deployment.
 
-## Regression verification and disposition
+## Initial regression verification and disposition
 
 All four required suites were rerun after the client observations:
 
@@ -214,5 +218,91 @@ Independent fact checking matched the report to the sanitized request/accounting
 outer launch receipt, harness and current contract. The local proxy and fake were shut down;
 both listening ports were confirmed closed. A separate scratch-state scan also found no raw
 course token. Only this report is committed; dependency installations, client drivers and
-synthetic stores stayed in scratch. P2 code and the contract are unchanged. The blocking outcome
-is intentionally reported without widening the approved policy or claiming a complete P3 pass.
+synthetic stores stayed in scratch. That initial report changed no P2 code or contract. The
+following resumption makes only the newly authorized client-marker addition.
+
+## Resumption after Claude's client-marker decision (2026-10-18)
+
+Claude authorized exactly `claude-code-20250219`, because it identifies the client without
+selecting another model, changing the price or adding billed attempts. This is recorded as
+Claude's decision in the contract. The new server test first failed with the old policy, then
+passed after that one literal was admitted: the exact original three-value header reaches both
+counting and generation unchanged. Tests still refuse near-matching markers and unknown values,
+including all four values captured in this resumed run and their full combined header.
+
+To test whether the precautionary setting was necessary, it was removed from the setup page and
+left **unset** in the next child environment. All six remaining setup exports and the CLI flags
+were identical to the initial run, including the exact Sonnet main/small model settings and
+`CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000`. A new scratch directory, empty HOME, empty working folder,
+synthetic database, fresh course token, and the same loopback-only sandbox/profile/fake guards
+were used. The installed Claude Code version remained `2.1.302`. No existing user credentials,
+settings or environment were inherited. The server used the approved worktree plus the exact
+new marker; no other policy was changed to help the client pass.
+
+Every request from the resumed invocation, in order:
+
+| # | Method | Path | Query | Requested model | max_tokens | stream | Status |
+| --- | --- | --- | --- | --- | ---: | --- | ---: |
+| 1 | HEAD | `/proxy/api/hello` | none | none | not supplied | not supplied | 401 |
+| 2 | POST | `/proxy/v1/messages` | `?beta=true` | `claude-sonnet-5-5` | 32000 | true | 400 |
+
+The full beta header, in wire order, was:
+
+```text
+claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24
+```
+
+Four values remain outside the allow list:
+
+- `thinking-token-count-2026-05-13`
+- `prompt-caching-scope-2026-01-05`
+- `per-turn-control-2026-07-01`
+- `mid-conversation-tool-changes-2026-07-01`
+
+The top-level request fields were:
+
+```text
+context_management, max_tokens, messages, metadata, model, output_config, stream, system, thinking, tools
+```
+
+The captured shapes were `output_config` with only `effort`, `metadata` with only `user_id`,
+thinking type `adaptive`, and context edit type `clear_thinking_20251015`. API version remained
+`2023-06-01`. These observations do not claim that every nested field has passed compatibility
+validation; the unknown beta values independently establish the policy incompatibility.
+
+Claude Code exited 1, without timing out or asking for reauthentication, and displayed the same
+fixed unsupported-option message. Neither the count preflight nor generation reached the fake,
+and no ledger row was created. The resumed guard probes again recorded two denied destinations
+and one manufactured real-looking key refusal. No real API call occurred.
+
+This real-client comparison establishes that the experimental-beta setting is needed to keep
+this installed client's extra, unreviewed beta values out of the constrained course setup.
+Under Claude's "remove unless needed" instruction, the page therefore retains
+`CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`. This restoration does **not** admit the four values.
+Per the stop-on-new-refusal instruction, there was no client retry with the restored setting.
+
+| Requested resumed Claude Code check | Result |
+| --- | --- |
+| Plain message | FAIL: new unsupported beta values; exit 1 / course status 400 |
+| Explicit streaming-output run | NOT RUN after the new refusal; the rejected message itself requested upstream streaming |
+| Scratch-file client tool round trip | NOT RUN after the new refusal |
+| count_tokens, if used | No client count call observed |
+| Intentional `--model claude-haiku-5-5` refusal | NOT RUN after the new refusal |
+| Background/small-model attempt | NOT RUN after the new refusal; no background model id was observed |
+| Sonnet-only operation with max output 32000 | Requested on the main call; successful operation still not established |
+
+The original SDK results are unchanged. Only `claude-sonnet-5-5` was requested in either Claude
+Code attempt; this does not establish behavior of background/small-model work that never ran.
+The local proxy and fake were shut down after the refusal. P3 remains blocked/incomplete,
+with the precise new evidence recorded for review rather than another policy expansion.
+
+The independent continuation review confirmed that the narrow policy change, ten policy tests,
+recorded request metadata and retained setup setting match this report. The same sandbox profile
+was verified byte-for-byte, both local listening ports were confirmed closed, and the resumed
+scratch stores/Claude state contained neither raw course tokens nor the synthetic prompt/answer
+markers. No further client call was made after the new refusal.
+
+Final resumption regression verification: database 87 passed; browser 83 passed with 3 existing
+conditional skips; browser against `site` 81 passed with 5 existing conditional skips; server
+447 passed, including the ten new beta-policy checks. All four required suites have zero
+failures. These regression results do not turn the incomplete real-client matrix into a pass.

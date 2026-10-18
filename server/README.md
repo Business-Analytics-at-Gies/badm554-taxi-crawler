@@ -147,9 +147,11 @@ is written to these stores or process logs.
 - `/keys/` and `/api/keys*`: existing trusted Illinois identity (synthetic dev locally); join-code
   login cannot issue course tokens. Create/replace shows the raw token once, revoke is idempotent,
   and rotation/forget never resets the owner's budget. The page recommends
-  `CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000`, `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`, Sonnet for
-  main/background work, and private environment variables. Actual Claude Code compatibility is
-  still a P3 check; the experimental-beta setting does not strip every capability header.
+  `CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000`, Sonnet for main/background work, and private environment
+  variables. Actual Claude Code compatibility is still a P3 check. The exact Claude Code client
+  beta marker is admitted by Claude's 2026-10-18 decision; unknown beta values remain refused.
+  `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` is retained: the P3 run without it added four
+  unreviewed beta values and was refused. See `docs/student-api/p3-clients.md` for the stop evidence.
 - `/proxy/v1/messages` and `/proxy/v1/messages/count_tokens`: course-token auth via x-api-key or
   Bearer, independent of browser login. Only POST and the literal optional `?beta=true` are allowed.
 - Sonnet only (`claude-sonnet-5-5`), output cap 128000, per-student activity $5, daily $2.50, total

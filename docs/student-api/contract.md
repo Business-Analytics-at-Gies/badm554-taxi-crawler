@@ -531,6 +531,7 @@ Changing the protocol schema requires a fresh pricing and validation review.
 
 | Beta value | Supported purpose and primary evidence |
 | --- | --- |
+| `claude-code-20250219` | Claude Code client identification only; no model, price or billed-attempt change. Claude's explicit P3 decision, 2026-10-18; observed on Claude Code 2.1.302. |
 | `token-counting-2024-11-01` | Free count compatibility; official SDK countTokens adds this header. |
 | `prompt-caching-2024-07-31` | Legacy cache compatibility; current official SDK beta union recognizes it; cache rates are explicitly priced. |
 | `extended-cache-ttl-2025-04-11` | 1h cache compatibility; SDK union and Claude Code gateway TTL documentation; highest input price covers it. |
@@ -548,10 +549,10 @@ and [legacy effort migration](https://platform.claude.com/docs/en/models/opus-5-
 
 The [current Claude Code gateway guide](https://code.claude.com/docs/en/llm-gateway-protocol)
 recommends open-ended forwarding for general gateways. Claude's course-budget policy deliberately
-requires a reviewed allow list instead. Recommend CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1
-for this constrained gateway, alongside the existing recommended 32K output setting. The
-documented switch suppresses prerelease fields but does not promise to strip every header.
-Undocumented client markers, OAuth capabilities, context-size betas, task-budget/compaction,
+requires a reviewed allow list instead. The setup recommends the 32K output setting and retains
+CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1: the resumed P3 trial without it added four unreviewed
+beta values and was refused. It does not strip the admitted client identification header.
+Other client markers, OAuth capabilities, context-size betas, task-budget/compaction,
 server-fallback and other unpriced flags are refused until separately reviewed; no substring
 or prefix acceptance. Actual client-version compatibility remains a P3 test, not a P2 claim.
 
@@ -701,3 +702,25 @@ browser against `site` 81 passed/5 existing conditional skips; server 437 passed
 late-event reproductions and 155 sequence subtests. Zero failures remain. Tests used only
 synthetic identities, temporary databases and the local fake upstream. Actual-client testing,
 real API calls, hosting changes and deployment remain P3.
+
+## Claude's P3 client-marker decision (2026-10-18)
+
+Admit exactly `claude-code-20250219` in anthropic-beta. It identifies the Claude Code client;
+it does not select another model, change the price, or add billed attempts. Claude Code 2.1.302
+sends it on every message, and CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 does not remove it.
+This is Claude's explicit decision, not Vishal's. The exact three-value header recorded in the
+first P3 run now passes unchanged through counting and generation; arbitrary new values,
+near-matching client markers, and a known header mixed with an unknown value remain refused.
+No other beta, field, endpoint, query, model or pricing option is admitted by this decision.
+
+Remove the precautionary experimental-beta setting from the setup page for the next P3 run;
+keep it only if real-client evidence demonstrates a need. Keep the recommended 32,000-token
+output setting and the exact Sonnet main/small model configuration. Stop on any new unexpected
+contract refusal, record the evidence, and wait for review rather than widening another option.
+
+The next trial without the setting did establish a need: Claude Code 2.1.302 sent
+`thinking-token-count-2026-05-13`, `prompt-caching-scope-2026-01-05`, `per-turn-control-2026-07-01`,
+and `mid-conversation-tool-changes-2026-07-01`, and received another unsupported-option refusal.
+The setup therefore retains the setting under Claude's "unless needed" condition. None of those
+four values is admitted. Testing stopped at that refusal; the remaining client matrix and a
+retry with the restored setting have not been run. See `p3-clients.md` for captured evidence.

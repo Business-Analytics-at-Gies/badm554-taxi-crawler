@@ -5,7 +5,7 @@ const COMMON = ['model', 'messages', 'system', 'tools', 'tool_choice', 'thinking
 const COUNT_FIELDS = new Set(COMMON);
 const MESSAGE_FIELDS = new Set([...COMMON, 'max_tokens', 'stream', 'stop_sequences', 'temperature', 'top_p', 'top_k', 'metadata']);
 // Exact reviewed capability identifiers; unknown future flags must receive a new pricing review.
-const BETAS = new Set(['prompt-caching-2024-07-31', 'token-counting-2024-11-01',
+const BETAS = new Set(['claude-code-20250219', 'prompt-caching-2024-07-31', 'token-counting-2024-11-01',
   'interleaved-thinking-2025-05-14', 'extended-cache-ttl-2025-04-11',
   'context-management-2025-06-27', 'structured-outputs-2025-11-13',
   'structured-outputs-2025-12-15', 'fine-grained-tool-streaming-2025-05-14', 'effort-2025-11-24']);
