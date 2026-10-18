@@ -2,12 +2,16 @@
 
 Created: 2026-10-18
 Last Updated: 2026-10-18
-Status: **Draft for Vishal's approval.** Nothing learner-facing is built until he approves.
+Status: **Approved by Vishal, 2026-10-18** (answers to the open questions below). Deploy and the
+Canvas items still need his yes.
 
 ## Decisions so far (Vishal, 2026-10-18)
 
 - A second extra-credit game, on Week 9's topic: M6a, build a rebuildable ETL pipeline.
-- Open Fri 2026-10-23, close Sun 2026-10-25. Tutor budget cap $50 at normal API rates.
+- Open Fri 2026-10-23. Close Mon 2026-10-26, 11:59 PM CDT, before Tuesday's class (Vishal: "close
+  on monday night, since class is on tuesdays"; the exact time is Claude's default). Codes due at
+  the same time. Tutor budget cap $50 at normal API rates.
+- Same extra credit as the pilot: 1%, all three floors. Taxi data.
 - Games in general replace some video prep; this is a new game, not Taxi Crawler again.
 
 ## Where it sits in the week
@@ -75,9 +79,10 @@ they press it.
 
 ## Credit and close
 
-- Completion codes as in the pilot (`RERUN-<floor>-<8 letters>`), all three floors for credit; the
-  extra-credit amount and the paste deadline are Vishal's to set.
-- Tutor closes Sun 10-25 at a time Vishal sets; the server's total budget cap is $50.
+- Completion codes as in the pilot (`RERUN-<floor>-<8 letters>`). 1% extra credit for all three
+  floors; codes due Mon 10-26, 11:59 PM CDT.
+- Tutor and receipts close Mon 10-26, 11:59 PM CDT (2026-10-27T04:59:00Z); the server's total
+  budget cap is $50.
 - The learner feedback issue (one improvement) as in the pilot, with a new label.
 
 ## Build
@@ -90,8 +95,7 @@ they press it.
   10-22; fixes and deploy Fri morning; open Fri 10-23. The in-person session handles Canvas
   (assignment and announcement), from an inbox item once Vishal approves the details.
 
-## Open questions for Vishal
+## Answered (Vishal, 2026-10-18)
 
-1. Extra credit amount (the pilot was 1%) and the code paste deadline.
-2. Close time on Sun 10-25.
-3. Data: taxi trips as proposed (transfer), or pagila (same data as M6a, easier start)?
+1. Extra credit: same as the pilot (1%, all three floors). 2. Close: Monday night, 10-26.
+3. Data: taxi trips.
