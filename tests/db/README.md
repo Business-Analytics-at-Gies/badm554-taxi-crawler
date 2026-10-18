@@ -1,7 +1,7 @@
 # tests/db: the data engine (site/game/db)
 
 Created: 2026-10-16
-Last Updated: 2026-10-16
+Last Updated: 2026-10-18
 Owner: crew-devin (branch `crew/db`).
 
 ## How the tests run
@@ -27,10 +27,9 @@ npm test                  # node --test, both files, about 15 s
   Parquet file; it is skipped if the CLI is missing.
 - Both files fail if any request leaves the origin.
 
-**Known issue, floor 2 wrong (d)** ("'unmatched' tested after 'unknown'"): this test is marked
-`todo`. On the frozen data, no trip has an unmatched side and 264 or 265 on the other side
-(0 rows, DuckDB CLI). So that order gives exactly the reference flags, and the check passes it.
-Reported to the orchestrator. Changing the data or the rule is Claude's decision.
+**Floor 2 wrong (d)** is "'unmatched' only when an id IS NULL" (`docs/floors.md` change log,
+2026-10-16 17:35 CDT). The earlier ordering mistake equalled the reference on this data, so it
+was replaced (v2 plan stage 0.4, 2026-10-18).
 
 ## Vendored files (`site/vendor/duckdb/`)
 

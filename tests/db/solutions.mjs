@@ -80,17 +80,14 @@ export const SOLUTIONS = {
             FROM trips t LEFT JOIN zones pz ON pz.location_id = t.pu_location_id LEFT JOIN zones dz ON dz.location_id = t.do_location_id`,
     },
     {
-      name: "wrong (d): 'unmatched' tested after 'unknown' (wrong order)", fails: ['zone_flags'],
+      name: "wrong (d): 'unmatched' only when an id IS NULL (misses the 15 drop-off ids of 0)", fails: ['zone_flags'],
       sql: `CREATE OR REPLACE TABLE trips_clean AS
             SELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,
-                   CASE WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'
-                        WHEN pz.location_id IS NULL OR dz.location_id IS NULL THEN 'unmatched'
+                   CASE WHEN t.pu_location_id IS NULL OR t.do_location_id IS NULL THEN 'unmatched'
+                        WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'
                         WHEN t.pu_location_id = 265 OR t.do_location_id = 265 THEN 'outside_nyc'
                         ELSE 'ok' END AS zone_flag
             FROM trips t LEFT JOIN zones pz ON pz.location_id = t.pu_location_id LEFT JOIN zones dz ON dz.location_id = t.do_location_id`,
-      // In the frozen data no trip has an unmatched side together with 264 (or 265), so this order
-      // gives the reference's flags. Reported to the orchestrator; see tests/db/README.md.
-      todo: 'docs/floors.md lists this as wrong, but on the frozen data it equals the reference (0 rows have an unmatched side and 264/265)',
     },
   ],
   3: [
