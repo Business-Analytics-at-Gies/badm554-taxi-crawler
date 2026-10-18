@@ -1,5 +1,5 @@
-// The game's SQL engine: one DuckDB-WASM worker (pinned, single-threaded "eh" bundle, files from
-// /vendor/duckdb/), the floors' tables, the tutor's copy, plants and floor checks.
+// Independent learner and tutor DuckDB-WASM workers (pinned single-threaded eh bundle).
+// Only trusted floor assets and plant instructions enter the tutor worker; learner SQL never does.
 // Contract: docs/interfaces.md part 3. No function throws for SQL errors; they return { error }.
 import * as duckdb from '../../vendor/duckdb/duckdb-browser.mjs';
 import { cleanError, nativeReadPolicy, nativeStatements } from './sql.js';
@@ -19,7 +19,8 @@ const FATAL = /RuntimeError|out of memory|memory access out of bounds|unreachabl
 const HUNG = Symbol('hung');
 const STOPPED = Symbol('stopped');
 
-let eng = null; // { adb, sys, lc (learner), tc (tutor), version, broken }
+let eng = null; // learner worker: { adb, sys, lc, parser, version, broken }
+let tutor = null; // lazily loaded independent worker: { adb, sys, tc, parser, broken }
 let assets = null; // { parquet, csv, refSql, dataset }
 let initPromise = null;
 let current = null;
@@ -77,37 +78,68 @@ async function runAll(conn, statements) {
   for (const s of statements) for (const one of await nativeStatements(conn, s)) await conn.query(one);
 }
 
-async function startEngine() {
+async function startEngine(tutorFloor = null) {
   const worker = new Worker(new URL('duckdb-browser-eh.worker.js', VENDOR));
   const adb = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
   const e = { adb, broken: false };
   worker.addEventListener('error', () => { e.broken = true; });
-  await adb.instantiate(new URL('duckdb-eh.wasm', VENDOR).href);
-  // queryPollingInterval: the worker yields every 50 ms so cancel can get in between. A query whose
-  // single step runs long (a big cross join) cannot be cancelled; the hard kill restarts the worker.
-  await adb.open({ query: { castDecimalToDouble: true, queryPollingInterval: 50 } });
-  e.sys = await adb.connect();
-  await adb.registerFileBuffer('trips_raw.parquet', assets.parquet.slice());
-  await adb.registerFileBuffer('taxi_zones.csv', assets.csv.slice());
-  await runAll(e.sys, [
-    `SET custom_extension_repository = ${qs(new URL('extensions', VENDOR).href)}`,
-    'LOAD parquet',
-    'LOAD json',
-    'SET autoinstall_known_extensions = false',
-    'SET autoload_known_extensions = false',
-    `CREATE SCHEMA ${BASE}`,
-    `CREATE TABLE ${BASE}.trips_raw AS FROM read_parquet('trips_raw.parquet')`,
-    `CREATE TABLE ${BASE}.zones AS FROM read_csv('taxi_zones.csv')`,
-    ...referenceBuildSql(assets.refSql),
-  ]);
-  await adb.dropFile('trips_raw.parquet');
-  await adb.dropFile('taxi_zones.csv');
-  await runAll(e.sys, ['SET enable_external_access = false', 'SET lock_configuration = true']);
-  e.lc = await adb.connect();
-  e.tc = await adb.connect();
-  e.parser = await adb.connect();
-  e.version = await adb.getVersion();
-  return e;
+  try {
+    await adb.instantiate(new URL('duckdb-eh.wasm', VENDOR).href);
+    // queryPollingInterval: the worker yields every 50 ms so cancel can get in between. A query whose
+    // single step runs long (a big cross join) cannot be cancelled; the hard kill restarts the worker.
+    await adb.open({ query: { castDecimalToDouble: true, queryPollingInterval: 50 } });
+    e.sys = await adb.connect();
+    await adb.registerFileBuffer('trips_raw.parquet', assets.parquet.slice());
+    await adb.registerFileBuffer('taxi_zones.csv', assets.csv.slice());
+    await runAll(e.sys, [
+      `SET custom_extension_repository = ${qs(new URL('extensions', VENDOR).href)}`,
+      'LOAD parquet',
+      'LOAD json',
+      'SET autoinstall_known_extensions = false',
+      'SET autoload_known_extensions = false',
+      `CREATE SCHEMA ${BASE}`,
+      `CREATE TABLE ${BASE}.trips_raw AS FROM read_parquet('trips_raw.parquet')`,
+      `CREATE TABLE ${BASE}.zones AS FROM read_csv('taxi_zones.csv')`,
+      ...referenceBuildSql(assets.refSql),
+    ]);
+    if (tutorFloor) {
+      await runAll(e.sys, [
+        ...floorSetupSql(tutorFloor, TUTOR),
+        ...['_base', '_ref1', '_ref2', '_ref3'].map(s => `DROP SCHEMA ${s} CASCADE`),
+        `SET schema = ${qs(TUTOR)}`,
+      ]);
+    }
+    await adb.dropFile('trips_raw.parquet');
+    await adb.dropFile('taxi_zones.csv');
+    await runAll(e.sys, ['SET enable_external_access = false', 'SET lock_configuration = true']);
+    if (tutorFloor) {
+      e.tc = await adb.connect();
+      await e.tc.query(`SET schema = ${qs(TUTOR)}`);
+    } else e.lc = await adb.connect();
+    e.parser = await adb.connect();
+    e.version = await adb.getVersion();
+    return e;
+  } catch (error) { worker.terminate(); throw error; }
+}
+
+async function discardTutor() {
+  const old = tutor; tutor = null;
+  try { await old?.adb.terminate(); } catch { /* already gone */ }
+}
+
+async function ensureTutor() {
+  if (tutor?.broken) await discardTutor();
+  if (!tutor) {
+    tutor = await startEngine(current);
+    // A tutor worker restart restores only trusted plant instructions, never learner state.
+    const batches = new Map(plants.map(p => [p.firstId, p]));
+    for (const p of batches.values()) {
+      const ids = plants.filter(row => row.firstId === p.firstId).map(row => row.row_id);
+      const select = plantSelectSql(current, p.kind, p.count, p.firstId, p.seed, `${TUTOR}.${FLOORS[current].input}`);
+      await tutor.sys.query(`INSERT INTO ${TUTOR}.${FLOORS[current].input} BY NAME SELECT * FROM (${select}) WHERE row_id IN (${ids.join(',')})`);
+    }
+  }
+  return tutor;
 }
 
 async function ensure() {
@@ -117,13 +149,13 @@ async function ensure() {
 }
 
 async function enterFloor(n) {
-  await runAll(eng.sys, floorSetupSql(n, TUTOR));
+  await discardTutor();
   await eng.lc.query(`SET schema = ${qs(learner(n))}`);
-  await eng.tc.query(`SET schema = ${qs(TUTOR)}`);
   current = n;
 }
 
 async function restartEngine(reason) {
+  await discardTutor();
   const old = eng;
   eng = null;
   try { await old?.adb.terminate(); } catch { /* already gone */ }
@@ -304,9 +336,8 @@ async function removePlants(ids) {
   if (!current || !ids.length) return [];
   const T = FLOORS[current].input;
   const list = ids.join(', ');
-  for (const S of [learner(current), TUTOR]) {
-    try { await eng.sys.query(`DELETE FROM ${S}.${T} WHERE row_id IN (${list})`); } catch { /* the learner changed the table */ }
-  }
+  try { await eng.sys.query(`DELETE FROM memory.${learner(current)}.${T} WHERE row_id IN (${list})`); } catch { /* the learner changed the table */ }
+  if (tutor) await tutor.sys.query(`DELETE FROM memory.${TUTOR}.${T} WHERE row_id IN (${list})`);
   const gone = new Set(ids);
   plants = plants.filter((p) => !gone.has(p.row_id));
   return ids;
@@ -461,21 +492,21 @@ export function inspect(name, { rows = 0 } = {}) {
 async function tutorExec(sql, maxRows, wrap) {
   await ensure();
   if (!current) return { error: 'No floor is loaded yet.' };
-  const stmts = await nativeStatements(eng.parser, sql);
+  const copy = await ensureTutor();
+  const stmts = await nativeStatements(copy.parser, sql);
   if (stmts.length !== 1) return { error: stmts.length ? 'Run one statement at a time.' : 'Nothing to run.' };
-  const policy = await nativeReadPolicy(eng.parser, stmts[0], HIDDEN_SCHEMAS);
+  const policy = await nativeReadPolicy(copy.parser, stmts[0], HIDDEN_SCHEMAS);
   if (!policy.readOnly) return { error: 'Read-only: use SELECT, WITH, FROM, SHOW, DESCRIBE, SUMMARIZE or EXPLAIN.' };
   const bad = policy.blockedReference;
   if (bad) return { error: `Only your own copy of this floor's tables is available; "${bad}" is not.` };
-  await eng.tc.query(`SET schema = ${qs(TUTOR)}`);
-  await eng.tc.query('BEGIN TRANSACTION');
+  await copy.tc.query('BEGIN TRANSACTION');
   let r;
   try {
-    r = await execStatements(eng.tc, [wrap ? wrap(stmts[0]) : stmts[0]], { maxRows, timeoutMs: LIMITS.timeoutMs });
+    r = await execStatements(copy.tc, [wrap ? wrap(stmts[0]) : stmts[0]], { maxRows, timeoutMs: LIMITS.timeoutMs });
   } finally {
-    try { await eng.tc.query('ROLLBACK'); } catch { /* the engine restarted or no transaction */ }
+    if (r?.hung || r?.fatal) await discardTutor();
+    else try { await copy.tc.query('ROLLBACK'); } catch { /* the worker failed or no transaction */ }
   }
-  if (r.hung || r.fatal) await restartEngine(r.hung ? 'tutor query did not stop' : 'engine crashed');
   return r;
 }
 
@@ -526,7 +557,9 @@ export function plant(kind, count) {
       if (!current) return { row_ids: [], error: 'No floor is loaded yet.' };
       const n = current;
       const T = FLOORS[n].input;
-      const sel = plantSelectSql(n, kind, count, nextPlantId, ++plantSeq);
+      const copy = await ensureTutor();
+      const firstId = nextPlantId, seed = ++plantSeq;
+      const sel = plantSelectSql(n, kind, count, firstId, seed);
       const ids = (await sysRows(`SELECT row_id FROM (${sel}) ORDER BY row_id`)).map((r) => r.row_id);
       if (!ids.length) return { row_ids: [], error: 'No rows to copy for that kind.' };
       try {
@@ -534,9 +567,10 @@ export function plant(kind, count) {
       } catch (e) {
         return { row_ids: [], error: `Could not add rows to ${T}; it was changed on this floor (${msg(e)}).` };
       }
-      try { await eng.sys.query(`INSERT INTO ${TUTOR}.${T} BY NAME ${sel}`); } catch { /* lens will not see them */ }
+      const tutorSelect = plantSelectSql(n, kind, count, firstId, seed, `${TUTOR}.${T}`);
+      await copy.sys.query(`INSERT INTO ${TUTOR}.${T} BY NAME ${tutorSelect}`);
       nextPlantId = Math.max(...ids) + 1;
-      for (const id of ids) { plants.push({ row_id: id, kind }); plantedEver[n].add(id); }
+      for (const id of ids) { plants.push({ row_id: id, kind, firstId, seed, count }); plantedEver[n].add(id); }
       await refreshTables();
       emit('plant', { kind, row_ids: ids, plants: plants.map((p) => p.row_id) });
       return { row_ids: ids };

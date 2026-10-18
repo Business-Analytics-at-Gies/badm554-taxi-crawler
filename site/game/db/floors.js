@@ -58,8 +58,8 @@ const ORDINARY = `fare_amount > 0 AND dropoff_at > pickup_at AND trip_distance >
   AND NOT (pickup_at >= TIMESTAMP '2024-01-15' AND pickup_at < TIMESTAMP '2024-01-16')`;
 
 /** The SELECT that yields `count` planted rows for floor n, numbered from firstId. */
-export function plantSelectSql(n, kind, count, firstId, seed) {
-  const src = FLOORS[n].given[FLOORS[n].input];
+export function plantSelectSql(n, kind, count, firstId, seed, source = null) {
+  const src = source ?? FLOORS[n].given[FLOORS[n].input];
   const hasZoneCols = n === 3;
   const repl = [`(${firstId - 1} + row_number() OVER (ORDER BY row_id))::BIGINT AS row_id`];
   if (kind === 'duplicate') repl.push("TIMESTAMP '2024-02-01 07:20:00' AS loaded_at");
@@ -71,7 +71,7 @@ export function plantSelectSql(n, kind, count, firstId, seed) {
   if (kind === 'time_travel') repl.push("pickup_at - INTERVAL '7 minutes' AS dropoff_at");
   const filter = hasZoneCols ? `${ORDINARY} AND zone_flag = 'ok'` : ORDINARY;
   return `SELECT * REPLACE (${repl.join(', ')}) FROM (
-  SELECT * FROM ${src} WHERE ${filter} ORDER BY system.main.hash(row_id, ${Number(seed)}) LIMIT ${Number(count)}) s`;
+  SELECT * FROM ${src} WHERE row_id < ${PLANT_ID_START} AND ${filter} ORDER BY system.main.hash(row_id, ${Number(seed)}) LIMIT ${Number(count)}) s`;
 }
 
 // ---------------------------------------------------------------------------------------------

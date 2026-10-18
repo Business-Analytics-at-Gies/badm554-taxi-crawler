@@ -108,9 +108,26 @@ export async function nativeReadPolicy(conn, sql, blockedSchemas = [], blockedFu
   if (!blockedReference && calledFunctions.size) {
     // SELECT alone does not prove read-only: nextval() and user macros can change
     // state or hide references. DuckDB's own function catalog supplies that decision.
-    const functions = await conn.query(`SELECT system.main.bool_or(has_side_effects OR NOT internal) AS unsafe
-      FROM system.main.duckdb_functions() WHERE function_name IN (${[...calledFunctions].map(literal).join(',')})`);
-    if (functions.toArray()[0].unsafe) return { readOnly: false, blockedReference: null };
+    // This build does not classify table functions' side effects (NULL). Only
+    // these known read-only internal table functions supplement its classification;
+    // unknowns, user macros, and stateful functions such as checkpoint stay refused.
+    const readTables = new Set(['range', 'generate_series', 'unnest', 'repeat',
+      'duckdb_tables', 'duckdb_columns', 'duckdb_views', 'duckdb_functions',
+      'duckdb_schemas', 'duckdb_sequences', 'duckdb_databases', 'duckdb_memory',
+      'pragma_table_info', 'pragma_show_tables', 'pragma_show_tables_expanded',
+      'pragma_database_list', 'json_each', 'json_tree']);
+    const classified = await conn.query(`SELECT system.main.lower(function_name) AS name,
+      internal, has_side_effects, function_type FROM system.main.duckdb_functions()
+      WHERE system.main.lower(function_name) IN (${[...calledFunctions].map(literal).join(',')})`);
+    const metadata = classified.toArray();
+    for (const name of calledFunctions) {
+      const matches = metadata.filter(row => row.name === name);
+      if (!matches.length || matches.some(row => !row.internal || row.has_side_effects === true ||
+        !(row.has_side_effects === false || row.function_type === 'macro' ||
+          (row.function_type === 'table' && readTables.has(name))))) {
+        return { readOnly: false, blockedReference: null };
+      }
+    }
   }
   return { readOnly: true, blockedReference };
 }

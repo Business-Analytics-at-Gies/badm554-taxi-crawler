@@ -111,8 +111,41 @@ export async function createWorkspace(day = 1) {
     };
   } catch(e) {close();throw new Error(cleanError(e.message));}
 }
+// A fresh worker holds only this day's accumulated raw data. No learner connection,
+// schema, macro, search path, attached catalog or SQL history enters this instance.
 export async function tutorQuery(day, sql) {
+  if (![1,2,3].includes(day)) throw new Error('Choose day 1, 2 or 3.');
   if (typeof sql!=='string' || sql.length>4000) throw new Error('The tutor can only run read-only SQL.');
-  const copy=await createWorkspace(day);
-  try {return await copy.query(sql, {readOnly:true});}finally{copy.close();}
+  let copy, timer;
+  const work = (async () => {
+    copy = await database();
+    await copy.conn.query(`SET custom_extension_repository='${new URL('extensions',VENDOR).href}'; LOAD parquet; LOAD json`);
+    for (let n=1;n<=day;n++) {
+      const response = await fetch(new URL(`day${n}.parquet`,DATA));
+      if (!response.ok) throw new Error(`Could not load day ${n}. Please reload to try again.`);
+      await copy.db.registerFileBuffer(`day${n}.parquet`,new Uint8Array(await response.arrayBuffer()));
+      await copy.conn.query(n===1 ? `CREATE TABLE main.raw_trips AS FROM 'day${n}.parquet'` : `INSERT INTO main.raw_trips FROM 'day${n}.parquet'`);
+      await copy.db.dropFile(`day${n}.parquet`);
+    }
+    await copy.conn.query('SET autoinstall_known_extensions=false; SET autoload_known_extensions=false; SET enable_external_access=false; SET lock_configuration=true');
+    const statements = await nativeStatements(copy.parser,sql);
+    if (statements.length!==1) throw new Error('The tutor can only run one read-only statement.');
+    const policy = await nativeReadPolicy(copy.parser,statements[0]);
+    if (!policy.readOnly || policy.blockedReference) throw new Error('The tutor can only run read-only SQL.');
+    const reader = await copy.conn.send(statements[0],true);
+    const last = {columns:[],rows:[],rowCount:0};
+    for await (const batch of reader) {
+      last.columns = batch.schema.fields.map(f=>f.name);
+      last.rowCount += batch.numRows;
+      if(last.rows.length<100) last.rows.push(...result(batch.slice(0,100-last.rows.length)).rows);
+    }
+    if (!last.columns.length) last.columns = reader.schema?.fields.map(f=>f.name) || [];
+    return last;
+  })();
+  try {
+    return await Promise.race([work,new Promise((_,reject)=>{
+      timer=setTimeout(()=>{copy?.close();reject(new Error('The tutor query timed out. Try a smaller query.'));},15000);
+    })]);
+  } catch(e) {throw new Error(cleanError(e.message));}
+  finally {clearTimeout(timer);copy?.close();}
 }
