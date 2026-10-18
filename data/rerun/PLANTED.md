@@ -26,7 +26,7 @@ fixed timestamps, no random values, current date, hash sampling or downloaded de
 - All original fare, distance, time and zone anomalies remain. This game does not filter them.
 - The original `row_id` becomes the stable `trip_id`, an identifier added for this game and
   carried unchanged through re-sends and corrections. The original physical `row_id` also
-  stays on first deliveries. See `docs/rerun/floors.md` for Vishal's approved key decision.
+  stays on first deliveries. See `docs/rerun/floors.md` for Claude's key decision.
 
 ## Planted for this game
 

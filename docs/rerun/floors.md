@@ -2,7 +2,7 @@
 
 Created: 2026-10-18
 Last Updated: 2026-10-18
-Status: **R1 contract, awaiting Claude's review before R2.** The pilot rules in
+Status: **R1 contract approved by Claude, 2026-10-18.** The pilot rules in
 `docs/floors.md` are unchanged.
 
 Data: `data/rerun/day{1,2,3}.parquet`, built offline from `data/trips_raw.parquet` by
@@ -34,7 +34,8 @@ correction. `row_id` identifies a physical load row; `loaded_at` says when it ar
 New load rows get new `row_id` values. Dates in the filenames name arrival batches, not pickup
 dates: the pickups remain the original January TLC data, including its real unusual cases.
 
-Key decision approved by Vishal in-session, 2026-10-18: add `trip_id`. The pilot key includes
+Key decision: add `trip_id`; decided by Claude, 2026-10-18, from crew-codex-rerun's question.
+The pilot key includes
 `total_amount`, which a correction must change. Omitting that field instead would merge two
 real trips: the pilot's 7,171 original rows have only 7,170 distinct five-field keys.
 The build first removes the pilot's 174 reloaded copies using the complete pilot key, then
@@ -151,5 +152,5 @@ amounts. These are test-only scenarios, not the R2 engine or API.
 
 ## Change log
 
-- 2026-10-18: R1 rules and CLI counts recorded by crew-codex-rerun; stable `trip_id` approved
-  by Vishal after the mutable pilot-key conflict and real five-field collision were verified.
+- 2026-10-18: R1 rules and CLI counts recorded by crew-codex-rerun; stable `trip_id`
+  decided by Claude, 2026-10-18, from crew-codex-rerun's question.

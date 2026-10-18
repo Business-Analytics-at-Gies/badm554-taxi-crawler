@@ -31,7 +31,7 @@ directory command remains unverified as a passing command; no server test is fai
 
 ## Decisions and deferred work
 
-- Vishal approved adding immutable `trip_id` after the pilot-key conflict was demonstrated.
+- Adding immutable `trip_id` was decided by Claude, 2026-10-18, from crew-codex-rerun's question.
   `floors.md` records the reason and the exact comparison rules, including unchanged physical
   copies on early runs versus latest corrected rows after day 3.
 - The final 2,371 new trips use the remainder of the 7,171 originals, matching the design's
