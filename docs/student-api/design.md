@@ -83,7 +83,7 @@ covers Claude Code only, not the SDK).
 | One student spends the class budget | Per-student activity cap and daily cap; the total cap stops everything. |
 | Use for unrelated work | The caps make it small; the activity text sets the scope. Requests are not read. |
 | The proxy changes requests or answers | Pass-through only: the server reads the model, `max_tokens` and the final usage, and changes nothing else. |
-| Students' data leaves the university | It goes to Anthropic's API, as the tutor's traffic does today. Vishal's named exception covers the tutor; it must be extended to this (open question 1). |
+| Students' data leaves the university | It goes to Anthropic's API, as the tutor's traffic does. Vishal extended his named exception to this proxy on 2026-10-18. The setup page tells students. The server stores no prompt or answer text. |
 
 ## Build and tests
 
@@ -96,8 +96,8 @@ covers Claude Code only, not the SDK).
 
 ## Open questions for Vishal
 
-1. Data: may students' prompts go to Anthropic's API through this proxy (an extension of the
-   tutor exception)? Students would be told in the setup page.
+1. ~~Data~~ Answered (Vishal, 2026-10-18): "its ok to send student prompts to anthropic." Students'
+   prompts may go to Anthropic's API through this proxy. Told on the setup page; no text stored.
 2. Budget: a per-student cap per activity (for example $5) and the total cap for the first
    activity.
 3. Models: Sonnet and Haiku only, or Opus too?
