@@ -92,7 +92,7 @@ async function fakeUpstream(t) {
         if (action.kind === 'stream') res.end();
       } else {
         res.writeHead(200, { 'content-type': 'application/json', 'request-id': 'req_synthetic' });
-        res.end(JSON.stringify(req.url.endsWith('/count_tokens') ? { input_tokens: 100 } : reply(action.usage)));
+        res.end(JSON.stringify(req.url.endsWith('/count_tokens') ? { input_tokens: 100 } : (action.result || reply(action.usage))));
       }
     };
     if (action.hold) pending.push(finish); else await finish();

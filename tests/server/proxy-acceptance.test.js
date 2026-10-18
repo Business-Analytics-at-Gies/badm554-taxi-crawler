@@ -231,7 +231,8 @@ for (const change of [
   acceptance(`server-side tools off: ${JSON.stringify(change)}`, async t => {
     const f = await fixture(t), k = await f.mint();
     for (const path of ['/proxy/v1/messages', '/proxy/v1/messages/count_tokens']) {
-      await refused(f, 'tools_not_allowed', 403, () => f.send(k.token, path.endsWith('/count_tokens') ? count(change) : message(change), path));
+      const hostedDefinition = Object.hasOwn(change, 'tools');
+      await refused(f, hostedDefinition ? 'tools_not_allowed' : 'unsupported_request', hostedDefinition ? 403 : 400, () => f.send(k.token, path.endsWith('/count_tokens') ? count(change) : message(change), path));
     }
   });
 }

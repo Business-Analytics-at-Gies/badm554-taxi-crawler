@@ -1,25 +1,58 @@
 const { once } = require('node:events');
 
-// Only one SSE event is retained in memory. Successful wire frames are forwarded unchanged.
-async function passStream(response, res, signal, settle) {
-  let pending = Buffer.alloc(0), usage, started = false, stopped = false, invalid = false, finalDelta = false, previousOutput = 0;
-  const accept = async frame => {
-    const lines = frame.toString('utf8').split(/\r?\n/);
-    const data = lines.filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
-    if (data && data !== '[DONE]') {
+// Split only on SSE line endings, including CR/LF split over transport chunks. Byte slices
+// are preserved separately from decoded field values; neither prompts nor events go to disk.
+async function* lines(body) {
+  let parts = [], cr = false;
+  const finish = () => { const raw = Buffer.concat(parts); parts = []; return { raw, complete: true }; };
+  for await (const chunk of body) {
+    if (!chunk.length) continue;
+    let start = 0;
+    if (cr) {
+      cr = false;
+      if (chunk[0] === 10) { parts.push(chunk.subarray(0, 1)); start = 1; }
+      yield finish();
+    }
+    for (let i = start; i < chunk.length; i++) {
+      if (chunk[i] !== 10 && chunk[i] !== 13) continue;
+      parts.push(chunk.subarray(start, i + 1));
+      if (chunk[i] === 13) {
+        if (i + 1 === chunk.length) { cr = true; start = i + 1; break; }
+        if (chunk[i + 1] === 10) { parts.push(chunk.subarray(i + 1, i + 2)); i++; }
+      }
+      yield finish(); start = i + 1;
+    }
+    if (start < chunk.length) parts.push(chunk.subarray(start));
+  }
+  if (cr) yield finish();
+  else if (parts.length) yield { raw: Buffer.concat(parts), complete: false };
+}
+
+async function passStream(response, res, signal, settle, inspectUsage) {
+  let rawParts = [], data = [], eventName = '', firstLine = true;
+  let usage, started = false, stopped = false, invalid = false, finalDelta = false, previousOutput = 0;
+  const send = async frame => { if (!res.write(frame)) await once(res, 'drain', { signal }); };
+  const dispatch = async () => {
+    // An event field is authoritative even when its data is empty, invalid JSON, or absent.
+    if (eventName === 'error') throw new Error('Proxy stream failed');
+    if (data.length) {
       let value;
-      try { value = JSON.parse(data); } catch { invalid = true; }
-      if (lines.some(line => /^event:\s*error\s*$/.test(line)) || value?.type === 'error') throw new Error('Proxy stream failed');
+      try { value = JSON.parse(data.join('\n')); } catch { invalid = true; }
+      if (value?.type === 'error') throw new Error('Proxy stream failed');
       if (value?.type === 'message_start') {
         if (started) invalid = true;
-        started = true; usage = value.message?.usage && { ...value.message.usage };
+        started = true;
+        usage = value.message?.usage && { ...value.message.usage };
+        if (usage) inspectUsage(usage);
       } else if (value?.type === 'message_delta') {
         if (!started || !usage || !value.usage) invalid = true;
         else {
+          inspectUsage(value.usage);
           if (!Number.isSafeInteger(value.usage.output_tokens) || value.usage.output_tokens < previousOutput) invalid = true;
           previousOutput = value.usage.output_tokens;
           finalDelta = typeof value.delta?.stop_reason === 'string' && !!value.delta.stop_reason;
-          usage = { ...usage, ...value.usage };
+          // Null optional fields in deltas mean no update, not zero billing.
+          usage = { ...usage, ...Object.fromEntries(Object.entries(value.usage).filter(([, v]) => v != null)) };
         }
       } else if (value?.type === 'message_stop') {
         if (stopped) invalid = true;
@@ -28,25 +61,22 @@ async function passStream(response, res, signal, settle) {
         }
       }
     }
-    if (!res.write(frame)) await once(res, 'drain', { signal });
+    // There is no output/event byte limit. Backpressure bounds queued transport writes.
+    for (const part of rawParts) await send(part);
+    rawParts = []; data = []; eventName = '';
   };
-  for await (const chunk of response.body) {
-    pending = Buffer.concat([pending, chunk]);
-    let match;
-    while ((match = /\r?\n\r?\n/.exec(pending.toString('utf8')))) {
-      // Indexes before the separator may contain multibyte text: derive the byte position.
-      const size = Buffer.byteLength(pending.toString('utf8').slice(0, match.index + match[0].length));
-      const frame = pending.subarray(0, size); pending = pending.subarray(size);
-      if (frame.length > 1024 * 1024) throw new Error('Proxy stream event too large');
-      await accept(frame);
-    }
-    if (pending.length > 1024 * 1024) throw new Error('Proxy stream event too large');
+  for await (const line of lines(response.body)) {
+    rawParts.push(line.raw);
+    let value = line.raw.toString('utf8').replace(/\r\n$|[\r\n]$/g, '');
+    if (firstLine) { value = value.replace(/^\uFEFF/, ''); firstLine = false; }
+    if (line.complete && value === '') { await dispatch(); continue; }
+    const colon = value.indexOf(':');
+    const field = colon < 0 ? value : value.slice(0, colon);
+    const content = colon < 0 ? '' : value.slice(colon + 1).replace(/^ /, '');
+    if (field === 'data') data.push(content);
+    else if (field === 'event') eventName = content;
   }
-  if (pending.length) {
-    // Trailing incomplete frames cannot establish final usage. Preserve ordinary bytes only.
-    const data = pending.toString('utf8');
-    if (data.includes('"type":"error"') || data.includes('"type": "error"')) throw new Error('Proxy stream failed');
-    if (!res.write(pending)) await once(res, 'drain', { signal });
-  }
+  // SSE dispatch requires a blank line. Discard every unfinished event at EOF, so no
+  // complete or incomplete error payload can leak through a whitespace-dependent path.
 }
 module.exports = { passStream };

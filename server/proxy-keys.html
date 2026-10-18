@@ -11,6 +11,7 @@
 <section id="secret" hidden><h2>Save this token now</h2><p>This is the only time you can see it. Reloading hides it. Creating another token replaces this one.</p><pre id="token"></pre><button id="hide" class="secondary">Hide token</button><h2>Recommended Claude Code setup</h2><pre id="settings"></pre></section>
 <h2>Keep your token private</h2><p>Use environment variables or a private <code>.env</code> file, and add that file to <code>.gitignore</code>. Never commit or share your token. Revoke it if it is exposed.</p>
 <p>We recommend <code>CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000</code> so concurrent long requests leave room in your daily budget. The proxy still supports requests up to the activity's output cap. Requests reserve budget while running, then settle to their actual usage.</p>
+<p>Use <code>CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1</code> with this course setup so newer experimental options do not interrupt your session.</p>
 <p>Your prompts and code go to Anthropic's API for processing. This course proxy stores usage counts and cost, but does not store or log your prompts, answers, or tool contents.</p>
 <h2>SDK setup</h2><p>Set the SDK's <code>base_url</code> (Python) or <code>baseURL</code> (TypeScript) to this server's <code>/proxy</code> URL, and use your course token as its API key. Do not append <code>/v1</code>.</p>
 <p><a href="https://code.claude.com/docs/en/env-vars">Official Claude Code settings reference</a> · <a href="/learn/">Back to the game</a></p>
@@ -38,7 +39,7 @@ async function act(action) {
     if(action==='create') {
       const created=await request('/api/keys',{});
       await load();$('secret').hidden=false;$('token').textContent=created.token;
-      $('settings').textContent=`export ANTHROPIC_BASE_URL="${location.origin}/proxy"\nexport ANTHROPIC_API_KEY="${created.token}"\nexport ANTHROPIC_MODEL="${created.activity.model}"\nexport ANTHROPIC_DEFAULT_SONNET_MODEL="${created.activity.model}"\nexport ANTHROPIC_DEFAULT_HAIKU_MODEL="${created.activity.model}"\nexport CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000\nclaude --model ${created.activity.model}`;
+      $('settings').textContent=`export ANTHROPIC_BASE_URL="${location.origin}/proxy"\nexport ANTHROPIC_API_KEY="${created.token}"\nexport ANTHROPIC_MODEL="${created.activity.model}"\nexport ANTHROPIC_DEFAULT_SONNET_MODEL="${created.activity.model}"\nexport ANTHROPIC_DEFAULT_HAIKU_MODEL="${created.activity.model}"\nexport CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000\nexport CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1\nclaude --model ${created.activity.model}`;
     } else {await request('/api/keys/revoke',{});await load();$('status').textContent='Your token has been revoked.';}
   } catch { $('status').textContent='Course API setup is unavailable. Please sign in again or contact the instructor.'; }
 }

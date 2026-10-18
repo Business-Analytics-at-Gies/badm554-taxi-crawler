@@ -1,6 +1,7 @@
 const { randomBytes, randomUUID, createHash } = require('node:crypto');
 const { refuse } = require('./errors');
-const { costUsd, PRICES } = require('./model');
+const { fields, bill, UnpricedUsage } = require('./proxy-usage');
+const { PRICES } = require('./model');
 const nano = n => {
   const result = Math.ceil(n * 1e9 - 1e-7);
   if (!Number.isSafeInteger(result) || result < 0) throw new Error('Invalid proxy amount');
@@ -131,8 +132,17 @@ class ProxyStore {
       }
     });
   }
+  hold() { this.db.prepare("INSERT OR REPLACE INTO proxy_settings VALUES ('budget_hold','1')").run(); }
+  inspectUsage(usage) {
+    try { fields(usage, this.cfg.model); }
+    catch (error) { if (error instanceof UnpricedUsage) this.hold(); throw error; }
+  }
   settle(id, usage, countOnly = false) {
-    const amount = countOnly ? 0 : nano(costUsd(usage, PRICES[this.cfg.model]));
+    let amount = 0;
+    if (!countOnly) {
+      try { const result = bill(usage, PRICES[this.cfg.model], this.cfg.model); amount = nano(result.usd); usage = result.usage; }
+      catch (error) { if (error instanceof UnpricedUsage) this.hold(); throw error; }
+    }
     this.store.transaction(() => {
       const row = this.db.prepare('SELECT * FROM proxy_ledger WHERE id=?').get(id);
       if (!row || row.status !== 'reserved') throw new Error('Inactive proxy reservation');

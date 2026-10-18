@@ -119,13 +119,14 @@ A count request cannot carry server-side tools or bypass close/rate/in-flight li
 Only ordinary client-defined tools are allowed (untyped or `type:"custom"`, including tool-use
 and tool-result message content). Deny every provider tool type, not just current version strings:
 web search, web fetch, code execution, computer/browser tools, hosted toolsets and unknown
-non-custom `type` values. Reject top-level `toolsets`, remote `mcp_servers`, nonempty `container`
-and corresponding hosted-tool configuration. Don't disable local Claude Code file/shell tools.
+non-custom `type` values. Refuse every unlisted top-level field, including `toolsets`, `mcp_servers`, and `container`
+even when empty, with the fixed `unsupported_request` error. Hosted definitions in allowed
+`tools`/inline additions still return `tools_not_allowed`. Don't disable local Claude Code file/shell tools.
 
 Preserve accepted JSON bytes, messages, system, thinking, tool schemas, cache controls and stream
 flags. Strip the course credential, cookie, identity, forwarding and hop-by-hop headers; construct
 upstream headers with the server's environment-only `ANTHROPIC_API_KEY`, JSON content type,
-`anthropic-version` and supported `anthropic-beta`. The production destination is fixed to
+`anthropic-version` and the exact reviewed `anthropic-beta` values listed below. The production destination is fixed to
 `https://api.anthropic.com`; never follow upstream redirects. No implicit retries.
 The `createApp({fetchImpl})` seam must cover proxy transport too. Tests inject an implementation
 that **rejects any destination except the fixed Anthropic origin**, rewrites that destination to
@@ -154,6 +155,7 @@ upstream error messages or identity. Error responses are no-store and do not red
 | 403 | `tools_not_allowed` | Any hosted/server-side tool capability |
 | 404 | `endpoint_not_allowed` | Proxy endpoint or method outside the list |
 | 400 | `bad_request` | Invalid JSON, model missing, invalid output cap, extra key-route fields |
+| 400 | `unsupported_request` | Unlisted field/beta or unsupported nested capability; fixed message, no echoed values |
 | 400 | `model_not_allowed` | Model not exactly `claude-sonnet-5-5`; name allowed model in message |
 | 413 | `too_long` | Raw input or counted input limit exceeded |
 | 415 | `bad_request` | Non-JSON proxy or keys mutation |
@@ -183,8 +185,8 @@ Claude's review replaces byte-as-token reservations with a free upstream count p
 Validate auth, endpoint, body, model, tools, rate and in-flight limits first. Before counting,
 check that storage is writable and no cap/hold is already exhausted. Keep the request's
 in-flight slot during counting and generation. Construct the count body from the original
-model/messages/system/tools/tool_choice/thinking/output_config/cache_control/context_management/compaction/
-output_format/speed fields supported by count_tokens;
+model/messages/system/tools/tool_choice/thinking/output_config/cache_control/context_management
+fields supported by count_tokens and admitted by the policy below;
 never forward max_tokens or stream to the count endpoint. Preserve cache annotations within
 those fields. Strip generation-only top-level fields. A failed, timed-out, invalid or over-limit
 count fails closed: no generation, no charge. Count preflights consume one external-request rate
@@ -210,7 +212,9 @@ and $5 activity cap. Its roughly 600 KB synthetic input fits the 1 MiB transport
 Settle from nonstream `usage` or the final complete SSE usage: input/output plus cache reads,
 cache creation and its 5-minute/1-hour split. `message_start` input usage plus final
 `message_delta` cumulative output usage forms the stream usage; deltas are not added as if
-incremental. Require a clean `message_stop`. Keep only bounded usage counters, not content.
+incremental. Require final `message_delta` usage and a clean `message_stop`. Usage fields are checked at
+each stream update so an unknown field cannot disappear through a later overwrite. Store only
+known aggregated usage counters, not content.
 
 Final amounts use actual usage exactly once. Missing, malformed or negative usage, upstream
 failure/timeout, lost connection, stream error, incomplete stream, or client cancellation before
@@ -275,7 +279,7 @@ credential stripping, exact endpoints/model, payload/tool limits, each money lim
 persistence, races, streaming byte preservation and usage/cache accounting, cancellation/failure,
 recovery/holds, and absence of message text/credentials in persistence and logs.
 `proxy-harness.test.js` verifies fake HTTP, fragmented SSE, and fail-closed network routing.
-P2 acceptance tests run as blocking assertions in the runbook server suite and in the strict run.
+P2 acceptance and review-reproduction tests run as blocking assertions in the runbook server suite.
 No local assertion proves App Service Easy Auth exclusion. Before
 P3/deployment, Claude must read back the actual host login configuration: `/proxy` and `/proxy/*`
 excluded, `/keys/` and `/api/keys*` protected, Illinois tenant enforced and identity headers replaced.
@@ -454,3 +458,165 @@ P2 is complete locally. P3 remains deferred: official SDK and Claude Code end-to
 the fake upstream, live-host Easy Auth read-back, and any separately authorized real smoke or
 deployment. The proxy remains disabled by default. No PR, merge, deployment or host change
 was performed.
+
+## Claude's P2 review round 1 decisions (2026-10-18)
+
+These restrictions and accounting/error-handling changes are Claude's review decisions, not
+Vishal's. They supersede earlier open-ended pass-through descriptions. No unpriced field or
+capability becomes allowed merely because an SDK can serialize it. Refusals occur before the
+free count, paid dispatch, reservation, or rate admission and never echo the offending value:
+HTTP400 `{error:"unsupported_request",message:"This request uses an option that is not enabled for the course API."}`.
+
+### Explicit request fields
+
+`POST /v1/messages` allows exactly the fields in this table. Count allows only the subset marked
+“Both”; it refuses generation/sampling/metadata controls rather than quietly ignoring them.
+
+| Field | Endpoints | Pricing/cap justification and restrictions |
+| --- | --- | --- |
+| `model` | Both | Exactly the priced Sonnet id; no client-selected routing. |
+| `messages` | Both | Input is counted first; message objects contain only user/assistant `role` and `content`. Local tool history remains input, not a new server attempt. |
+| `system` | Both | Counted input; cannot override routing or output cap. |
+| `tools` | Both | Only client tools; definitions and inline additions remain policed. Execution requires a new separately checked client call. |
+| `tool_choice` | Both | Selects among those client tools in the same bounded generation; no server tool execution. |
+| `thinking` | Both | Only adaptive/enabled/disabled, recognized display values, and bounded enabled budget; thinking is included in billed output and max_tokens. No other nested keys. |
+| `cache_control` | Both | Only ephemeral 5m/1h; highest-input reservation covers both write rates, settlement includes cache split/read counters. |
+| `output_config` | Both | Only effort and JSON-schema format; token/grammar constraints within one generation, not task budgets or new attempts. Format object permits type/schema only. |
+| `context_management` | Both | Only edits with clear_tool_uses_20250919 or clear_thinking_20251015 and their documented numeric/retention options. These remove input before sampling. Compaction or unknown editing strategies are refused. |
+| `max_tokens` | Messages | Positive integer <= configured cap; reserves the full allowance. |
+| `stream` | Messages | Response transport only. |
+| `stop_sequences` | Messages | Stops the current generation; cannot expand its output allowance. |
+| `temperature`, `top_p`, `top_k` | Messages | Sampling choices for the same generation at the same token rates. |
+| `metadata` | Messages | Only user_id attribution; no routing/budget control. Not persisted by this proxy. |
+
+All other top-level keys are refused, including `compaction`, `inference_geo`, `fallbacks`,
+`fallback_credit_token`, `container`, `mcp_servers`, `toolsets`, `service_tier`, `speed`,
+`output_format`, `safeguards`, arbitrary new fields, and SDK beta-selection keys that belong
+in headers. Unknown nested thinking/output/edit controls are also refused. In particular,
+output_config.task_budget and compaction edits cannot smuggle extra iterations through a
+recognized top-level key. JSON schemas and client-tool arguments remain data, not proxy options.
+
+Official sources checked in this review:
+
+- [Messages and count parameter definitions in the current official TypeScript SDK](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/beta/messages/messages.ts),
+  plus the [count API](https://platform.claude.com/docs/en/api/messages/count_tokens), establish
+  the separate input and generation parameter sets. Sampling/stop/metadata are ordinary
+  single-message options; there is no model/output-attempt override in them.
+- [Thinking](https://platform.claude.com/docs/en/build-with-claude/thinking),
+  [effort](https://platform.claude.com/docs/en/build-with-claude/effort), and
+  [structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)
+  describe bounded reasoning/output constraints. Count preflight includes accepted format and
+  effort configuration; output usage is inclusive of internal thinking.
+- [Context editing](https://platform.claude.com/docs/en/build-with-claude/context-editing) describes
+  the two clearing strategies as preprocessing before sampling; cache invalidation creates
+  ordinary cache-write costs already covered by the highest input rate. Other strategies are blocked.
+- [Prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) documents
+  cache write/read rates and 5m/1h TTLs.
+- [Compaction billing](https://platform.claude.com/docs/en/build-with-claude/compaction-on-demand#count-compaction-usage),
+  [US-only surcharge](https://platform.claude.com/docs/en/manage-claude/data-residency), and
+  [server fallback](https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback)
+  explain why those controls cannot be admitted under this one-model, one-attempt standard-rate contract.
+
+### Explicit beta values
+
+The optional comma-separated header allows exactly these literal values (whitespace between
+values is harmless). Unknown, empty or duplicate entries refuse the entire request. Accepted
+headers remain unchanged on both counting and generation. The fixed field/model/tool guards
+apply even with a known beta; none of these headers permits a surcharge or additional attempt.
+The API version is pinned to `2023-06-01`: an omitted `anthropic-version` receives that value,
+and every other supplied version is refused with the same fixed unsupported-option error.
+Changing the protocol schema requires a fresh pricing and validation review.
+
+| Beta value | Supported purpose and primary evidence |
+| --- | --- |
+| `token-counting-2024-11-01` | Free count compatibility; official SDK countTokens adds this header. |
+| `prompt-caching-2024-07-31` | Legacy cache compatibility; current official SDK beta union recognizes it; cache rates are explicitly priced. |
+| `extended-cache-ttl-2025-04-11` | 1h cache compatibility; SDK union and Claude Code gateway TTL documentation; highest input price covers it. |
+| `context-management-2025-06-27` | Only the two admitted input-clearing strategies; context-editing docs and SDK union. |
+| `interleaved-thinking-2025-05-14` | Reasoning among client-tool turns, billed inside output tokens; SDK union and thinking docs. |
+| `effort-2025-11-24` | Legacy effort flag; current official Opus migration guide says effort is now GA, and gateway docs say Claude Code can retain effort capabilities. |
+| `structured-outputs-2025-11-13` | JSON-schema output constraints; official SDK beta union. |
+| `structured-outputs-2025-12-15` | SDK parse helper adds this literal header; same single-generation format constraints. |
+| `fine-grained-tool-streaming-2025-05-14` | Legacy tool-input streaming transport; current official fine-grained-streaming guide. |
+
+Header evidence: [official SDK beta union](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/beta/beta.ts),
+[SDK create/parse/count code](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/beta/messages/messages.ts),
+[fine-grained streaming](https://platform.claude.com/docs/en/agents-and-tools/tool-use/fine-grained-tool-streaming),
+and [legacy effort migration](https://platform.claude.com/docs/en/models/opus-5-5/migration-guide).
+
+The [current Claude Code gateway guide](https://code.claude.com/docs/en/llm-gateway-protocol)
+recommends open-ended forwarding for general gateways. Claude's course-budget policy deliberately
+requires a reviewed allow list instead. Recommend CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1
+for this constrained gateway, alongside the existing recommended 32K output setting. The
+documented switch suppresses prerelease fields but does not promise to strip every header.
+Undocumented client markers, OAuth capabilities, context-size betas, task-budget/compaction,
+server-fallback and other unpriced flags are refused until separately reviewed; no substring
+or prefix acceptance. Actual client-version compatibility remains a P3 test, not a P2 claim.
+
+### Usage verification and iteration accounting
+
+Use usage.iterations as the authoritative billed list when nonempty, summing all recognized
+message/compaction/advisor_message/fallback_message entries once; don't add the ordinary
+top-level aggregate again. When absent/empty, use the ordinary usage counters. Entries with a
+model must name the allowed Sonnet (or null for an ordinary message entry). Advisor/fallback
+entries require that exact model; compaction entries have no model field. Each iteration admits
+only its documented type, token/cache counts and applicable model field, not top-level metadata.
+A list smaller than
+the ordinary reported totals is inconsistent and cannot earn a refund. Persist only summed
+input/output/cache counters and cost, never the original iteration object or content.
+
+The known schema includes input/output counts, cache creation/read counts and 5m/1h breakdown,
+iterations, output_tokens_details.thinking_tokens, zero web fetch/search counts, neutral
+fallback_credit=null, and standard/global service/geo/speed metadata. Unknown fields at any
+level, unknown iteration types/models, nonstandard pricing indicators, or charged server-tool
+usage retain the full reservation and set a persistent proxy-only budget hold. Even an unknown
+zero/null field is held. Inspect each SSE usage update before merging so later updates cannot
+erase evidence of an unfamiliar counter. Ordinary malformed/missing/incomplete usage also
+keeps its full reservation; original unknown objects are not written to any table or log.
+
+A defensive response with top-level 0/0 and a compaction iteration of 144 input/276 output
+settles to $0.003048. Twenty such responses debit $0.060960. The request controls that could
+request compaction are refused, but unexpected billed iterations still cannot disappear. The
+[official SDK usage schema](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/beta/messages/messages.ts)
+documents the distinction between ordinary aggregates, compaction iterations and inclusive
+output/thinking detail.
+
+### SSE errors and response size
+
+Parse SSE fields and blank-line dispatch according to the
+[EventSource standard](https://html.spec.whatwg.org/multipage/server-sent-events.html#parsing-an-event-stream):
+LF, CRLF, CR, chunk-split endings, initial BOM, comments, multiline data and optional single
+field-value space. An event:error is suppressed even without JSON data; a JSON type:error is
+also suppressed. Every unfinished event at EOF is discarded, including a final error with
+unusual JSON spacing or without its terminating blank line. Never fabricate message_stop.
+
+No artificial byte limit applies to successful JSON responses or SSE events. JSON is buffered
+in transient process memory for complete-usage settlement; SSE retains one event, forwards
+accepted bytes with backpressure, and retains only usage between events. Neither path spools
+answers to disk. The output allowance and upstream timeout remain enforced; memory capacity is
+the ordinary runtime boundary, not an undocumented 1 MiB answer limit. The separate 1 MiB
+incoming-request limit and 64 KiB internal count-metadata envelope limit remain.
+
+### R1 verification
+
+All five review reproductions are covered in `tests/server/proxy-review-r1.test.js`, including
+the repeated compaction and US-only cases, fallback model/output override, incomplete private
+SSE error, and JSON/SSE answers larger than 1 MiB. The file has 70 checks covering the broader
+field/header policy, nested controls, iteration schema, persistent holds and successful standard
+usage. The independent follow-up review found no actionable issues and reran all 185 proxy
+checks successfully. `.p2-review-r1.md` is an uncommitted review input.
+
+Final local runs after the implementation changes:
+
+| Required suite | Passed | Skipped | Failed |
+| --- | ---: | ---: | ---: |
+| `cd tests/db && npm test` | 87 | 0 | 0 |
+| `cd tests/ui && npx playwright test` | 83 | 3 | 0 |
+| `cd tests/ui && DB_SITE=../../site npx playwright test` | 81 | 5 | 0 |
+| `node --test tests/server/*.test.js` | 234 | 0 | 0 |
+
+The browser skips are the existing conditional cases. A separate real-browser check on the
+local synthetic server confirmed that key setup includes the recommended 32K output and
+experimental-beta settings, reload hides the once-only credential, and the page fits a 375px
+viewport. No actual-client, live-provider, host-configuration or deployment check was performed;
+those remain P3. All calls and identities in these checks were local fakes and synthetic data.

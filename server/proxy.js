@@ -6,6 +6,7 @@ const { HttpError, refuse } = require('./errors');
 const { mutationGuard } = require('./auth');
 const { PRICES } = require('./model');
 const { passStream } = require('./proxy-stream');
+const { options, betaHeader, COUNT_FIELDS } = require('./proxy-policy');
 const page = readFileSync(join(__dirname, 'proxy-keys.html'));
 const INPUT_LIMIT = 200000;
 const isObject = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -22,7 +23,7 @@ async function readBody(req, limit) {
   if (!isObject(body)) bad();
   return { raw, body };
 }
-async function boundedBody(response, limit = 1024 * 1024) {
+async function responseBody(response, limit = Infinity) {
   const chunks = []; let size = 0;
   for await (const chunk of response.body) {
     size += chunk.length;
@@ -40,6 +41,7 @@ function credential(req, store) {
   return value;
 }
 function validate(body, countOnly, cfg) {
+  options(body, countOnly, cfg);
   if (typeof body.model !== 'string' || !body.model) bad();
   if (body.model !== cfg.model) refuse(400, 'model_not_allowed', `The allowed model is ${cfg.model}.`);
   if (!countOnly && (!Number.isSafeInteger(body.max_tokens) || body.max_tokens < 1 || body.max_tokens > cfg.maxTokens)) bad();
@@ -51,14 +53,13 @@ function validate(body, countOnly, cfg) {
   const hostedAddition = body.messages.some(message => Array.isArray(message?.content) && message.content.some(block =>
     block?.type === 'tool_addition' && (block.tool?.type !== 'tool_definition' && block.tool?.type !== 'tool_reference' ||
       block.tool?.type === 'tool_definition' && hostedDefinition(block.tool.definition))));
-  if (hosted || hostedAddition || body.toolsets !== undefined || body.mcp_servers !== undefined ||
-    (body.container != null && body.container !== '' && (!isObject(body.container) || Object.keys(body.container).length))) {
+  if (hosted || hostedAddition) {
     refuse(403, 'tools_not_allowed', 'Server-side tools are not enabled for this activity.');
   }
 }
 function countBody(body) {
   // Fields supported by Anthropic's count API; generation-only fields are deliberately absent.
-  return Object.fromEntries(['model', 'messages', 'system', 'tools', 'tool_choice', 'thinking', 'output_config', 'cache_control', 'context_management', 'compaction', 'output_format', 'speed']
+  return Object.fromEntries([...COUNT_FIELDS]
     .filter(key => body[key] !== undefined).map(key => [key, body[key]]));
 }
 class Proxy {
@@ -113,6 +114,7 @@ class Proxy {
       const { body, raw } = await readBody(req, 1024 * 1024);
       const countOnly = match[1].endsWith('/count_tokens');
       validate(body, countOnly, this.config);
+      const beta = betaHeader(req);
       token = this.store.identify(value); this.store.open();
       owner = `${token.activity}:${token.owner}`;
       if ((this.owners.get(owner) || 0) >= this.config.inflight || this.inflight >= this.config.global) refuse(429, 'busy', 'Another course API request is still running. Please try again shortly.');
@@ -122,7 +124,7 @@ class Proxy {
       const headers = { 'content-type': 'application/json', 'x-api-key': this.pilot.env.ANTHROPIC_API_KEY,
         'anthropic-version': req.headers['anthropic-version'] || '2023-06-01' };
       if (!headers['x-api-key']) throw new Error('Missing provider configuration');
-      if (req.headers['anthropic-beta']) headers['anthropic-beta'] = req.headers['anthropic-beta'];
+      if (beta) headers['anthropic-beta'] = beta;
       const upstream = async (path, payload) => {
         const response = await this.fetch(`https://api.anthropic.com${path}`, {
           method: 'POST', headers, body: payload, signal: control.signal, redirect: 'error',
@@ -134,7 +136,7 @@ class Proxy {
       let amount = 0;
       if (!countOnly) {
         const counted = await upstream(`/v1/messages/count_tokens${query}`, JSON.stringify(countBody(body)));
-        const counts = JSON.parse((await boundedBody(counted, 65536)).toString('utf8'));
+        const counts = JSON.parse((await responseBody(counted, 65536)).toString('utf8'));
         if (!Number.isSafeInteger(counts.input_tokens) || counts.input_tokens < 0) throw new Error('Invalid input count');
         if (counts.input_tokens > INPUT_LIMIT) refuse(413, 'too_long', 'The course API input is too large.');
         token = this.store.identify(value); this.store.open();
@@ -153,11 +155,11 @@ class Proxy {
       if (!countOnly && body.stream) {
         res.statusCode = response.status;
         res.setHeader('Content-Type', 'text/event-stream'); res.flushHeaders();
-        await passStream(response, res, control.signal, usage => { this.store.settle(id, usage); settled = true; });
+        await passStream(response, res, control.signal, usage => { this.store.settle(id, usage); settled = true; }, usage => this.store.inspectUsage(usage));
         if (!settled) this.store.unknown(id);
         res.end();
       } else {
-        const bytes = await boundedBody(response);
+        const bytes = await responseBody(response);
         const result = JSON.parse(bytes.toString('utf8'));
         if (countOnly) {
           if (!Number.isSafeInteger(result.input_tokens) || result.input_tokens < 0) throw new Error('Invalid input count');
