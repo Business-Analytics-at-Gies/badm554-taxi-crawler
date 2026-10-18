@@ -22,6 +22,8 @@ draft on 2026-10-18; its findings and what was done with each are at the end.
 - Floor 1 key: show the columns, say what the key must separate, and add a hint. Do not name the
   six key columns in the task text.
 - Stage 0.4 done by Claude on 2026-10-18 (test only).
+- Amendment (Vishal, 2026-10-18): floor packs added as stage 2.0, so later games are written as
+  content, not code. Games in general replace some video prep; not the same game every week.
 - Builders: Claude writes the plan, the specs and the acceptance tests; Codex builds in a Herdr
   pane; Claude reviews, arbitrates review findings and deploys.
 
@@ -71,6 +73,7 @@ requires every column. Dropping `total_amount` gives 7,170.
 | 2.2 Table columns | #22, #27 | Each table chip expands to its columns and types (quiet inspection, 0.3). The pilot's chip click, which overwrites the editor with a `SELECT` (`site/game/ui/game.js:82`), is removed. | Tests: a learner table, then the same table with changed columns, then a floor switch; keyboard opens and closes it. Through the UI: seed unfinished SQL and a previous result, open the chip, and the editor, the result and both query records are unchanged. |
 | 2.3 Table preview | #7 | A "Preview" control on each chip shows the first 10 rows beside the console (quiet inspection, 0.3). | Tests: a learner output, an empty table, a table with fewer than 10 rows; the rows shown match a `SELECT`; usable at 375 px. Through the UI: seed unfinished SQL and a previous result, preview, and the editor, the result and both query records are unchanged. |
 | 2.4 Error help | #22 | When DuckDB reports an unknown column, the original error stays and the result area adds the columns of the learner tables named in the SQL (quiet inspection, 0.3). | Tests: `SELECT VendorID FROM trips_raw`; an aliased join (`t.VendorID`); a CTE; a learner-created table; a multi-statement run whose second statement fails. |
+| 2.0 Floor packs | (Vishal, 2026-10-18) | One folder per floor holds everything about it: the tables it starts from, the task and rules text, the reference SQL, the pass rules, the valid and wrong solutions, the hint rules and the guide text. The engine, the check, the guide, the game and the tutor's floor summary read the pack; nothing about a floor stays hard-coded. Floors 1 to 3 move into packs first, with no change in behavior. | Every existing db, UI and server test passes unchanged after the move. A test pack (a fourth floor in `tests/`) loads, checks and renders with no code change. |
 | 2.5 Query history | #8 | The learner history (0.2) as a list. "Load" puts a past query in the editor without running it; Undo restores the previous text. | Tests: start with unfinished editor text, Load a past query longer than 1,000 characters: the full text is in the editor and nothing runs; Undo restores the exact unfinished text. A failed run and a cancelled run appear; a floor switch and return keeps each floor's list; Restart floor clears that floor's list. |
 
 ### Stage 3: one page per floor, and the Help controls
