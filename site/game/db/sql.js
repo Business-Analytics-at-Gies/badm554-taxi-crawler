@@ -1,173 +1,7 @@
-// Small SQL text helpers: split statements, find the first keyword, guard the tutor's queries.
-// Aware of plain/E-escaped strings, quoted identifiers, dollar strings and nested comments.
-
-function skipQuoted(s, i, q, escapes = false) {
-  for (let j = i + 1; j < s.length; j++) {
-    if (escapes && s[j] === '\\') { j++; continue; }
-    if (s[j] === q) {
-      if (s[j + 1] === q) j++;
-      else return j + 1;
-    }
-  }
-  throw new Error('Unterminated quoted string or identifier.');
-}
-
-function skipLineComment(s, i) {
-  for (let j = i + 2; j < s.length; j++) {
-    if (s[j] === '\n' || s[j] === '\r') return j + 1;
-  }
-  return s.length;
-}
-
-function skipBlockComment(s, i) {
-  let depth = 1;
-  for (let j = i + 2; j < s.length; j++) {
-    if (s[j] === '/' && s[j + 1] === '*') { depth++; j++; }
-    else if (s[j] === '*' && s[j + 1] === '/') {
-      j++;
-      if (--depth === 0) return j + 1;
-    }
-  }
-  throw new Error('Unterminated /* comment.');
-}
-
-// DuckDB identifiers can contain $, digits and non-ASCII characters. A quote prefix
-// embedded in such an identifier must not consume the SQL that follows it.
-const identifierPart = (c) => c !== undefined && /[A-Za-z0-9_$\u0080-\uFFFF]/.test(c);
-const dollarQuote = /\$(?:[A-Za-z_\u0080-\uFFFF][A-Za-z0-9_\u0080-\uFFFF]*)?\$/y;
-function dollarTag(s, i) {
-  if (identifierPart(s[i - 1])) return null;
-  dollarQuote.lastIndex = i;
-  const m = dollarQuote.exec(s);
-  return m ? m[0] : null;
-}
-
-// Walk the text and call visit(kind, start, end) for each piece: 'code', 'string', 'ident', 'comment'.
-function scan(s, visit) {
-  let i = 0;
-  let code = 0;
-  let continuedEscape = false, afterString = false, newline = false;
-  const flush = (end) => { if (end > code) visit('code', code, end); };
-  while (i < s.length) {
-    const c = s[i];
-    const d = s[i + 1];
-    let kind = null;
-    let end = i;
-    if (afterString && /\s/.test(c)) { if (c === '\n' || c === '\r') newline = true; i++; continue; }
-    if ((c === 'E' || c === 'e') && d === "'" && !identifierPart(s[i - 1])) {
-      kind = 'string'; end = skipQuoted(s, i + 1, "'", true); continuedEscape = true;
-    }
-    else if (c === "'") { kind = 'string'; continuedEscape = afterString && newline && continuedEscape; end = skipQuoted(s, i, "'", continuedEscape); }
-    else if (c === '"') { kind = 'ident'; end = skipQuoted(s, i, '"'); }
-    else if (c === '-' && d === '-') { kind = 'comment'; end = skipLineComment(s, i); }
-    else if (c === '/' && d === '*') { kind = 'comment'; end = skipBlockComment(s, i); }
-    else if (c === '$') {
-      const tag = dollarTag(s, i);
-      if (tag) {
-        const j = s.indexOf(tag, i + tag.length);
-        kind = 'string';
-        if (j < 0) throw new Error('Unterminated dollar-quoted string.');
-        end = j + tag.length; continuedEscape = false;
-      }
-    }
-    if (kind) {
-      flush(i);
-      visit(kind, i, end);
-      if (kind !== 'comment') { afterString = kind === 'string'; newline = false; }
-      i = code = end;
-    } else {
-      afterString = false; continuedEscape = false; newline = false;
-      i++;
-    }
-  }
-  flush(s.length);
-}
-
-/** Split SQL text into statements on top-level semicolons. Drops empty and comment-only pieces. */
-export function splitStatements(sql) {
-  const text = String(sql ?? '');
-  const out = [];
-  let start = 0;
-  let meaningful = false;
-  scan(text, (kind, a, b) => {
-    if (kind === 'comment') return;
-    if (kind !== 'code') { meaningful = true; return; }
-    for (let i = a; i < b; i++) {
-      if (text[i] === ';') {
-        if (meaningful) out.push(text.slice(start, i).trim());
-        start = i + 1;
-        meaningful = false;
-      } else if (!/\s/.test(text[i])) {
-        meaningful = true;
-      }
-    }
-  });
-  if (meaningful) out.push(text.slice(start).trim());
-  return out;
-}
-
-/** Keywords of a statement in order (outside strings and comments), upper-cased, first `max` only. */
-export function keywords(stmt, max = 3) {
-  const words = [];
-  const text = String(stmt ?? '');
-  scan(text, (kind, a, b) => {
-    if (kind !== 'code' || words.length >= max) return;
-    const re = /[A-Za-z_][A-Za-z0-9_]*/g;
-    re.lastIndex = a;
-    let m;
-    while (words.length < max && (m = re.exec(text)) && m.index < b) words.push(m[0].toUpperCase());
-  });
-  return words;
-}
-
-const READ_FIRST = new Set(['SELECT', 'WITH', 'FROM', 'VALUES', 'TABLE', 'SHOW', 'DESCRIBE', 'DESC', 'SUMMARIZE', 'EXPLAIN']);
-
-/** True when a single statement only reads (SELECT family, SHOW, DESCRIBE, SUMMARIZE, EXPLAIN of a read). */
-export function isReadOnly(stmt) {
-  const [k1, k2, k3] = keywords(stmt, 3);
-  if (!READ_FIRST.has(k1)) return false;
-  if (k1 === 'EXPLAIN') {
-    const next = k2 === 'ANALYZE' ? k3 : k2;
-    return READ_FIRST.has(next) && next !== 'EXPLAIN';
-  }
-  return true;
-}
-
-/** Statements whose effect a replay must repeat: anything that is not a plain read. */
-export function changesState(stmt) {
-  const k1 = keywords(stmt, 1)[0];
-  return !(READ_FIRST.has(k1) && k1 !== 'WITH');
-}
-
-/**
- * Names the tutor may not reach: schema qualifiers outside its own copy, and table functions that
- * take a query as a string. Returns the first offending name, or null.
- */
-export function forbiddenReference(stmt, blockedSchemas, blockedFunctions = ['query', 'query_table']) {
-  const text = String(stmt ?? '');
-  const schemas = new Set(blockedSchemas.map((x) => x.toLowerCase()));
-  const funcs = new Set(blockedFunctions.map((x) => x.toLowerCase()));
-  const tokens = [];
-  scan(text, (kind, a, b) => {
-    if (kind === 'comment') return;
-    if (kind === 'ident') { tokens.push({ t: 'name', v: text.slice(a + 1, b - 1).replace(/""/g, '"').toLowerCase() }); return; }
-    if (kind === 'string') { tokens.push({ t: 'other' }); return; }
-    const re = /([A-Za-z_][A-Za-z0-9_$]*)|(\S)/g;
-    re.lastIndex = a;
-    let m;
-    while ((m = re.exec(text)) && m.index < b) {
-      tokens.push(m[1] ? { t: 'name', v: m[1].toLowerCase() } : { t: 'punct', v: m[2] });
-    }
-  });
-  for (let i = 0; i < tokens.length; i++) {
-    const tok = tokens[i];
-    const next = tokens[i + 1];
-    if (tok.t !== 'name' || !next || next.t !== 'punct') continue;
-    if (next.v === '.' && schemas.has(tok.v)) return tok.v;
-    if (next.v === '(' && funcs.has(tok.v)) return tok.v;
-  }
-  return null;
-}
+// All SQL decisions use the vendored DuckDB parser, tokenizer and SELECT syntax tree.
+// There is deliberately no JavaScript SQL scanner or keyword-based read-only fallback.
+export const foldIdentifier = name => String(name).replace(/[A-Z]/g, c => c.toLowerCase());
+const literal = text => `'${String(text).replaceAll("'", "''")}'`;
 
 /** Remove DuckDB "Did you mean" hints that point at qualified names (other schemas are hidden). */
 export function cleanError(message) {
@@ -191,7 +25,7 @@ export async function nativeStatements(conn, sql) {
   catch (error) {
     let detail;
     try { detail = JSON.parse(error.message); } catch { /* a non-JSON worker error */ }
-    if (detail?.exception_type === 'Parser' || /unterminated/i.test(error.message)) {
+    if (detail?.exception_type === 'Parser') {
       const message = detail?.exception_message || error.message;
       throw new Error(message.startsWith('Parser Error:') ? message : `Parser Error: ${message}`);
     }
@@ -213,4 +47,70 @@ export async function nativeStatements(conn, sql) {
   }
   if (meaningful) out.push(decode.decode(bytes.slice(start)).trim());
   return out;
+}
+
+/** Native tokens with UTF-8 offsets, never retokenized by JavaScript. */
+export async function nativeTokens(conn, sql) {
+  const text = String(sql ?? ''), bytes = new TextEncoder().encode(text), decode = new TextDecoder();
+  const tokens = await conn.bindings.tokenize(text);
+  return tokens.offsets.map((start, i) => ({
+    type: tokens.types[i], start,
+    text: decode.decode(bytes.slice(start, tokens.offsets[i+1] ?? bytes.length)).trim(),
+  }));
+}
+
+/**
+ * Classify a single, natively parsed statement and inspect native syntax-tree references.
+ * json_serialize_sql is loaded from the pinned same-origin JSON extension. It supports SELECT-family
+ * statements (including WITH, SHOW, DESCRIBE and SUMMARIZE); writes return its explicit
+ * 'not implemented' result. EXPLAIN's child is located using DuckDB's own token offsets.
+ * A failure to parse or inspect never authorizes execution by the tutor.
+ * Call with a dedicated parser connection, so learner transactions/search paths cannot
+ * interrupt classification. The serializer is fully qualified in the immutable catalog.
+ */
+export async function nativeReadPolicy(conn, sql, blockedSchemas = [], blockedFunctions = ['query', 'query_table', 'json_execute_serialized_sql']) {
+  const statements = await nativeStatements(conn, sql);
+  if (statements.length !== 1) return { readOnly: false, blockedReference: null };
+  let source = statements[0];
+  const tokens = (await nativeTokens(conn, source)).filter(t => t.type !== 5);
+  if (tokens[0]?.type === 4 && foldIdentifier(tokens[0].text) === 'explain') {
+    const child = tokens[1]?.type === 4 && foldIdentifier(tokens[1].text) === 'analyze' ? tokens[2] : tokens[1];
+    if (!child) return { readOnly: false, blockedReference: null };
+    source = new TextDecoder().decode(new TextEncoder().encode(source).slice(child.start));
+  }
+  const table = await conn.query(`SELECT system.main.json_serialize_sql(${literal(source)}) AS parsed`);
+  const parsed = JSON.parse(table.toArray()[0].parsed);
+  if (parsed.error) {
+    if (parsed.error_type === 'not implemented') return { readOnly: false, blockedReference: null };
+    throw new Error(`Parser Error: ${parsed.error_message || 'DuckDB could not inspect this SQL.'}`);
+  }
+  if (parsed.statements?.length !== 1 || !parsed.statements[0].node) throw new Error('DuckDB could not inspect this SQL.');
+  const schemas = new Set(blockedSchemas.map(foldIdentifier));
+  const functions = new Set(blockedFunctions.map(foldIdentifier));
+  let blockedReference = null;
+  const calledFunctions = new Set();
+  const visit = node => {
+    if (!node || typeof node !== 'object' || blockedReference) return;
+    // These fields are native identifier nodes, not words found in SQL strings.
+    for (const field of ['schema_name', 'catalog_name', 'schema', 'catalog']) {
+      if (typeof node[field] === 'string' && schemas.has(foldIdentifier(node[field]))) {
+        blockedReference = foldIdentifier(node[field]); return;
+      }
+    }
+    if (typeof node.function_name === 'string') {
+      const name = foldIdentifier(node.function_name);
+      calledFunctions.add(name);
+      if (functions.has(name)) { blockedReference = name; return; }
+    }
+    for (const value of Object.values(node)) if (value && typeof value === 'object') visit(value);
+  };
+  visit(parsed.statements[0]);
+  if (!blockedReference && calledFunctions.size) {
+    // SELECT alone does not prove read-only: nextval() and user macros can change
+    // state or hide references. DuckDB's own function catalog supplies that decision.
+    const functions = await conn.query(`SELECT system.main.bool_or(has_side_effects OR NOT internal) AS unsafe
+      FROM system.main.duckdb_functions() WHERE function_name IN (${[...calledFunctions].map(literal).join(',')})`);
+    if (functions.toArray()[0].unsafe) return { readOnly: false, blockedReference: null };
+  }
+  return { readOnly: true, blockedReference };
 }

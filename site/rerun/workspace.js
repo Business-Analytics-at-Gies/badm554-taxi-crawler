@@ -1,6 +1,6 @@
 // Learner experiments only. The R2 checker never receives this workspace or connection.
 import * as duckdb from '../vendor/duckdb/duckdb-browser.mjs';
-import { cleanError, nativeStatements, isReadOnly, forbiddenReference } from '../game/db/sql.js';
+import { cleanError, nativeStatements, nativeReadPolicy } from '../game/db/sql.js';
 const VENDOR = new URL('../vendor/duckdb/', import.meta.url);
 const DATA = new URL('../../data/rerun/', import.meta.url);
 const quote = s => `"${s.replaceAll('"', '""')}"`;
@@ -12,7 +12,7 @@ async function database() {
   try {
     await db.instantiate(new URL('duckdb-eh.wasm', VENDOR).href);
     await db.open({ maximumThreads: 1, query: { castDecimalToDouble: false, castBigIntToDouble: false, castTimestampToDate: false } });
-    return { db, conn: await db.connect(), close: () => worker.terminate() };
+    return { db, conn: await db.connect(), parser: await db.connect(), close: () => worker.terminate() };
   } catch (e) { worker.terminate(); throw e; }
 }
 function result(table) {
@@ -53,15 +53,19 @@ export async function createWorkspace(day = 1) {
     const catalog = values(await live.conn.query('SELECT current_database()'))[0][0];
     raw = ref(catalog,'main','raw_trips');
     rawId = String(values(await live.conn.query("SELECT table_oid FROM system.main.duckdb_tables() WHERE database_name=current_database() AND schema_name='main' AND table_name='raw_trips'"))[0][0]);
+    await live.conn.query(`SET custom_extension_repository='${new URL('extensions', VENDOR).href}'; LOAD json`);
     await live.conn.query('SET autoinstall_known_extensions=false; SET autoload_known_extensions=false; SET enable_external_access=false; SET lock_configuration=true');
     return {
       day: () => currentDay, close,
       async query(sql, { readOnly = false } = {}) {
         if (typeof sql !== 'string' || sql.length>100000) throw new Error('Keep the script below 100,000 characters.');
         return bounded(async () => {
-        const statements = await nativeStatements(live.conn, sql);
+        const statements = await nativeStatements(live.parser, sql);
         if (!statements.length) throw new Error('Enter SQL first.');
-        if (readOnly && statements.some(s => !isReadOnly(s) || forbiddenReference(s, []))) throw new Error('The tutor can only run read-only SQL.');
+        if (readOnly) for (const statement of statements) {
+          const policy = await nativeReadPolicy(live.parser, statement);
+          if (!policy.readOnly || policy.blockedReference) throw new Error('The tutor can only run read-only SQL.');
+        }
         let last;
         for (const statement of statements) {
           const reader = await live.conn.send(statement, true);
@@ -108,8 +112,7 @@ export async function createWorkspace(day = 1) {
   } catch(e) {close();throw new Error(cleanError(e.message));}
 }
 export async function tutorQuery(day, sql) {
-  const statements = [sql];
-  if (typeof sql!=='string' || sql.length>4000 || !statements.length || statements.some(s=>!isReadOnly(s))) throw new Error('The tutor can only run read-only SQL.');
+  if (typeof sql!=='string' || sql.length>4000) throw new Error('The tutor can only run read-only SQL.');
   const copy=await createWorkspace(day);
   try {return await copy.query(sql, {readOnly:true});}finally{copy.close();}
 }

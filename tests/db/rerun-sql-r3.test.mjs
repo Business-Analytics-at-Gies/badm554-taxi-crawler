@@ -11,7 +11,7 @@ test.before(async()=>{
  await h.page.evaluate(async()=>{
   window.s=await import('/game/db/sql.js');window.r=await import('/rerun/db/db.js');
   const d=await import('/vendor/duckdb/duckdb-browser.mjs');window.w=new Worker('/vendor/duckdb/duckdb-browser-eh.worker.js');
-  window.a=new d.AsyncDuckDB(new d.VoidLogger(),w);await a.instantiate('/vendor/duckdb/duckdb-eh.wasm');window.c=await a.connect();
+  window.a=new d.AsyncDuckDB(new d.VoidLogger(),w);await a.instantiate('/vendor/duckdb/duckdb-eh.wasm');window.c=await a.connect();await c.query(`SET custom_extension_repository='${location.origin}/vendor/duckdb/extensions'; LOAD json`);
  });
 });
 test.after(async()=>{await h.page.evaluate(()=>w.terminate());await h.close();});
@@ -66,10 +66,10 @@ test('generated unterminated forms report the same native parse error before exe
  }
 });
 
-test('shared lexical guards understand E continuation and refuse unfinished forms',async()=>{
- const out=await h.page.evaluate(sql=>{
-  const result={split:s.splitStatements(sql),readOnly:s.isReadOnly("SELECT E'one'\n'it\\'s; hidden.fake'"),errors:[]};
-  for(const bad of ['SELECT 1; /* unfinished',"SELECT 'unfinished",'SELECT $$unfinished','SELECT "unfinished'])try{s.splitStatements(bad)}catch(e){result.errors.push(e.message)}
+test('shared native guards understand E continuation and refuse unfinished forms',async()=>{
+ const out=await h.page.evaluate(async sql=>{
+  const result={split:await s.nativeStatements(c,sql),readOnly:(await s.nativeReadPolicy(c,"SELECT E'one'\n'it\\'s; hidden.fake'")).readOnly,errors:[]};
+  for(const bad of ['SELECT 1; /* unfinished',"SELECT 'unfinished",'SELECT $$unfinished','SELECT "unfinished'])try{await s.nativeStatements(c,bad)}catch(e){result.errors.push(e.message)}
   return result;
  },continued);
  assert.equal(out.split.length,1);assert.equal(out.readOnly,true);assert.equal(out.errors.length,4);

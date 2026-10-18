@@ -1,7 +1,7 @@
 // Created: 2026-10-18. Last Updated: 2026-10-18.
 // R2 check API. Each call owns its workers; no learner or pilot connection is accepted.
 import * as duckdb from '../../vendor/duckdb/duckdb-browser.mjs';
-import { cleanError, nativeStatements } from '../../game/db/sql.js';
+import { cleanError, nativeStatements, foldIdentifier } from '../../game/db/sql.js';
 import { COLUMNS, quote, scenario } from './rules.js';
 
 const VENDOR = new URL('../../vendor/duckdb/', import.meta.url);
@@ -146,7 +146,7 @@ function exactNumber(value, type) {
   throw new Error('Unsupported comparison value.');
 }
 async function schema(conn, table) {
-  return rows(await conn.query(`DESCRIBE ${table}`)).map((r) => r.slice(0, 2));
+  return rows(await conn.query(`DESCRIBE ${table}`)).map((r) => [foldIdentifier(r[0]), r[1]]);
 }
 async function canonicalRows(truth, table, { cents = true, metadata = true } = {}) {
   const types = new Map(await schema(truth.conn, table));

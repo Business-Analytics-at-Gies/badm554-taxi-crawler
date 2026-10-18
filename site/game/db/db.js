@@ -2,7 +2,7 @@
 // /vendor/duckdb/), the floors' tables, the tutor's copy, plants and floor checks.
 // Contract: docs/interfaces.md part 3. No function throws for SQL errors; they return { error }.
 import * as duckdb from '../../vendor/duckdb/duckdb-browser.mjs';
-import { changesState, cleanError, forbiddenReference, isReadOnly, nativeStatements } from './sql.js';
+import { cleanError, nativeReadPolicy, nativeStatements } from './sql.js';
 import {
   BASE, FLOORS, HIDDEN_SCHEMAS, PLANT_ID_START, PLANT_KINDS, TUTOR,
   checkFloor, floorSetupSql, learner, plantSelectSql, qs, referenceBuildSql,
@@ -92,6 +92,7 @@ async function startEngine() {
   await runAll(e.sys, [
     `SET custom_extension_repository = ${qs(new URL('extensions', VENDOR).href)}`,
     'LOAD parquet',
+    'LOAD json',
     'SET autoinstall_known_extensions = false',
     'SET autoload_known_extensions = false',
     `CREATE SCHEMA ${BASE}`,
@@ -104,6 +105,7 @@ async function startEngine() {
   await runAll(e.sys, ['SET enable_external_access = false', 'SET lock_configuration = true']);
   e.lc = await adb.connect();
   e.tc = await adb.connect();
+  e.parser = await adb.connect();
   e.version = await adb.getVersion();
   return e;
 }
@@ -382,11 +384,13 @@ export function query(sql, { timeoutMs = LIMITS.timeoutMs } = {}) {
     if (!current) return empty({ ms: 0, error: 'No floor is loaded yet.' });
     const n = current;
     let stmts = [], parseError;
-    try { stmts = await nativeStatements(eng.lc, sql); } catch(e) { parseError = msg(e); }
+    try { stmts = await nativeStatements(eng.parser, sql); } catch(e) { parseError = msg(e); }
     if (!stmts.length && !parseError) return empty({ ms: 0, error: 'Nothing to run.' });
     const r = parseError ? { columns: [], rows: [], rowCount: 0, truncated: false, executed: 0, ms: 0, error: parseError }
       : await execStatements(eng.lc, stmts, { maxRows: LIMITS.learnerRows, timeoutMs });
-    floors[n].log.push(...stmts.slice(0, r.executed).filter(changesState));
+    // Record every successfully executed native statement. Replaying reads as well
+    // also preserves effects such as SELECT nextval(), without guessing from SQL text.
+    floors[n].log.push(...stmts.slice(0, r.executed));
     let error = r.error;
     if (r.hung || r.fatal) {
       try {
@@ -398,7 +402,7 @@ export function query(sql, { timeoutMs = LIMITS.timeoutMs } = {}) {
     }
     const result = { columns: r.columns, rows: r.rows, rowCount: r.rowCount, truncated: r.truncated, ms: r.ms };
     if (error) result.error = error;
-    if (stmts.slice(0, r.executed).some(changesState) || r.hung || r.fatal) await refreshTables();
+    if (r.executed > 0 || r.hung || r.fatal) await refreshTables();
     const entry = { sql: String(sql).slice(0, LIMITS.querySqlChars), rowCount: error ? null : r.rowCount, error: error ?? null };
     floors[n].lastQueries = [...floors[n].lastQueries, entry].slice(-LIMITS.lastQueries);
     floors[n].history = [...floors[n].history, { ...entry, sql: String(sql), ms: r.ms, at: new Date().toISOString() }].slice(-LIMITS.history);
@@ -457,10 +461,11 @@ export function inspect(name, { rows = 0 } = {}) {
 async function tutorExec(sql, maxRows, wrap) {
   await ensure();
   if (!current) return { error: 'No floor is loaded yet.' };
-  const stmts = await nativeStatements(eng.tc, sql);
+  const stmts = await nativeStatements(eng.parser, sql);
   if (stmts.length !== 1) return { error: stmts.length ? 'Run one statement at a time.' : 'Nothing to run.' };
-  if (!isReadOnly(stmts[0])) return { error: 'Read-only: use SELECT, WITH, FROM, SHOW, DESCRIBE, SUMMARIZE or EXPLAIN.' };
-  const bad = forbiddenReference(stmts[0], HIDDEN_SCHEMAS);
+  const policy = await nativeReadPolicy(eng.parser, stmts[0], HIDDEN_SCHEMAS);
+  if (!policy.readOnly) return { error: 'Read-only: use SELECT, WITH, FROM, SHOW, DESCRIBE, SUMMARIZE or EXPLAIN.' };
+  const bad = policy.blockedReference;
   if (bad) return { error: `Only your own copy of this floor's tables is available; "${bad}" is not.` };
   await eng.tc.query(`SET schema = ${qs(TUTOR)}`);
   await eng.tc.query('BEGIN TRANSACTION');
