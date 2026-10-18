@@ -50,6 +50,7 @@ async function until(check, label = 'condition') {
 }
 async function fakeUpstream(t) {
   const calls = [], pending = [], queue = [];
+  const countState = { value: 5000, pending: [] };
   const server = http.createServer(async (req, res) => {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
@@ -58,6 +59,14 @@ async function fakeUpstream(t) {
     call.body = JSON.parse(call.raw);
     calls.push(call);
     res.on('close', () => { call.closed = true; });
+    if (req.url.split('?')[0].endsWith('/count_tokens')) {
+      const finishCount = () => {
+        res.writeHead(countState.error ? 500 : 200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(countState.error ? { error: { message: PRIVATE_ERROR } } : { input_tokens: countState.value }));
+      };
+      if (countState.hold) countState.pending.push(finishCount); else finishCount();
+      return;
+    }
     const action = queue.shift() || { kind: 'json' };
     const finish = async () => {
       if (action.kind === 'error') {
@@ -90,15 +99,17 @@ async function fakeUpstream(t) {
   });
   const base = await listen(server);
   t.after(() => closeServer(server));
-  return { base, calls, queue, pending, release: () => { const fn = pending.shift(); assert.ok(fn, 'held upstream response'); return fn(); } };
+  return { base, calls, queue, pending, countState,
+    get messages() { return calls.filter(call => call.path.split('?')[0] === '/v1/messages'); },
+    release: () => { const fn = pending.shift(); assert.ok(fn, 'held upstream response'); return fn(); } };
 }
 function localTransport(upstream) {
   return async (target, init = {}) => {
     const url = new URL(target);
     assert.equal(url.origin, 'https://api.anthropic.com', 'unexpected upstream origin; network blocked');
     assert.ok(['/v1/messages', '/v1/messages/count_tokens'].includes(url.pathname), 'unexpected upstream endpoint');
-    assert.equal(url.search, '');
-    return fetch(upstream.base + url.pathname, { ...init, redirect: 'error' });
+    assert.ok(['', '?beta=true'].includes(url.search), 'unexpected upstream query');
+    return fetch(upstream.base + url.pathname + url.search, { ...init, redirect: 'error' });
   };
 }
 async function fixture(t, overrides = {}) {

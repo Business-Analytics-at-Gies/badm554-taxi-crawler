@@ -13,14 +13,14 @@ const acceptance = (name, fn) => test(`proxy acceptance: ${name}`, {
 }, fn);
 const noStore = r => assert.match(r.headers.get('cache-control') || '', /no-store/);
 async function refused(f, code, status, run) {
-  const before = f.upstream.calls.length;
+  const before = f.upstream.messages.length;
   const rows = ledger(f).length;
   const r = await run();
   assert.equal(r.status, status);
   assert.equal(r.body?.error, code);
   noStore(r);
   assert.equal(r.headers.get('location'), null, 'API refusal must not redirect to browser login');
-  assert.equal(f.upstream.calls.length, before, 'refused request reached upstream');
+  assert.equal(f.upstream.messages.length, before, 'refused request reached upstream');
   assert.equal(ledger(f).length, rows, 'refusal created a charge');
   return r;
 }
@@ -38,7 +38,7 @@ acceptance('create shows token once, stores only its hash and lists metadata wit
   assert.equal(created.activity.model, MODEL);
   assert.equal(created.activity.student_cap_usd, 5);
   assert.equal(created.activity.total_cap_usd, 150);
-  assert.equal(created.activity.max_tokens, 4096);
+  assert.equal(created.activity.max_tokens, 128000);
   const row = tokenRow(f, created.key.id);
   assert.equal(row.token_hash, createHash('sha256').update(created.token).digest('hex'));
   assert.equal(row.expires_at, '2026-11-06T06:00:00.000Z');
@@ -123,7 +123,7 @@ acceptance('unprotected identity headers and join-code sessions cannot issue cou
     const f = await fixture(t, env);
     const r = await f.request('/api/keys', {}, f.identity('synthetic-owner-a'));
     assert.equal(r.status, 401);
-    assert.equal(f.upstream.calls.length, 0);
+    assert.equal(f.upstream.messages.length, 0);
   }
 });
 
@@ -151,8 +151,8 @@ acceptance('accepts bearer token and replaces credentials while stripping identi
     'x-forwarded-for': '192.0.2.1', 'anthropic-version': '2023-06-01', 'anthropic-beta': 'prompt-caching-2024-07-31',
   });
   assert.equal(r.status, 200);
-  assert.equal(f.upstream.calls.length, 1);
-  const sent = f.upstream.calls[0];
+  assert.equal(f.upstream.messages.length, 1);
+  const sent = f.upstream.messages[0];
   assert.equal(sent.headers['x-api-key'], KEY);
   for (const name of ['authorization', 'cookie', 'x-ms-client-principal-id', 'x-forwarded-for']) assert.equal(sent.headers[name], undefined, name);
   assert.equal(sent.headers['anthropic-version'], '2023-06-01');
@@ -165,7 +165,8 @@ acceptance('accepts bearer token and replaces credentials while stripping identi
 for (const [method, path] of [
   ['GET', '/proxy/v1/messages'], ['POST', '/proxy/v1/messages/batches'], ['POST', '/proxy/v1/files'],
   ['POST', '/proxy/v1/skills'], ['POST', '/proxy/v1/admin/api_keys'], ['GET', '/proxy/v1/models'],
-  ['POST', '/proxy/v1/messages?extra=1'], ['POST', '/proxy/v1/%6dessages'],
+  ['POST', '/proxy/v1/messages?extra=1'], ['POST', '/proxy/v1/messages?beta=false'],
+  ['POST', '/proxy/v1/messages?beta=true&extra=1'], ['POST', '/proxy/v1/messages?beta=true&beta=true'], ['POST', '/proxy/v1/%6dessages'],
   ['POST', '/proxy/v1/messages%2fbatches'], ['POST', '/proxy/https://other.invalid/v1/messages'],
 ]) {
   acceptance(`endpoint allow list refuses ${method} ${path}`, async t => {
@@ -179,7 +180,7 @@ acceptance('count_tokens is allowed, authenticated, accounted at zero and does n
   const { max_tokens, ...body } = message();
   const r = await f.send(k.token, body, '/proxy/v1/messages/count_tokens');
   assert.equal(r.status, 200);
-  assert.deepEqual(r.body, { input_tokens: 100 });
+  assert.deepEqual(r.body, { input_tokens: 5000 });
   assert.equal(f.upstream.calls[0].path, '/v1/messages/count_tokens');
   assert.equal(ledger(f).length, 1);
   assert.equal(ledger(f)[0].amount, 0);
@@ -195,7 +196,7 @@ for (const model of ['claude-haiku-5-5', 'claude-opus-5-5', 'sonnet', 'claude-so
   });
 }
 
-for (const max_tokens of [0, -1, 4097, 1.5, '64', null, Number.MAX_SAFE_INTEGER + 1]) {
+for (const max_tokens of [0, -1, 128001, 1.5, '64', null, Number.MAX_SAFE_INTEGER + 1]) {
   acceptance(`max_tokens cap rejects ${JSON.stringify(max_tokens)} instead of silently changing it`, async t => {
     const f = await fixture(t), k = await f.mint();
     await refused(f, 'bad_request', 400, () => f.send(k.token, message({ max_tokens })));
@@ -204,7 +205,7 @@ for (const max_tokens of [0, -1, 4097, 1.5, '64', null, Number.MAX_SAFE_INTEGER 
 
 acceptance('exact output cap and custom tool round trips preserve accepted request bytes', async t => {
   const f = await fixture(t), k = await f.mint();
-  const body = message({ max_tokens: 4096, system: 'Synthetic system', tools: [
+  const body = message({ max_tokens: 128000, system: 'Synthetic system', tools: [
     { name: 'local_sql', input_schema: { type: 'object', properties: {} } },
     { type: 'custom', name: 'local_file', input_schema: { type: 'object', properties: {} } },
   ], messages: [
@@ -214,7 +215,7 @@ acceptance('exact output cap and custom tool round trips preserve accepted reque
   ] });
   const raw = JSON.stringify(body, null, 2);
   assert.equal((await f.send(k.token, raw)).status, 200);
-  assert.equal(f.upstream.calls[0].raw, raw);
+  assert.equal(f.upstream.messages[0].raw, raw);
   allPrivate(f, [k.token, 'Synthetic system', 'synthetic result', 'SELECT 1']);
 });
 
@@ -245,13 +246,13 @@ acceptance('invalid JSON, missing model/output budget, non-JSON and oversize bod
   }
   await refused(f, 'bad_request', 415, () => f.send(k.token, message(), undefined, { 'content-type': 'text/plain' }));
   await refused(f, 'too_long', 413, () => f.send(k.token, message({ system: 'x'.repeat(1024 * 1024) })));
-  await refused(f, 'too_long', 413, () => f.send(k.token, message({ system: 'x'.repeat(200000) })));
+  await refused(f, 'too_long', 413, () => (async () => { f.upstream.countState.value = 200001; return f.send(k.token); })());
 });
 
 // Catches counting only settled money, resetting owner quotas, shared game/proxy budgets and races.
 for (const [label, settings, spent, expected, status] of [
   ['$5 student activity', { PROXY_DAILY_CAP_USD: '10' }, 4.99, 'cap_student_usd', 429],
-  ['daily', {}, 1.49, 'cap_daily_usd', 429],
+  ['daily', {}, 2.49, 'cap_daily_usd', 429],
   ['$150 total', {}, 149.99, 'budget_exhausted', 503],
 ]) {
   acceptance(`${label} cap includes worst-case reservation before any upstream dispatch`, async t => {
@@ -263,13 +264,13 @@ for (const [label, settings, spent, expected, status] of [
   });
 }
 
-acceptance('reservation equals byte bound at one-hour cache price plus capped output cost', async t => {
+acceptance('reservation uses counted input plus safety margin at one-hour cache price and output cap', async t => {
   const f = await fixture(t), k = await f.mint();
   f.upstream.queue.push({ kind: 'json', hold: true });
   const body = message();
   const pending = f.send(k.token, body);
-  await until(() => f.upstream.calls.length === 1, 'reserved request');
-  const expected = (Buffer.byteLength(JSON.stringify(body)) + 4096) * 4000 + 64 * 10000;
+  await until(() => f.upstream.messages.length === 1, 'reserved request');
+  const expected = (Math.ceil(5000 * 1.1) + 1024) * 4000 + 64 * 10000;
   assert.equal(ledger(f)[0].status, 'reserved');
   assert.equal(ledger(f)[0].amount, expected);
   assert.equal(ledger(f)[0].reserved, expected);
@@ -279,7 +280,7 @@ acceptance('reservation equals byte bound at one-hour cache price plus capped ou
 
 acceptance('equality with a money cap is allowed but a one-nanodollar excess is refused', async t => {
   const f = await fixture(t, { PROXY_DAILY_CAP_USD: '10' }), k = await f.mint();
-  const reserve = (Buffer.byteLength(JSON.stringify(message())) + 4096) * 4000 + 64 * 10000;
+  const reserve = (Math.ceil(5000 * 1.1) + 1024) * 4000 + 64 * 10000;
   seed(f, k.key, (5e9 - reserve + 1) / 1e9);
   await refused(f, 'cap_student_usd', 429, () => f.send(k.token));
   f.app.store.chat.prepare('UPDATE proxy_ledger SET amount=amount-1, reserved=reserved-1').run();
@@ -298,7 +299,7 @@ acceptance('rotation, forget, restart and a new day cannot reset the activity ca
 
 acceptance('daily cap resets at Chicago midnight while activity spend remains', async t => {
   const f = await fixture(t), k = await f.mint();
-  seed(f, k.key, 1.49);
+  seed(f, k.key, 2.49);
   f.setTime('2026-11-03T05:59:59.999Z');
   await refused(f, 'cap_daily_usd', 429, () => f.send(k.token));
   f.advance(1);
@@ -306,8 +307,8 @@ acceptance('daily cap resets at Chicago midnight while activity spend remains', 
   const rows = ledger(f);
   assert.equal(rows[1].day, '2026-11-03');
   const status = await f.request('/api/keys', undefined, f.identity('synthetic-owner-a'));
-  assert.ok(status.body.usage.activity_usd >= 1.49);
-  assert.ok(status.body.usage.today_usd < 1.49);
+  assert.ok(status.body.usage.activity_usd >= 2.49);
+  assert.ok(status.body.usage.today_usd < 2.49);
 });
 
 acceptance('proxy and games budgets are independent in both directions', async t => {
@@ -331,7 +332,7 @@ acceptance('concurrent HTTP requests share atomic $150 reservations before any c
   for (let n = 0; n < 5; n++) f.upstream.queue.push({ kind: 'json', hold: true });
   let rejected = 0;
   const requests = keys.map(k => f.send(k.token).then(r => { if (r.status !== 200) rejected++; return r; }));
-  await until(() => rejected === 4 && f.upstream.calls.length === 1, 'four budget refusals');
+  await until(() => rejected === 4 && f.upstream.messages.length === 1, 'four budget refusals');
   assert.ok(ledger(f).reduce((total, row) => total + row.amount, 0) <= 150e9);
   f.upstream.release();
   const results = await Promise.all(requests);
@@ -343,6 +344,7 @@ acceptance('a read-only ledger refuses before calling upstream', async t => {
   const f = await fixture(t), k = await f.mint();
   f.app.store.chat.exec('PRAGMA query_only=ON');
   await refused(f, 'upstream_error', 503, () => f.send(k.token));
+  assert.equal(f.upstream.calls.length, 0, 'unwritable ledger must not even count upstream');
 });
 
 acceptance('rolling token rate limit counts count_tokens and resets only after 60 seconds', async t => {
@@ -359,7 +361,7 @@ acceptance('in-flight owner limit spans token rotation and releases after comple
   const f = await fixture(t, { PROXY_MAX_INFLIGHT: '1' }), k = await f.mint();
   f.upstream.queue.push({ kind: 'json', hold: true });
   const first = f.send(k.token);
-  await until(() => f.upstream.calls.length === 1, 'first in-flight call');
+  await until(() => f.upstream.messages.length === 1, 'first in-flight call');
   const rotated = await f.mint();
   const r = await refused(f, 'busy', 429, () => f.send(rotated.token));
   assert.ok(Number(r.headers.get('retry-after')) > 0);
@@ -371,7 +373,7 @@ acceptance('global in-flight limit applies across owners', async t => {
   const f = await fixture(t, { PROXY_GLOBAL_INFLIGHT: '1' }), a = await f.mint(), b = await f.mint('synthetic-owner-b');
   f.upstream.queue.push({ kind: 'json', hold: true });
   const first = f.send(a.token);
-  await until(() => f.upstream.calls.length === 1, 'global in-flight call');
+  await until(() => f.upstream.messages.length === 1, 'global in-flight call');
   await refused(f, 'busy', 429, () => f.send(b.token));
   f.upstream.release(); await first;
   assert.equal((await f.send(b.token)).status, 200);
@@ -435,7 +437,7 @@ for (const kind of ['error', 'disconnect', 'redirect']) {
     assert.equal(r.status, 502);
     assert.equal(r.body.error, 'upstream_error');
     assert.ok(!r.raw.includes(PROMPT) && !r.raw.includes(PRIVATE_ERROR));
-    assert.equal(f.upstream.calls.length, 1);
+    assert.equal(f.upstream.messages.length, 1);
     assert.equal(ledger(f)[0].status, 'unknown');
     assert.equal(ledger(f)[0].amount, ledger(f)[0].reserved);
     assert.equal((await f.send(k.token)).status, 200);
@@ -491,7 +493,7 @@ acceptance('client cancellation aborts upstream, preserves spend across restart 
   assert.equal(response.status, 200);
   const reader = response.body.getReader();
   await reader.read(); controller.abort(); await reader.cancel().catch(() => {});
-  await until(() => f.upstream.calls[0].closed && ledger(f)[0].status === 'unknown', 'upstream cancellation');
+  await until(() => f.upstream.messages[0].closed && ledger(f)[0].status === 'unknown', 'upstream cancellation');
   const reserved = ledger(f)[0].reserved;
   assert.equal(ledger(f)[0].amount, reserved);
   await f.restart();
@@ -506,7 +508,7 @@ acceptance('crash recovery preserves reservations as unknown and never replays u
   await f.restart();
   assert.equal(ledger(f)[0].status, 'unknown');
   assert.equal(ledger(f)[0].amount, 50000000);
-  assert.equal(f.upstream.calls.length, 0);
+  assert.equal(f.upstream.messages.length, 0);
 });
 
 acceptance('underestimated actual cost records full usage and persists a proxy-only budget hold', async t => {
@@ -568,7 +570,7 @@ acceptance('two independent database connections cannot race past the proxy tota
       headers: { 'content-type': 'application/json', 'x-api-key': keys[1].token }, body: JSON.stringify(message()) });
     return { status: response.status, body: await response.json() };
   })()].map(p => p.then(r => { if (r.status !== 200) rejected++; return r; }));
-  await until(() => rejected === 1 && f.upstream.calls.length === 1, 'atomic cross-connection refusal');
+  await until(() => rejected === 1 && f.upstream.messages.length === 1, 'atomic cross-connection refusal');
   assert.ok(ledger(f).reduce((total, row) => total + row.amount, 0) <= 150e9);
   f.upstream.release();
   const results = await Promise.all(jobs);
@@ -581,7 +583,7 @@ acceptance('outstanding reservations count against the same student activity cap
   seed(f, k.key, 4.97);
   f.upstream.queue.push({ kind: 'json', hold: true });
   const pending = f.send(k.token);
-  await until(() => f.upstream.calls.length === 1, 'student reservation');
+  await until(() => f.upstream.messages.length === 1, 'student reservation');
   await refused(f, 'cap_student_usd', 429, () => f.send(k.token));
   f.upstream.release(); assert.equal((await pending).status, 200);
 });
@@ -591,7 +593,7 @@ acceptance('settlement after midnight stays on the reservation day', async t => 
   f.setTime('2026-11-03T05:59:59.999Z');
   f.upstream.queue.push({ kind: 'json', hold: true });
   const pending = f.send(k.token);
-  await until(() => f.upstream.calls.length === 1, 'pre-midnight reservation');
+  await until(() => f.upstream.messages.length === 1, 'pre-midnight reservation');
   f.advance(1); f.upstream.release();
   assert.equal((await pending).status, 200);
   assert.equal(ledger(f)[0].day, '2026-11-02');
@@ -611,7 +613,7 @@ acceptance('complete streamed usage settles even if client cancels before the HT
   await reader.read();
   await until(() => ledger(f)[0].status === 'settled', 'complete stream usage before disconnect');
   controller.abort(); await reader.cancel().catch(() => {});
-  await until(() => f.upstream.calls[0].closed, 'upstream close after complete usage');
+  await until(() => f.upstream.messages[0].closed, 'upstream close after complete usage');
   assert.equal(ledger(f)[0].amount, 525000);
   assert.equal(ledger(f)[0].status, 'settled');
 });
@@ -627,7 +629,7 @@ acceptance('configured max_tokens cap is enforced independently of the tutor con
   const f = await fixture(t, { PROXY_MAX_TOKENS: '32', MODEL: 'claude-haiku-5-5' }), k = await f.mint();
   await refused(f, 'bad_request', 400, () => f.send(k.token, message({ max_tokens: 33 })));
   assert.equal((await f.send(k.token, message({ max_tokens: 32 }))).status, 200);
-  assert.equal(f.upstream.calls[0].body.model, MODEL);
+  assert.equal(f.upstream.messages[0].body.model, MODEL);
   await refused(f, 'model_not_allowed', 400, () => f.send(k.token, message({ model: 'claude-haiku-5-5', max_tokens: 32 })));
 });
 
@@ -636,7 +638,7 @@ acceptance('count_tokens applies the same model allow list and global in-flight 
   await refused(f, 'model_not_allowed', 400, () => f.send(a.token, count({ model: 'claude-haiku-5-5' }), '/proxy/v1/messages/count_tokens'));
   f.upstream.queue.push({ kind: 'json', hold: true });
   const first = f.send(a.token);
-  await until(() => f.upstream.calls.length === 1, 'active generation');
+  await until(() => f.upstream.messages.length === 1, 'active generation');
   await refused(f, 'busy', 429, () => f.send(b.token, count(), '/proxy/v1/messages/count_tokens'));
   f.upstream.release(); await first;
 });
@@ -659,4 +661,59 @@ acceptance('duplicate credential headers are rejected instead of combining token
       request.on('error', reject); request.end(JSON.stringify(message()));
     }));
   }
+});
+
+for (const path of ['/proxy/v1/messages?beta=true', '/proxy/v1/messages/count_tokens?beta=true']) {
+  acceptance(`official SDK beta query accepted exactly: ${path}`, async t => {
+    const f = await fixture(t), k = await f.mint();
+    const r = await f.send(k.token, path.includes('count_tokens') ? count() : message(), path);
+    assert.equal(r.status, 200);
+    assert.equal(f.upstream.calls.at(-1).path, path.slice('/proxy'.length));
+  });
+}
+
+acceptance('150000 counted input tokens with default 128000 output cap fit the fresh daily budget', async t => {
+  const f = await fixture(t), k = await f.mint();
+  f.upstream.countState.value = 150000;
+  f.upstream.queue.push({ kind: 'json', hold: true });
+  const body = message({ max_tokens: 128000, messages: [{ role: 'user', content: 'synthetic '.repeat(65000) }] });
+  const pending = f.send(k.token, body);
+  await until(() => f.upstream.messages.length === 1, 'large Claude Code request');
+  assert.equal(ledger(f)[0].reserved, 1944096000);
+  assert.ok(ledger(f)[0].reserved < 2.5e9);
+  assert.equal(f.upstream.calls[0].path, '/v1/messages/count_tokens');
+  assert.equal(f.upstream.calls[0].body.max_tokens, undefined);
+  assert.equal(f.upstream.calls[0].body.stream, undefined);
+  assert.deepEqual(f.upstream.calls[0].body.messages, body.messages);
+  f.upstream.release(); assert.equal((await pending).status, 200);
+});
+
+for (const value of [null, -1, 1.5, '100']) {
+  acceptance(`invalid upstream input count ${JSON.stringify(value)} cannot dispatch generation or charge`, async t => {
+    const f = await fixture(t), k = await f.mint();
+    f.upstream.countState.value = value;
+    await refused(f, 'upstream_error', 502, () => f.send(k.token));
+  });
+}
+
+acceptance('failed input count cannot dispatch generation or charge and releases the slot', async t => {
+  const f = await fixture(t, { PROXY_MAX_INFLIGHT: '1' }), k = await f.mint();
+  f.upstream.countState.error = true;
+  await refused(f, 'upstream_error', 502, () => f.send(k.token));
+  f.upstream.countState.error = false;
+  assert.equal((await f.send(k.token)).status, 200);
+});
+
+acceptance('revoking a token during input counting prevents generation after the count finishes', async t => {
+  const f = await fixture(t), k = await f.mint();
+  f.upstream.countState.hold = true;
+  const pending = f.send(k.token);
+  await until(() => f.upstream.countState.pending.length === 1, 'held count preflight');
+  await f.request('/api/keys/revoke', {}, f.identity('synthetic-owner-a'));
+  f.upstream.countState.pending.shift()();
+  const r = await pending;
+  assert.equal(r.status, 401);
+  assert.equal(r.body.error, 'invalid_token');
+  assert.equal(f.upstream.messages.length, 0);
+  assert.equal(ledger(f).length, 0);
 });

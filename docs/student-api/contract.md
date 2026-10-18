@@ -27,8 +27,9 @@ Approved: exact model `claude-sonnet-5-5`, $5 per student per activity, $150 tot
 The proposed stable activity id is `m7-sql-game-2026`. Rotation, logout, forget, day changes and server restarts must
 not reset activity spend. No game ledger entry contributes to proxy limits or vice versa.
 
-The following operational defaults are **proposed for P1 review**, not additional decisions by
-Vishal. They make the acceptance contract concrete and remain configurable in P2:
+The following operational defaults were reviewed by Claude, not decided by Vishal.
+Claude changed the daily default from $1.50 to $2.50 and the output cap from 4,096 to
+128,000 in the 2026-10-18 P1 review. They make the acceptance contract concrete and remain configurable in P2:
 
 | Environment setting | Proposed default | Meaning |
 | --- | --- | --- |
@@ -36,9 +37,9 @@ Vishal. They make the acceptance contract concrete and remain configurable in P2
 | `PROXY_ACTIVITY` | `m7-sql-game-2026` | Stable activity budget identity |
 | `PROXY_CLOSES_AT` | `2026-11-06T06:00:00Z` | Exclusive cutoff: end of Thu Nov 5 in America/Chicago |
 | `PROXY_STUDENT_CAP_USD` | `5` | Owner/activity cap, across all tokens |
-| `PROXY_DAILY_CAP_USD` | `1.5` | Owner/activity calendar day in America/Chicago |
+| `PROXY_DAILY_CAP_USD` | `2.5` | Owner/activity calendar day in America/Chicago |
 | `PROXY_TOTAL_CAP_USD` | `150` | Total proxy cap, independent of `BUDGET_TOTAL_USD` |
-| `PROXY_MAX_TOKENS` | `4096` | Reject larger output budgets; never silently clamp |
+| `PROXY_MAX_TOKENS` | `128000` | Reject larger output budgets; never silently clamp |
 | `PROXY_RPM` | `10` | Forwarded requests per token in a rolling 60 seconds |
 | `PROXY_MAX_INFLIGHT` | `2` | Active calls per owner/activity, across rotation |
 | `PROXY_GLOBAL_INFLIGHT` | `10` | Active proxy calls process-wide |
@@ -47,7 +48,7 @@ Vishal. They make the acceptance contract concrete and remain configurable in P2
 Cap overrides may lower approved limits for tests. Raising approved limits is an operator decision.
 Unknown models, invalid numbers/dates or unavailable pricing fail closed. The activity model list
 is fixed to Sonnet in this first contract. `MODEL` for the tutor cannot widen it. Input is bounded
-by 1 MiB raw body and 200,000 estimated tokens (UTF-8 body bytes + 4,096 scaffolding tokens).
+by 1 MiB raw body and 200,000 counted input tokens. The byte-based input estimate is retired.
 Refuse requests beyond either bound, including count requests, without forwarding. URLs, model
 names and upstream credentials cannot be selected through request fields or headers.
 
@@ -90,13 +91,13 @@ aggregate-only spend reporting through `server/proxy-admin.js` (no raw tokens or
 ## Proxy HTTP contract
 
 Base URL: `https://<course server>/proxy` (no appended `/v1`). Only these exact method/path pairs
-are allowed, with no query string or encoded alternate spelling:
+are allowed, either without a query or with exactly `?beta=true`, and no encoded alternate spelling:
 
 - `POST /proxy/v1/messages`
 - `POST /proxy/v1/messages/count_tokens`
 
 All other paths/methods under `/proxy` return 404 `endpoint_not_allowed`: batches, files, skills,
-models discovery, admin, GET messages, query suffixes, encoded separators and alternate hosts.
+models discovery, admin, GET messages, all other query suffixes, encoded separators and alternate hosts.
 There is no generic forwarding fallback. Additional Claude Code startup endpoints need evidence
 from P3 and a reviewed contract change; do not preemptively allow them.
 
@@ -163,7 +164,8 @@ upstream error messages or identity. Error responses are no-store and do not red
 | 504 | `upstream_timeout` | Timeout before stream starts |
 | 503 | `upstream_error` | Storage unavailable; no upstream request allowed |
 
-Refused requests don't call upstream or insert chargeable reservations. Accepted dispatches count
+Validation, authentication, rate and in-flight refusals never call upstream. Money/input-count
+refusals may follow a free count preflight but never dispatch generation or insert a chargeable reservation. Accepted dispatches count
 against rate even on failure. In-flight slots release on every completion/error/cancel path.
 
 ## Reserve-first accounting and failure rules
@@ -175,11 +177,29 @@ proxy pool, check all caps, and insert the reservation and metadata log before n
 Simultaneous connections must not over-reserve. Equality with a cap is allowed; greater is refused.
 Tag the day at reservation time so crossing midnight cannot move that charge to the next day.
 
-For messages, reserve `(UTF8_body_bytes + 4096) * highest_supported_input_price / 1e6 +
-max_tokens * output_price / 1e6`, rounded upward to nanodollars. Highest input price includes
-one-hour cache writes. Use the existing confirmed Sonnet table in `server/model.js`:
-input $2/M, output $10/M, 5-minute cache write $2.5/M, 1-hour cache write $4/M, cache read $0.2/M.
-These are the repository's bundled price reference, not a new P1 price verification.
+Claude's review replaces byte-as-token reservations with a free upstream count preflight.
+Validate auth, endpoint, body, model, tools, rate and in-flight limits first. Before counting,
+check that storage is writable and no cap/hold is already exhausted. Keep the request's
+in-flight slot during counting and generation. Construct the count body from the original
+model/messages/system/tools/tool_choice/thinking/output_config fields supported by count_tokens;
+never forward max_tokens or stream to the count endpoint. Preserve cache annotations within
+those fields. Strip generation-only top-level fields. A failed, timed-out, invalid or over-limit
+count fails closed: no generation, no charge. Count preflights consume one external-request rate
+slot, not a second slot in addition to their generation. Never log or persist the count body.
+
+Reserve `(ceil(counted_input_tokens * 1.10) + 1024) * highest_input_price / 1e6 +
+max_tokens * output_price / 1e6`, rounded upward to nanodollars. The 10% plus 1,024-token
+allowance guards the provider's documented estimation/scaffolding differences. Recheck money,
+expiry, revoke and close atomically after the count, before generation. The count is not an
+unconditional mathematical guarantee; retain the persistent hold if actual billing exceeds the
+reservation. Use the existing confirmed Sonnet price table in `server/model.js`: input $2/M,
+output $10/M, 5-minute cache write $2.5/M, 1-hour cache write $4/M, cache read $0.2/M.
+These prices match the current model overview; the highest input rate is $4/M.
+
+Acceptance: a request counted at 150,000 input tokens with max_tokens=128000 reserves
+`(165000+1024)*4/1e6 + 128000*10/1e6 = $1.944096`, below the fresh $2.50 daily cap
+and $5 activity cap. Its roughly 600 KB synthetic input fits the 1 MiB transport cap.
+
 Settle from nonstream `usage` or the final complete SSE usage: input/output plus cache reads,
 cache creation and its 5-minute/1-hour split. `message_start` input usage plus final
 `message_delta` cumulative output usage forms the stream usage; deltas are not added as if
@@ -253,32 +273,40 @@ P3/deployment, Claude must read back the actual host login configuration: `/prox
 excluded, `/keys/` and `/api/keys*` protected, Illinois tenant enforced and identity headers replaced.
 P1 does not inspect or alter Azure, contact students, read real records, deploy, or make live calls.
 
-## P1 verification evidence (2026-10-18)
+## P1 review compatibility evidence (2026-10-18)
 
-| Required suite | Passed | Failed | Skipped / pending |
-| --- | ---: | ---: | --- |
-| `cd tests/db && npm test` | 87 | 0 | None |
-| `cd tests/ui && npx playwright test` | 83 | 0 | 3 existing conditional skips |
-| `cd tests/ui && DB_SITE=../../site npx playwright test` | 81 | 0 | 5 existing conditional skips |
-| `node --test tests/server/*.test.js` | 54 | 0 | 88 P1 acceptance TODO cases |
+Claude's decisions: daily default **$2.50**, output cap **128,000**, only the literal beta query
+allowed, and counted-input preflight replaces the byte estimate. These are not Vishal decisions.
 
-The 54 server passes comprise 49 unchanged pilot checks and 5 new fake-service/network-safety
-checks. UI skips are the existing desktop/mobile applicability rules (mobile tool handoff,
-desktop keyboard run and desktop collapse control), plus both stub-only cancellation cases in
-the real-engine run. No existing test was modified or newly skipped.
+- [Current Claude Code environment reference](https://code.claude.com/docs/en/env-vars) says
+  `CLAUDE_CODE_MAX_OUTPUT_TOKENS` controls most requests; defaults/caps vary by model. The
+  fallback for an unrecognized model is 32,000 with a 128,000 cap. The docs do not promise that
+  lowering this variable covers every request, so a 4,096 proxy cap is not compatible by assumption.
+- [Current Sonnet 5.5 model limits](https://platform.claude.com/docs/en/models/sonnet-5-5/overview)
+  document 128K maximum output. The proxy accepts this full range, including default clients,
+  without claiming an undocumented universal Claude Code default. Optional
+  `CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000` can lower most output reservations, but is not required.
+- [Official TypeScript beta messages source](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/beta/messages/messages.ts)
+  sends `/v1/messages?beta=true` and `/v1/messages/count_tokens?beta=true`. Both literal query
+  variants are allowed and preserved. Other queries, duplicate beta parameters, encodings and
+  extra parameters remain refused. These facts were read from the current official source.
+- [Token counting guide](https://platform.claude.com/docs/en/build-with-claude/token-counting)
+  documents free counting, including images and documents, and cautions that it is an estimate.
+  Preflight counts all supported input content and fails closed; no byte/4 heuristic is used.
 
-The separate strict proxy run executed all 88 acceptance cases: 1 passed and 87 failed as expected
-against the unchanged pilot. The passing case is `unprotected identity headers and join-code
-sessions cannot issue course keys`, which the pilot already enforces. Failures below are missing
-proxy/key-route behavior, not evidence of completed proxy features. The regression server run
-reports these 88 cases as TODO; its passing checks are separate.
+The reviewed acceptance suite adds the 150,000-token/$1.944096 reservation case, both SDK beta
+paths, over-cap output refusal and refusal of every other query. P1 remains pending implementation;
+P2 removes TODO status and makes the complete strict suite pass before reporting green.
 
-Deferred to P2: production implementation and making all strict acceptance cases pass. Deferred
-to P3/operator review: actual SDK/Claude Code runs and live host login-exclusion verification.
-No real provider API call, student record access, deployment or existing game change occurred.
+## Revised P1 verification (2026-10-18)
+
+Database: 87 passed. Browser stub: 83 passed, 3 existing skips. Browser real engine: 81 passed,
+5 existing skips. Server: 54 passed, 100 acceptance TODOs, zero regression failures. Strict
+acceptance: 1 passed (the existing untrusted-identity refusal) and 99 expected failures because
+the proxy and key routes do not exist yet. All tests use temporary synthetic data and loopback.
 
 <details>
-<summary>All 87 strict acceptance failures, by test name</summary>
+<summary>All 99 expected strict P1 failures by name</summary>
 
 - `proxy acceptance: create shows token once, stores only its hash and lists metadata without secrets`
 - `proxy acceptance: rotation uses new entropy, revokes old token and keeps a stable owner`
@@ -300,6 +328,9 @@ No real provider API call, student record access, deployment or existing game ch
 - `proxy acceptance: endpoint allow list refuses POST /proxy/v1/admin/api_keys`
 - `proxy acceptance: endpoint allow list refuses GET /proxy/v1/models`
 - `proxy acceptance: endpoint allow list refuses POST /proxy/v1/messages?extra=1`
+- `proxy acceptance: endpoint allow list refuses POST /proxy/v1/messages?beta=false`
+- `proxy acceptance: endpoint allow list refuses POST /proxy/v1/messages?beta=true&extra=1`
+- `proxy acceptance: endpoint allow list refuses POST /proxy/v1/messages?beta=true&beta=true`
 - `proxy acceptance: endpoint allow list refuses POST /proxy/v1/%6dessages`
 - `proxy acceptance: endpoint allow list refuses POST /proxy/v1/messages%2fbatches`
 - `proxy acceptance: endpoint allow list refuses POST /proxy/https://other.invalid/v1/messages`
@@ -311,7 +342,7 @@ No real provider API call, student record access, deployment or existing game ch
 - `proxy acceptance: model allow list refuses CLAUDE-SONNET-5-5 and names the permitted Sonnet`
 - `proxy acceptance: max_tokens cap rejects 0 instead of silently changing it`
 - `proxy acceptance: max_tokens cap rejects -1 instead of silently changing it`
-- `proxy acceptance: max_tokens cap rejects 4097 instead of silently changing it`
+- `proxy acceptance: max_tokens cap rejects 128001 instead of silently changing it`
 - `proxy acceptance: max_tokens cap rejects 1.5 instead of silently changing it`
 - `proxy acceptance: max_tokens cap rejects "64" instead of silently changing it`
 - `proxy acceptance: max_tokens cap rejects null instead of silently changing it`
@@ -329,7 +360,7 @@ No real provider API call, student record access, deployment or existing game ch
 - `proxy acceptance: $5 student activity cap includes worst-case reservation before any upstream dispatch`
 - `proxy acceptance: daily cap includes worst-case reservation before any upstream dispatch`
 - `proxy acceptance: $150 total cap includes worst-case reservation before any upstream dispatch`
-- `proxy acceptance: reservation equals byte bound at one-hour cache price plus capped output cost`
+- `proxy acceptance: reservation uses counted input plus safety margin at one-hour cache price and output cap`
 - `proxy acceptance: equality with a money cap is allowed but a one-nanodollar excess is refused`
 - `proxy acceptance: rotation, forget, restart and a new day cannot reset the activity cap`
 - `proxy acceptance: daily cap resets at Chicago midnight while activity spend remains`
@@ -367,5 +398,14 @@ No real provider API call, student record access, deployment or existing game ch
 - `proxy acceptance: configured max_tokens cap is enforced independently of the tutor configuration`
 - `proxy acceptance: count_tokens applies the same model allow list and global in-flight checks`
 - `proxy acceptance: duplicate credential headers are rejected instead of combining token values`
+- `proxy acceptance: official SDK beta query accepted exactly: /proxy/v1/messages?beta=true`
+- `proxy acceptance: official SDK beta query accepted exactly: /proxy/v1/messages/count_tokens?beta=true`
+- `proxy acceptance: 150000 counted input tokens with default 128000 output cap fit the fresh daily budget`
+- `proxy acceptance: invalid upstream input count null cannot dispatch generation or charge`
+- `proxy acceptance: invalid upstream input count -1 cannot dispatch generation or charge`
+- `proxy acceptance: invalid upstream input count 1.5 cannot dispatch generation or charge`
+- `proxy acceptance: invalid upstream input count "100" cannot dispatch generation or charge`
+- `proxy acceptance: failed input count cannot dispatch generation or charge and releases the slot`
+- `proxy acceptance: revoking a token during input counting prevents generation after the count finishes`
 
 </details>
