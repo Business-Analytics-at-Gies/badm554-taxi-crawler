@@ -44,7 +44,6 @@ const CITATIONS = {
   char_location: ['cited_text', 'document_index', 'document_title', 'start_char_index', 'end_char_index'],
   page_location: ['cited_text', 'document_index', 'document_title', 'start_page_number', 'end_page_number'],
   content_block_location: ['cited_text', 'document_index', 'document_title', 'start_block_index', 'end_block_index'],
-  web_search_result_location: ['cited_text', 'encrypted_index', 'title', 'url'],
   search_result_location: ['cited_text', 'search_result_index', 'source', 'title', 'start_block_index', 'end_block_index'],
 };
 function string(value, path, reject, nullable = false) {

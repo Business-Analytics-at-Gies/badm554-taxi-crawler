@@ -797,10 +797,11 @@ only oversized_image=downsize/error, both handled by counting. Document/search c
 allows only enabled:boolean. Context/title are nullable strings. Tool is_error is boolean;
 caller allows only type=direct, never server-tool provenance. Toolset controls are not admitted.
 
-Text citation arrays allow only the five documented location types and their exact keys:
+Text citation arrays allow only four course-enabled location types and their exact keys:
 type plus cited_text, and the applicable document_index/document_title with start/end character,
-page or block indices; web_search_result_location uses encrypted_index/title/url;
-search_result_location uses search_result_index/source/title/start_block_index/end_block_index.
+page or block indices; search_result_location uses
+search_result_index/source/title/start_block_index/end_block_index. The web_search_result_location
+type is refused entirely under Claude's round 6 decision below.
 Indices must be nonnegative safe integers and text fields must have their documented string
 or nullable-title form. These are input attribution, not tool execution or routing controls.
 Tool input is an explicitly opaque JSON payload: names such as model or type inside client
@@ -831,3 +832,17 @@ distinction prevents treating an SDK's ability to serialize something as proof i
 All three inline-tool reproductions and unknown block/key/nested cases now refuse before
 counting on both endpoints. The older acceptance test that admitted custom inline additions
 is superseded by this stricter decision and now asserts refusal for hosted and custom forms.
+
+## Claude's P3 round 6 citation decision (2026-10-18)
+
+Refuse web_search_result_location entirely, whether encrypted_index is a string, a number or
+any other value. Hosted web search is disabled in this proxy, so this citation type cannot
+arise legitimately within the permitted activity. This is Claude's decision, not a new
+decision by Vishal. It supersedes the round 5 admission of this type; it does not redefine the
+provider's string encrypted_index as numeric.
+
+Both Messages and count_tokens return the existing fixed unsupported_request error before
+upstream counting, reservation or generation. No citation text, index or URL is echoed or
+logged. The four retained types are char_location, page_location, content_block_location and
+search_result_location, with their existing exact key lists and nonnegative safe-integer
+numeric indices. Their accepted payloads still pass unchanged through counting and generation.
