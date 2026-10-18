@@ -85,6 +85,11 @@ covers Claude Code only, not the SDK).
 | The proxy changes requests or answers | Pass-through only: the server reads the model, `max_tokens` and the final usage, and changes nothing else. |
 | Students' data leaves the university | It goes to Anthropic's API, as the tutor's traffic does. Vishal extended his named exception to this proxy on 2026-10-18. The setup page tells students. The server stores no prompt or answer text. |
 
+**Claude Code and "Sonnet only":** Claude Code sends some background work to a Haiku model by
+default, which the allow list refuses. The setup page gives the environment setting that points
+Claude Code's small/fast model at Sonnet too; the exact variable is confirmed against the current
+Claude Code docs during the build, and a test proves Claude Code runs with Sonnet only.
+
 ## Build and tests
 
 - Codex builds it on its own branch, after The Rerun ships (Fri 10-23).
