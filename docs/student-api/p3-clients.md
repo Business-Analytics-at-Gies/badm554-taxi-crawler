@@ -6,13 +6,13 @@ Agent: crew-codex-proxy
 Initial proxy: approved P2 commit `d7b2f07ce7308418da3bd750b92a6673999510d6`
 First resumed proxy: `7a6726c` plus the exact client-marker addition subsequently committed as `b1934c6`
 Exact-setup baseline proxy: `b1934c6ad5de4fbda339e61437f9bdf5e9889714`
-Role-review baseline proxy: `b376599` plus the documented system-role admission below
-Status: **PASS against the loopback fake: both official SDKs and the full Claude Code matrix.**
-The newly authorized role-value diagnostic identified `system`; current API schema, official
-SDK types and the dedicated guide document it. Only that missing role was added. Claude Code
-2.1.302 then passed plain output, streaming, a scratch-file read, the expected refused model,
-and a background/small-model attempt with the exact setup-page environment. No new unexpected
-refusal appeared. No real API call or live smoke test occurred; this is not release approval.
+Round 5 baseline proxy: `3c6597c` plus the role/content allow lists below
+Status: **PASS against the loopback fake after the round 5 content-policy fix.**
+Both pinned SDK matrices and the full Claude Code matrix were rerun once against the stricter
+policy. System content is text only; inline tool changes and unknown blocks/keys are refused
+before counting. All requested client scenarios passed, including expected model refusals.
+No new unexpected refusal appeared. No real API call or live smoke test occurred; this is not
+release approval. Earlier trials and their blockers are retained below as history.
 
 ## Versions and isolation
 
@@ -773,3 +773,139 @@ were no failures. Independent code review found no expansion beyond the document
 accounting gap. The original SDK passes remain recorded above; those clients were not rerun
 in this follow-up. No live smoke call, deployment or real-provider compatibility check was
 performed. P3's fake-upstream client matrix is complete and awaits Claude's review.
+
+
+## P3 policy review round 5: closed content policy and one matrix rerun (2026-10-18)
+
+The finding was confirmed: admitting system as a role did not constrain its content, and an
+older acceptance test explicitly allowed a custom inline tool definition. The new policy
+checks content by role on both endpoints before counting. System accepts a string or text
+blocks with cache_control; user accepts strings or text/image/document/tool_result; assistant
+accepts strings or text/tool_use/thinking/redacted_thinking. Document and tool-result payloads
+have closed nested type/key lists too. Unknown block types and unknown block/source/cache/
+citation/caller keys are refused with the existing fixed unsupported_request error.
+
+The three reproductions—new custom definition, reference to a declared tool, and removal of a
+declared tool—now refuse on both endpoints before any count, generation or ledger row. Tests
+also cover all disallowed role/block combinations, unknown keys, nested tool changes, malformed
+structures and unchanged accepted payloads. Opaque client-tool arguments remain data. The
+obsolete hosted-only inline-addition check was removed, and the earlier test was strengthened
+to refuse hosted and custom additions. No review note file is included in the commit.
+
+Claude's decision and exact block/source/citation boundaries are recorded in
+[contract.md](contract.md#claudes-p3-round-5-content-policy-decision-2026-10-18). Sources checked:
+the [current API reference](https://platform.claude.com/docs/en/api/messages/create), official
+[standard](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/messages/messages.ts)
+and [beta SDK types](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/beta/messages/messages.ts),
+and the [system/tool-change guide](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages).
+URL/file media sources remain outside this policy because the
+[counting guide](https://platform.claude.com/docs/en/build-with-claude/token-counting) says they
+cannot be counted. No new header, endpoint, query, model, server tool or billed loop was added.
+
+### One fresh rerun per client matrix
+
+The same installed, pinned SDK versions were reused from scratch installations. Each SDK
+matrix was invoked once, then Claude Code's five-scenario matrix was invoked once. No targeted
+client retry or extra diagnostic invocation was needed. All clients, the proxy and fake were
+under the OS loopback-only sandbox. The fake again rejected the manufactured real-looking
+credential; both destination guard probes failed before a client ran. Provider credentials
+were synthetic, and the transport seam could reach only the loopback fake, with redirects off.
+
+SDK subprocesses inherited only scratch HOME, PATH and TMPDIR; API settings came from the
+local harness. Every Claude Code scenario used a fresh scratch HOME, --no-session-persistence,
+and exactly the same seven setup-page exports shown in the preceding completed matrix,
+including Sonnet main/small settings, CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000 and
+CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1. An environment-key comparison against the setup page
+passed. Claude Code's version was rechecked as 2.1.302 without creating an extra session.
+
+| Client | Plain | Stream | Client tool round trip | count_tokens | Refused model | Background/small model |
+| --- | --- | --- | --- | --- | --- | --- |
+| Python SDK 1.15.0 | Pass | Pass, final usage checked | Pass, local sum result returned and follow-up completed | Stable and beta passed | Expected 400 BadRequestError, model_not_allowed with fixed allowed-Sonnet message | Not applicable |
+| TypeScript SDK 0.135.0 | Pass | Pass, final usage checked | Pass, local sum result returned and follow-up completed | Stable and beta passed | Expected 400 BadRequestError, model_not_allowed with fixed allowed-Sonnet message | Not applicable |
+| Claude Code 2.1.302 | Exit 0, exact acknowledgment | Exit 0, partial-event sequence completed | Exit 0; successful Read result contained the scratch fixture marker, retained only as a boolean | No direct client count call; proxy counted each accepted generation | Expected exit 1 and fixed allowed-Sonnet message for --model claude-haiku-5-5 | Exit 0; Agent model=haiku/run_in_background=true yielded a separate Sonnet child request and normal main continuations |
+
+All accepted generation requests used claude-sonnet-5-5. SDK output caps were 64 and Claude
+Code caps were 32000. Claude Code used stream=true on every message, including plain output;
+the explicit streaming scenario emitted ten client JSON events, with message_start,
+content_block_delta, message_delta and message_stop. None timed out or asked for login.
+
+Actual observed request forms, recorded as fixed role/type labels only:
+
+| Client | Observed forms |
+| --- | --- |
+| Python and TypeScript | user:string; assistant:tool_use; user:tool_result; tool_result:string |
+| Claude Code | user:text; top_system:text; system:string; assistant:text/tool_use; user:tool_result; tool_result:string/text |
+
+Image, document, thinking, redacted_thinking and search_result forms were not sent in this
+matrix. They have current schema support and positive synthetic HTTP coverage; the report
+does not claim real-client coverage for them or real-provider validation. The fake chose the
+tool calls and responses. The background check proves client routing through the small-model
+alias, not model reasoning or a background file read.
+
+### Every proxy request in the rerun
+
+The beta aliases below preserve the exact received order. A dash means no beta header.
+
+```text
+B1: token-counting-2024-11-01
+B2: claude-code-20250219,interleaved-thinking-2025-05-14,effort-2025-11-24
+B3: interleaved-thinking-2025-05-14,claude-code-20250219,effort-2025-11-24
+```
+
+| # | Phase | Method | Path | Query | Model | Beta | Status |
+| --- | --- | --- | --- | --- | --- | --- | ---: |
+| 1 | python-plain | POST | `/proxy/v1/messages` | `` | claude-sonnet-5-5 | — | 200 |
+| 2 | python-stream | POST | `/proxy/v1/messages` | `` | claude-sonnet-5-5 | — | 200 |
+| 3 | python-tool | POST | `/proxy/v1/messages` | `` | claude-sonnet-5-5 | — | 200 |
+| 4 | python-tool | POST | `/proxy/v1/messages` | `` | claude-sonnet-5-5 | — | 200 |
+| 5 | python-count | POST | `/proxy/v1/messages/count_tokens` | `` | claude-sonnet-5-5 | — | 200 |
+| 6 | python-count | POST | `/proxy/v1/messages/count_tokens` | `?beta=true` | claude-sonnet-5-5 | B1 | 200 |
+| 7 | python-refused-model | POST | `/proxy/v1/messages` | `` | claude-haiku-5-5 | — | 400 |
+| 8 | typescript-plain | POST | `/proxy/v1/messages` | `` | claude-sonnet-5-5 | — | 200 |
+| 9 | typescript-stream | POST | `/proxy/v1/messages` | `` | claude-sonnet-5-5 | — | 200 |
+| 10 | typescript-tool | POST | `/proxy/v1/messages` | `` | claude-sonnet-5-5 | — | 200 |
+| 11 | typescript-tool | POST | `/proxy/v1/messages` | `` | claude-sonnet-5-5 | — | 200 |
+| 12 | typescript-count | POST | `/proxy/v1/messages/count_tokens` | `` | claude-sonnet-5-5 | — | 200 |
+| 13 | typescript-count | POST | `/proxy/v1/messages/count_tokens` | `?beta=true` | claude-sonnet-5-5 | B1 | 200 |
+| 14 | typescript-refused-model | POST | `/proxy/v1/messages` | `` | claude-haiku-5-5 | — | 400 |
+| 15 | claude-plain | HEAD | `/proxy/api/hello` | `` | none | — | 401 |
+| 16 | claude-plain | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B2 | 200 |
+| 17 | claude-streaming | HEAD | `/proxy/api/hello` | `` | none | — | 401 |
+| 18 | claude-streaming | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B2 | 200 |
+| 19 | claude-tool | HEAD | `/proxy/api/hello` | `` | none | — | 401 |
+| 20 | claude-tool | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B2 | 200 |
+| 21 | claude-tool | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B2 | 200 |
+| 22 | claude-refused-model | HEAD | `/proxy/api/hello` | `` | none | — | 401 |
+| 23 | claude-refused-model | POST | `/proxy/v1/messages` | `?beta=true` | claude-haiku-5-5 | B3 | 400 |
+| 24 | claude-background | HEAD | `/proxy/api/hello` | `` | none | — | 401 |
+| 25 | claude-background | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B2 | 200 |
+| 26 | claude-background | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B2 | 200 |
+| 27 | claude-background | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B2 | 200 |
+| 28 | claude-background | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B2 | 200 |
+
+All POSTs used API version 2023-06-01. Every HEAD had no body/model/version/beta and no query;
+its 401 remained tolerated by Claude Code, without admitting a new hello endpoint. The three
+model refusals did not reach the fake or create ledger entries. There were no policy refusals.
+
+The fake recorded 36 provider requests: 16 automatic counts, 16 generations and four direct
+SDK counts. Provider paths were only /v1/messages and /v1/messages/count_tokens with the same
+literal query as the corresponding accepted client call. Models were all Sonnet, and beta
+values passed unchanged. All 20 ledger rows settled: 16 generation charges of $0.0004 and
+four zero-dollar direct counts, total $0.0064. Each SDK generation reserved $0.026736 and each
+Claude Code generation reserved $0.346096. No unknown/reserved rows or holds remained.
+
+### Verification and shutdown
+
+The new content tests initially had 12 passes and 66 failures against the old policy; all 78
+passed after the fix. Full required suites: server 556 passed; database 87 passed; browser on
+PORT=44185 83 passed with 3 existing conditional skips; browser against site/ on PORT=44186
+81 passed with 5 existing conditional skips. There were no failures. Independent code review
+found no content-admission or accounting bypass.
+
+No prompt, answer, tool argument or tool-result text was saved in diagnostic artifacts. Tool
+outlines retain only name/type fields; the additional observed-content list contains fixed
+type labels only. A scan of 105 scratch client-state/database files found no synthetic prompt,
+answer or fixture markers. The proxy and fake were shut down and both ports were confirmed
+closed. The actual clients were not invoked again after the single rerun. No real API call,
+live smoke, deployment, merge or PR occurred. This closes the reported policy finding locally
+and awaits Claude's review.

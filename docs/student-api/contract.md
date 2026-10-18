@@ -120,8 +120,9 @@ Only ordinary client-defined tools are allowed (untyped or `type:"custom"`, incl
 and tool-result message content). Deny every provider tool type, not just current version strings:
 web search, web fetch, code execution, computer/browser tools, hosted toolsets and unknown
 non-custom `type` values. Refuse every unlisted top-level field, including `toolsets`, `mcp_servers`, and `container`
-even when empty, with the fixed `unsupported_request` error. Hosted definitions in allowed
-`tools`/inline additions still return `tools_not_allowed`. Don't disable local Claude Code file/shell tools.
+even when empty, with the fixed `unsupported_request` error. Hosted definitions in the top-level
+`tools` array return `tools_not_allowed`; every inline tool addition/removal now returns
+`unsupported_request` under the role/content policy below. Don't disable local Claude Code file/shell tools.
 
 Preserve accepted JSON bytes, messages, system, thinking, tool schemas, cache controls and stream
 flags. Strip the course credential, cookie, identity, forwarding and hop-by-hop headers; construct
@@ -479,7 +480,7 @@ HTTP400 `{error:"unsupported_request",message:"This request uses an option that 
 | `model` | Both | Exactly the priced Sonnet id; no client-selected routing. |
 | `messages` | Both | Input is counted first; message objects contain only user/assistant/system `role` and `content`. Local tool history remains input, not a new server attempt. |
 | `system` | Both | Counted input; cannot override routing or output cap. |
-| `tools` | Both | Only client tools; definitions and inline additions remain policed. Execution requires a new separately checked client call. |
+| `tools` | Both | Only client-tool definitions in this top-level array; inline additions/removals are refused. Execution requires a new separately checked client call. |
 | `tool_choice` | Both | Selects among those client tools in the same bounded generation; no server tool execution. |
 | `thinking` | Both | Only adaptive/enabled/disabled, recognized display values, and bounded enabled budget; thinking is included in billed output and max_tokens. No other nested keys. |
 | `cache_control` | Both | Only ephemeral 5m/1h; highest-input reservation covers both write rates, settlement includes cache split/read counters. |
@@ -754,3 +755,79 @@ model overrides and every other extra key remain refused. Undocumented roles, ca
 and malformed role values remain refused before upstream counting. The four previously
 refused experimental beta values remain refused. No prompt or answer is captured; the
 temporary harness's separately authorized exception records message role strings only.
+
+## Claude's P3 round 5 content-policy decision (2026-10-18)
+
+The system-role admission does not admit every block the wider API can serialize. Apply the
+following closed content policy on both endpoints before counting, rate admission, reservation
+or generation. This is Claude's decision following review round 5, not a new decision by Vishal.
+Every unknown block type or block key receives the fixed unsupported_request error, without
+echoing content. The same policy covers the top-level system field. Accepted bytes are unchanged.
+
+| Role/location | Allowed content | Justification |
+| --- | --- | --- |
+| system, top-level system | String, or text blocks with optional cache_control | Counted instructions only. No inline tool changes, citations, per-turn controls or message-level output settings. |
+| user | String, or text, image, document, tool_result blocks | Ordinary counted input, including results from locally executed client tools. |
+| assistant | String, or text, tool_use, thinking, redacted_thinking blocks | Prior conversation/output history; does not execute a server tool or add another billed attempt. Thinking/signatures are passed unchanged. |
+| tool_result.content | String, or text, image, document, search_result blocks | Documented client-result data. Nested tool calls/results, tool references, browser state and all other blocks are refused. |
+| document source with type content | String, or text/image blocks | Documented custom-document input, counted with the surrounding request. |
+| search_result.content | Text-block array | Documented source material inside a client result, not a server-side search operation. |
+
+The complete allowed block keys are:
+
+| Block | Keys |
+| --- | --- |
+| system text | type, text, cache_control |
+| other text | type, text, cache_control, citations |
+| image | type, source, cache_control, transformations |
+| document | type, source, cache_control, citations, context, title |
+| tool_use | type, id, name, input, cache_control, caller |
+| tool_result | type, tool_use_id, content, is_error, cache_control |
+| thinking | type, thinking, signature |
+| redacted_thinking | type, data |
+| nested search_result | type, source, title, content, cache_control, citations |
+
+Nested controls are closed too. Cache objects allow only type=ephemeral and optional 5m/1h
+ttl. Image sources allow only base64 type/data/media_type with the four documented image
+media types. Document sources allow base64 PDF or plain text type/data/media_type, or
+type=content with content as above. URL/file sources are refused because the
+[token-counting guide](https://platform.claude.com/docs/en/build-with-claude/token-counting)
+explicitly excludes them; the proxy must count before reserving. Image transformations allow
+only oversized_image=downsize/error, both handled by counting. Document/search citation config
+allows only enabled:boolean. Context/title are nullable strings. Tool is_error is boolean;
+caller allows only type=direct, never server-tool provenance. Toolset controls are not admitted.
+
+Text citation arrays allow only the five documented location types and their exact keys:
+type plus cited_text, and the applicable document_index/document_title with start/end character,
+page or block indices; web_search_result_location uses encrypted_index/title/url;
+search_result_location uses search_result_index/source/title/start_block_index/end_block_index.
+Indices must be nonnegative safe integers and text fields must have their documented string
+or nullable-title form. These are input attribution, not tool execution or routing controls.
+Tool input is an explicitly opaque JSON payload: names such as model or type inside client
+arguments are data and do not become proxy controls or content blocks.
+
+Checked the [current Messages reference](https://platform.claude.com/docs/en/api/messages/create)
+and the official SDK's
+[standard block types](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/messages/messages.ts)
+and [beta block types](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/beta/messages/messages.ts)
+on 2026-10-18. Those schemas establish the block/source/citation key lists above. The
+[system-message/tool-change guide](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages)
+documents inline tool changes as separate capabilities; they are outside this course policy,
+even if their separate beta header is absent. The pricing assessment is that the admitted
+forms remain input/history counted by the same upstream count and settled at the existing
+token/cache rates; none changes model, output allowance or billed attempt count.
+
+One fresh matrix rerun observed the following actual client traffic, retaining only fixed
+type labels and sanitized metadata, not text:
+
+| Client | Observed content |
+| --- | --- |
+| Python 1.15.0 and TypeScript 0.135.0 | User strings, assistant tool_use, user tool_result containing a string. |
+| Claude Code 2.1.302 | User text, top-level system text, system-role strings, assistant text/tool_use, user tool_result containing string or text blocks. |
+
+The matrix did not send image, document, thinking, redacted_thinking or search_result inputs;
+those explicitly allowed forms have schema support and positive synthetic HTTP tests. This
+distinction prevents treating an SDK's ability to serialize something as proof it was exercised.
+All three inline-tool reproductions and unknown block/key/nested cases now refuse before
+counting on both endpoints. The older acceptance test that admitted custom inline additions
+is superseded by this stricter decision and now asserts refusal for hosted and custom forms.

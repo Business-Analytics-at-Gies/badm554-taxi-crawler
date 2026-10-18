@@ -26,6 +26,116 @@ function cache(value, path, reject) {
   if (value.type !== 'ephemeral') fail(reject, field(path, 'type'), value.type, 'cache_type');
   if (value.ttl !== undefined && !['5m', '1h'].includes(value.ttl)) fail(reject, field(path, 'ttl'), value.ttl, 'cache_ttl');
 }
+const CONTENT = {
+  system: ['text'], user: ['text', 'image', 'document', 'tool_result'],
+  assistant: ['text', 'tool_use', 'thinking', 'redacted_thinking'],
+  document: ['text', 'image'], result: ['text', 'image', 'document', 'search_result'], search: ['text'],
+};
+const BLOCK_KEYS = {
+  text: ['type', 'text', 'cache_control', 'citations'],
+  image: ['type', 'source', 'cache_control', 'transformations'],
+  document: ['type', 'source', 'cache_control', 'citations', 'context', 'title'],
+  tool_use: ['type', 'id', 'name', 'input', 'cache_control', 'caller'],
+  tool_result: ['type', 'tool_use_id', 'content', 'is_error', 'cache_control'],
+  thinking: ['type', 'thinking', 'signature'], redacted_thinking: ['type', 'data'],
+  search_result: ['type', 'source', 'title', 'content', 'cache_control', 'citations'],
+};
+const CITATIONS = {
+  char_location: ['cited_text', 'document_index', 'document_title', 'start_char_index', 'end_char_index'],
+  page_location: ['cited_text', 'document_index', 'document_title', 'start_page_number', 'end_page_number'],
+  content_block_location: ['cited_text', 'document_index', 'document_title', 'start_block_index', 'end_block_index'],
+  web_search_result_location: ['cited_text', 'encrypted_index', 'title', 'url'],
+  search_result_location: ['cited_text', 'search_result_index', 'source', 'title', 'start_block_index', 'end_block_index'],
+};
+function string(value, path, reject, nullable = false) {
+  if (typeof value !== 'string' && !(nullable && value === null)) fail(reject, path, value, 'string');
+}
+function citationConfig(value, path, reject) {
+  if (value == null) return;
+  keys(value, ['enabled'], path, reject);
+  if (value.enabled !== undefined && typeof value.enabled !== 'boolean') fail(reject, `${path}.enabled`, value.enabled, 'boolean');
+}
+function citations(value, path, reject) {
+  if (value == null) return;
+  if (!Array.isArray(value)) fail(reject, path, value, 'citations_array');
+  for (const [index, citation] of value.entries()) {
+    const at = `${path}[${index}]`;
+    if (!object(citation)) fail(reject, at, citation, 'object');
+    if (typeof citation.type !== 'string' || !Object.hasOwn(CITATIONS, citation.type)) fail(reject, `${at}.type`, citation.type, 'citation_type');
+    keys(citation, ['type', ...CITATIONS[citation.type]], at, reject);
+    for (const name of CITATIONS[citation.type]) {
+      const v = citation[name];
+      if (name.endsWith('_index') || name.endsWith('_number')) {
+        if (!Number.isSafeInteger(v) || v < 0) fail(reject, field(at, name), v, 'nonnegative_integer');
+      } else string(v, field(at, name), reject, name === 'document_title' || name === 'title');
+    }
+  }
+}
+function source(value, kind, path, reject) {
+  if (!object(value)) fail(reject, path, value, 'object');
+  if (value.type === 'base64' || kind === 'document' && value.type === 'text') {
+    keys(value, ['type', 'data', 'media_type'], path, reject);
+    const media = kind === 'image' ? ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] : [value.type === 'base64' ? 'application/pdf' : 'text/plain'];
+    if (!media.includes(value.media_type)) fail(reject, `${path}.media_type`, value.media_type, 'source_media_type');
+    string(value.data, `${path}.data`, reject);
+  } else if (kind === 'document' && value.type === 'content') {
+    keys(value, ['type', 'content'], path, reject);
+    content(value.content, 'document', `${path}.content`, reject);
+  } else fail(reject, `${path}.type`, value.type, 'source_type'); // URL/file inputs cannot be counted by this proxy's count API.
+}
+function content(value, role, path, reject, allowString = true) {
+  if (allowString && typeof value === 'string') return;
+  if (!Array.isArray(value)) fail(reject, path, value, 'content_array_or_string');
+  for (const [index, block] of value.entries()) {
+    const at = `${path}[${index}]`;
+    if (!object(block)) fail(reject, at, block, 'object');
+    if (!CONTENT[role].includes(block.type)) fail(reject, `${at}.type`, block.type, 'content_block_type');
+    keys(block, role === 'system' ? ['type', 'text', 'cache_control'] : BLOCK_KEYS[block.type], at, reject);
+    if (BLOCK_KEYS[block.type].includes('cache_control')) cache(block.cache_control, `${at}.cache_control`, reject);
+    switch (block.type) {
+      case 'text':
+        string(block.text, `${at}.text`, reject);
+        if (role !== 'system') citations(block.citations, `${at}.citations`, reject);
+        break;
+      case 'image':
+        source(block.source, 'image', `${at}.source`, reject);
+        if (block.transformations != null) {
+          keys(block.transformations, ['oversized_image'], `${at}.transformations`, reject);
+          const size = block.transformations.oversized_image;
+          if (size !== undefined && !['downsize', 'error'].includes(size)) fail(reject, `${at}.transformations.oversized_image`, size, 'image_transform');
+        }
+        break;
+      case 'document':
+        source(block.source, 'document', `${at}.source`, reject);
+        citationConfig(block.citations, `${at}.citations`, reject);
+        for (const name of ['context', 'title']) if (block[name] !== undefined) string(block[name], field(at, name), reject, true);
+        break;
+      case 'tool_use':
+        string(block.id, `${at}.id`, reject); string(block.name, `${at}.name`, reject);
+        if (!Object.hasOwn(block, 'input')) fail(reject, `${at}.input`, undefined, 'required');
+        // input is opaque client-tool data, not content blocks or proxy controls.
+        if (block.caller !== undefined) {
+          keys(block.caller, ['type'], `${at}.caller`, reject);
+          if (block.caller.type !== 'direct') fail(reject, `${at}.caller.type`, block.caller.type, 'direct_tool_caller');
+        }
+        break;
+      case 'tool_result':
+        string(block.tool_use_id, `${at}.tool_use_id`, reject);
+        if (block.is_error !== undefined && typeof block.is_error !== 'boolean') fail(reject, `${at}.is_error`, block.is_error, 'boolean');
+        if (block.content !== undefined) content(block.content, 'result', `${at}.content`, reject);
+        break;
+      case 'thinking':
+        string(block.thinking, `${at}.thinking`, reject); string(block.signature, `${at}.signature`, reject);
+        break;
+      case 'redacted_thinking': string(block.data, `${at}.data`, reject); break;
+      case 'search_result':
+        string(block.source, `${at}.source`, reject); string(block.title, `${at}.title`, reject);
+        citationConfig(block.citations, `${at}.citations`, reject);
+        content(block.content, 'search', `${at}.content`, reject, false);
+        break;
+    }
+  }
+}
 function context(value, path, reject) {
   keys(value, ['edits'], path, reject);
   if (!Array.isArray(value.edits)) fail(reject, field(path, 'edits'), value.edits, 'context_edits_array');
@@ -76,10 +186,12 @@ function options(body, countOnly, cfg, reject = unsupported) {
     keys(body.metadata, ['user_id'], '$.metadata', reject);
     if (body.metadata.user_id !== undefined && typeof body.metadata.user_id !== 'string') fail(reject, '$.metadata.user_id', body.metadata.user_id, 'metadata_user_id_string');
   }
+  if (body.system !== undefined) content(body.system, 'system', '$.system', reject);
   if (Array.isArray(body.messages)) for (const [index, message] of body.messages.entries()) {
     const at = `$.messages[${index}]`;
     keys(message, ['role', 'content'], at, reject);
     if (!['user', 'assistant', 'system'].includes(message.role)) fail(reject, `${at}.role`, message.role, 'message_role');
+    content(message.content, message.role, `${at}.content`, reject);
   }
 }
 function betaHeader(req, reject = unsupported) {

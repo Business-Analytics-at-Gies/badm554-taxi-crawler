@@ -751,17 +751,18 @@ acceptance('two long requests with recommended 32000 output fit the daily reserv
   assert.ok((await Promise.all(jobs)).every(r => r.status === 200));
 });
 
-acceptance('inline message tool additions cannot enable hosted tools while ordinary client additions work', async t => {
+acceptance('inline message tool additions are refused for both hosted and ordinary client definitions', async t => {
   const f = await fixture(t), k = await f.mint();
   const messages = definition => [{ role: 'user', content: [
     { type: 'text', text: PROMPT },
     { type: 'tool_addition', tool: { type: 'tool_definition', definition } },
   ] }];
-  await refused(f, 'tools_not_allowed', 403, () => f.send(k.token, message({ messages: messages({ type: 'web_search_20250305', name: 'web_search' }) })));
+  await refused(f, 'unsupported_request', 400, () => f.send(k.token, message({ messages: messages({ type: 'web_search_20250305', name: 'web_search' }) })));
   assert.equal(f.upstream.calls.length, 0);
   const local = message({ messages: messages({ name: 'local_sql', input_schema: { type: 'object' } }) });
-  assert.equal((await f.send(k.token, local)).status, 200);
-  assert.deepEqual(f.upstream.messages[0].body, local);
+  await refused(f, 'unsupported_request', 400, () => f.send(k.token, local));
+  assert.equal(f.upstream.calls.length, 0);
+  assert.equal(ledger(f).length, 0);
 });
 
 acceptance('input count preserves cache and context configuration and strips only generation fields', async t => {

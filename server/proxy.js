@@ -50,10 +50,7 @@ function validate(body, countOnly, cfg) {
   if (body.tools !== undefined && (!Array.isArray(body.tools) || body.tools.some(tool => !isObject(tool)))) bad();
   const hostedDefinition = tool => !isObject(tool) || (tool.type !== undefined && tool.type !== 'custom');
   const hosted = body.tools?.some(hostedDefinition);
-  const hostedAddition = body.messages.some(message => Array.isArray(message?.content) && message.content.some(block =>
-    block?.type === 'tool_addition' && (block.tool?.type !== 'tool_definition' && block.tool?.type !== 'tool_reference' ||
-      block.tool?.type === 'tool_definition' && hostedDefinition(block.tool.definition))));
-  if (hosted || hostedAddition) {
+  if (hosted) {
     refuse(403, 'tools_not_allowed', 'Server-side tools are not enabled for this activity.');
   }
 }
