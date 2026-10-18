@@ -39,3 +39,5 @@ th { background:var(--soft); }
 html:not(.js) .rerun-game,html:not(.js) .tutor { display:none; }
 
 .floor-guide { scroll-margin-top:4rem; }
+
+.top .pilot-link { flex:0 0 auto; white-space:nowrap; }

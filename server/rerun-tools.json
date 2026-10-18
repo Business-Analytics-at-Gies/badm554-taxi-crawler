@@ -68,7 +68,7 @@
   },
   {
     "name": "show_code",
-    "description": "Show the learner a real file in your panel: a floor's reference SQL (only after they have tried, or asked twice), the floor-check code, or the floor rules.",
+    "description": "Show the learner a real file in your panel: a floor's reference SQL, the floor-check code, or the floor rules. Give the whole answer or show reference SQL only after the learner has run an attempt on that floor AND asked directly twice. Both conditions must concern that same floor.",
     "input_schema": {
       "type": "object",
       "properties": {

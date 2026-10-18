@@ -8,7 +8,8 @@ const money=n=>n==null?'—':Number(n).toFixed(2);
 const clean=s=>String(s??'').replace(/(?:TAXI|RERUN)-[123]-[A-Z]{8}/gi,'[code removed]').replace(/<\/?\s*page\b/gi,m=>m.replace('<','‹'));
 const PIPELINE_KEY=floor=>`rerun.pipeline.${floor}`;
 let floor=Number(location.hash.match(/^#floor([123])$/)?.[1])||1;
-let guideFloor=floor, workspace, busy=false, engineReady=false, runs=0, lastCheck=null, lastSql=null, passedFloor=null;
+let guideFloor=floor, workspace, busy=false, engineReady=false, runs=0, lastCheck=null, lastSql=null, lastQueries=[], passedFloor=null;
+const pipelineAttempts={1:0,2:0,3:0};
 let codes=readCodes();
 const mq=matchMedia('(max-width:56.25em)');
 let activePanel='guide';
@@ -32,6 +33,7 @@ function showGuide(n){
  for(const i of [1,2,3])$(`floor${i}`).hidden=i!==n;
  for(const link of document.querySelectorAll('.rooms a')){if(link.hash===`#floor${n}`)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');}
 }
+function syncFloorHash(n){const hash=`#floor${n}`;if(location.hash!==hash)history.replaceState(null,'',hash);}
 function savePipeline(){try{localStorage.setItem(PIPELINE_KEY(floor),$('pipeline').value);}catch{$('game-message').textContent='Browser storage is unavailable. Keep a copy of your Pipeline before leaving.';}}
 function loadPipeline(){try{$('pipeline').value=localStorage.getItem(PIPELINE_KEY(floor))||'';}catch{$('pipeline').value='';}}
 $('pipeline').addEventListener('input',savePipeline);
@@ -64,25 +66,34 @@ async function refreshTables(){
 }
 async function resetWorkspace(){
  engineReady=false;buttons();workspace?.close();$('engine-status').textContent='Loading SQL…';
- workspace=await createWorkspace();engineReady=true;runs=0;lastCheck=null;passedFloor=null;lastSql=null;
+ workspace=await createWorkspace();engineReady=true;runs=0;lastCheck=null;passedFloor=null;lastSql=null;lastQueries=[];
  $('engine-status').textContent='SQL ready';dayStatus();$('result-table').innerHTML='<p>No check yet.</p>';
  $('condition-hint').textContent='';$('game-message').textContent='';$('receipt').textContent='';$('retry-code').hidden=true;$('scratch-result').replaceChildren();
  await refreshTables();$('guide').scrollTop=0;
 }
 async function selectFloor(n){
- if(busy)return;savePipeline();floor=n;$('floor-picker').value=String(n);showGuide(n);loadPipeline();$('scratch').value='';
+ if(busy){syncFloorHash(floor);return;}savePipeline();floor=n;syncFloorHash(n);$('floor-picker').value=String(n);showGuide(n);loadPipeline();$('scratch').value='';
  await act(resetWorkspace);
 }
-$('floor-picker').value=String(floor);showGuide(floor);loadPipeline();
+$('floor-picker').value=String(floor);syncFloorHash(floor);showGuide(floor);loadPipeline();
 $('floor-picker').addEventListener('change',()=>selectFloor(Number($('floor-picker').value)));
-for(const link of document.querySelectorAll('.rooms a'))link.addEventListener('click',e=>{e.preventDefault();if(busy)return;const n=Number(link.hash.slice(-1));history.replaceState(null,'',`#floor${n}`);selectFloor(n);});
+for(const link of document.querySelectorAll('.rooms a'))link.addEventListener('click',e=>{e.preventDefault();if(busy)return;const n=Number(link.hash.slice(-1));selectFloor(n);});
 window.addEventListener('hashchange',()=>{const n=Number(location.hash.match(/^#floor([123])$/)?.[1]);if(n)selectFloor(n);});
+function recordQuery(kind,sql,result,error=null){
+ lastSql={kind,floor,day:workspace.day(),sql:String(sql).slice(0,1000),rowCount:error?null:result.rowCount,error:error?clean(error.message||error).slice(0,300):null};
+ lastQueries=[...lastQueries,lastSql].slice(-3);
+}
+async function learnerQuery(kind,sql){
+ if(kind==='pipeline'&&sql.trim())pipelineAttempts[floor]++;
+ try{const result=await workspace.query(sql);recordQuery(kind,sql,result);return result;}
+ catch(error){recordQuery(kind,sql,null,error);throw error;}
+}
 $('run-button').addEventListener('click',()=>act(async()=>{
- savePipeline();const sql=$('pipeline').value;lastSql={kind:'pipeline',sql:sql.slice(0,1500)};
- try{const r=await workspace.query(sql);runs++;dayStatus();showQuery(r);$('game-message').textContent='Pipeline ran. Predict what another run will do, then try it.';}
+ savePipeline();const sql=$('pipeline').value;
+ try{const r=await learnerQuery('pipeline',sql);runs++;dayStatus();showQuery(r);$('game-message').textContent='Pipeline ran. Predict what another run will do, then try it.';}
  finally{await refreshTables();}
 }));
-$('scratch-run').addEventListener('click',()=>act(async()=>{const sql=$('scratch').value;lastSql={kind:'scratch',sql:sql.slice(0,1500)};try{showQuery(await workspace.query(sql));$('game-message').textContent='Scratch ran. The check uses only Pipeline.';}finally{await refreshTables();}}));
+$('scratch-run').addEventListener('click',()=>act(async()=>{const sql=$('scratch').value;try{showQuery(await learnerQuery('scratch',sql));$('game-message').textContent='Scratch ran. The check uses only Pipeline.';}finally{await refreshTables();}}));
 $('next-day').addEventListener('click',()=>act(async()=>{await workspace.nextDay();runs=0;dayStatus();await refreshTables();$('game-message').textContent=`Day ${workspace.day()} arrived once. The pipeline has not run on this day yet.`;}));
 $('restart').addEventListener('click',()=>{if(!confirm('Restart this floor? This clears its saved Pipeline, Scratch and workspace tables. Your saved completion codes stay.'))return;$('pipeline').value='';savePipeline();$('scratch').value='';act(resetWorkspace);});
 function renderCodes(){
@@ -110,8 +121,18 @@ $('copy-codes').addEventListener('click',async()=>{
 });renderCodes();
 const panel=createPanel({apiBase:'/api/rerun',pendingKey:'rerun.pendingTurn',openKey:'rerun.tutorOpen',clearCodes});
 async function snapshot(){
- const state={game:'The Rerun',floor,guideFloor,day:workspace?.day()||1,pipeline:$('pipeline').value.slice(0,2200),scratch:$('scratch').value.slice(0,1000),lastSql,lastCheck:lastCheck?{pass:lastCheck.pass,runs:lastCheck.runs.map(({run,rows,distinctTripIds,revenue,pass})=>({run,rows,distinctTripIds,revenue,pass})),firstFailure:lastCheck.firstFailure}:null};
- return `<page>\n${clean(JSON.stringify(state)).slice(0,7800)}\n</page>`;
+ const recent=lastQueries.map(q=>({...q,sql:q.sql.slice(0,500)}));
+ const state={game:'The Rerun',floor,guideFloor,day:workspace?.day()||1,pipeline:$('pipeline').value.slice(0,1600),scratch:$('scratch').value.slice(0,600),pipelineAttempts:pipelineAttempts[floor],lastSql:recent.at(-1)||null,lastQueries:recent,lastCheck:lastCheck?{pass:lastCheck.pass,runs:lastCheck.runs.map(({run,rows,distinctTripIds,revenue,pass})=>({run,rows,distinctTripIds,revenue,pass})),firstFailure:lastCheck.firstFailure}:null};
+ // Preserve outcomes and valid JSON even when SQL contains many escaped characters.
+ // Shorten query text before shortening an error; never cut the serialized block.
+ let text=JSON.stringify(state),limit=400;
+ while(text.length>7800){
+  state.pipeline=state.pipeline.slice(0,limit);state.scratch=state.scratch.slice(0,limit);
+  state.lastQueries=state.lastQueries.map(q=>({...q,sql:q.sql.slice(0,limit),error:q.error?.slice(0,limit===0?100:300)??null}));
+  state.lastSql=state.lastQueries.at(-1)||null;
+  text=JSON.stringify(state);limit=Math.floor(limit/2);
+ }
+ return `<page>\n${clean(text)}\n</page>`;
 }
 const files={'floor1-reference':'/data/rerun/reference/floor1.sql','floor2-reference':'/data/rerun/reference/floor2.sql','floor3-reference':'/data/rerun/reference/floor3.sql','floor-check':'/rerun/db/db.js','floors-rules':'/rerun/floors-rules.txt'};
 const targets={'pipeline':'pipeline','console':'scratch','run-button':'run-button','check-button':'check-button','result-table':'result-table','tables-list':'tables-list'};
