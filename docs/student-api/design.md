@@ -11,6 +11,24 @@ Let a student build with Claude (for example, build a small game in VS Code with
 SDK or Claude Code) on the course's API credit, without ever holding a real Anthropic key. Each
 student gets a personal course token with its own budget. The real key stays on the server.
 
+## Why a proxy (checked in the Anthropic docs, 2026-10-18)
+
+- The Admin API cannot create API keys. It can list, retrieve and update them (name, status) only;
+  keys are created in the Console
+  ([API keys](https://platform.claude.com/docs/en/api/organization/api_keys.md)).
+- It can create and archive workspaces, but cannot set a workspace's spend or rate limits; those
+  are set by hand in the Console
+  ([Workspaces](https://platform.claude.com/docs/en/manage-claude/workspaces.md)).
+- No per-key spend limit is documented. The cost report groups by workspace, not by key
+  ([Usage and Cost API](https://platform.claude.com/docs/en/manage-claude/usage-cost-api.md)).
+- Credits are shared by every key and workspace in the organization
+  ([API credits](https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers.md)).
+
+So a CLI cannot mint a capped Anthropic key per student. Rejected alternatives: one workspace per
+student with a hand-set Console limit (manual for each of about 70 learners, and keys still leak);
+the Claude Code workspace's per-user limits (each student would need a Console account, and it
+covers Claude Code only, not the SDK).
+
 ## How it works
 
 1. **Get a token.** The student signs in with Illinois login at `/keys/` on the course server and
