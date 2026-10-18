@@ -477,7 +477,7 @@ HTTP400 `{error:"unsupported_request",message:"This request uses an option that 
 | Field | Endpoints | Pricing/cap justification and restrictions |
 | --- | --- | --- |
 | `model` | Both | Exactly the priced Sonnet id; no client-selected routing. |
-| `messages` | Both | Input is counted first; message objects contain only user/assistant `role` and `content`. Local tool history remains input, not a new server attempt. |
+| `messages` | Both | Input is counted first; message objects contain only user/assistant/system `role` and `content`. Local tool history remains input, not a new server attempt. |
 | `system` | Both | Counted input; cannot override routing or output cap. |
 | `tools` | Both | Only client tools; definitions and inline additions remain policed. Execution requires a new separately checked client call. |
 | `tool_choice` | Both | Selects among those client tools in the same bounded generation; no server tool execution. |
@@ -724,3 +724,33 @@ and `mid-conversation-tool-changes-2026-07-01`, and received another unsupported
 The setup therefore retains the setting under Claude's "unless needed" condition. None of those
 four values is admitted. Testing stopped at that refusal; the remaining client matrix and a
 retry with the restored setting have not been run. See `p3-clients.md` for captured evidence.
+
+## Claude's P3 documented-message-role decision (2026-10-18)
+
+Admit exactly the documented input roles `user`, `assistant` and `system` for both Messages
+and count_tokens. The first two were already allowed; only `system` is added. Claude Code
+2.1.302's separately authorized role-only diagnostic identified `system` at
+`$.messages[1].role`. This is Claude's decision under the conditional authorization, not a
+new decision by Vishal.
+
+Checked on 2026-10-18: the [current Messages API reference](https://platform.claude.com/docs/en/api/messages/create)
+lists all three in MessageParam.role. The official TypeScript SDK's
+[MessageParam](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/messages/messages.ts)
+and [BetaMessageParam](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/beta/messages/messages.ts)
+declare the same three-value union. The reference still contains an older contradictory
+sentence saying there is no system input role; its current schema and the dedicated
+[mid-conversation system-message guide](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages)
+explicitly support it on Sonnet 5.5 without a beta header.
+
+The role adds instructions to the same counted input. The guide treats it as part of prompt
+history and the ordinary prompt cache; it creates no model selection, output allowance,
+server loop or extra billed attempt. The same upstream token count, highest input/cache-price
+reservation, output cap and final-usage settlement apply. This is the pricing assessment for
+the admission, based on those schemas and the guide's caching behavior, rather than a claim
+that the inconsistent introductory sentence was corrected. No new role surcharge is documented.
+
+Message objects still allow only `role` and `content`. Per-message output_config, clear_at,
+model overrides and every other extra key remain refused. Undocumented roles, case variants
+and malformed role values remain refused before upstream counting. The four previously
+refused experimental beta values remain refused. No prompt or answer is captured; the
+temporary harness's separately authorized exception records message role strings only.

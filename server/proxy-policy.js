@@ -79,7 +79,7 @@ function options(body, countOnly, cfg, reject = unsupported) {
   if (Array.isArray(body.messages)) for (const [index, message] of body.messages.entries()) {
     const at = `$.messages[${index}]`;
     keys(message, ['role', 'content'], at, reject);
-    if (!['user', 'assistant'].includes(message.role)) fail(reject, `${at}.role`, message.role, 'message_role');
+    if (!['user', 'assistant', 'system'].includes(message.role)) fail(reject, `${at}.role`, message.role, 'message_role');
   }
 }
 function betaHeader(req, reject = unsupported) {

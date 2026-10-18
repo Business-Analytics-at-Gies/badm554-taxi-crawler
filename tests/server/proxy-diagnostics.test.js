@@ -48,6 +48,21 @@ test('proxy diagnostics: the harness outline retains keys and types, with only t
   assert.ok(!JSON.stringify(result).includes(PRIVATE));
 });
 
+test('proxy diagnostics: tool calls and results retain only names/types, including nested tool content', () => {
+  const result = outline({ messages: [{ role: 'assistant', content: [
+    { type: 'tool_use', id: 'toolu_private', name: 'Read', input: { file_path: PRIVATE } },
+    { type: 'server_tool_use', name: 'web_search', input: { query: PRIVATE } },
+    { type: 'tool_result', tool_use_id: 'toolu_private', content: [{ type: 'text', text: PRIVATE }] },
+    { type: 'tool_addition', tool: { type: 'tool_definition', definition: { name: 'Read', input_schema: { properties: { file_path: {} } } } } },
+    { type: 'tool_removal', tool: { type: 'tool_reference', name: 'Read', private_option: PRIVATE } },
+    { type: 'tool_reference', name: 'Read', private_option: PRIVATE },
+  ] }] });
+  assert.deepEqual(result, { messages: [{ role: 'string', content: [
+    { type: 'tool_use', name: 'Read' }, { type: 'server_tool_use', name: 'web_search' },
+    { type: 'tool_result' }, { type: 'tool_addition' }, { type: 'tool_removal' }, { type: 'tool_reference', name: 'Read' },
+  ] }] });
+});
+
 test('proxy diagnostics: production HTTP refuses with its fixed message and stores/logs no reason or value', async t => {
   const f = await fixture(t), k = await f.mint(), logs = capture(t);
   const r = await f.send(k.token, message({ metadata: { user_id: { device_id: PRIVATE } } }));

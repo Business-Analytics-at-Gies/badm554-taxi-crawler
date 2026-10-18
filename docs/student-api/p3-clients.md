@@ -6,12 +6,13 @@ Agent: crew-codex-proxy
 Initial proxy: approved P2 commit `d7b2f07ce7308418da3bd750b92a6673999510d6`
 First resumed proxy: `7a6726c` plus the exact client-marker addition subsequently committed as `b1934c6`
 Exact-setup baseline proxy: `b1934c6ad5de4fbda339e61437f9bdf5e9889714`
-Diagnostic proxy: `7f0b461` plus internal diagnostic plumbing with unchanged admission rules
-Status: **BLOCKED by `message_role` at `$.messages[1].role`, whose value type is `string`.**
-Both official SDKs passed. One separately authorized diagnostic retry with the exact recommended
-environment identified the failed rule and captured the full sanitized outline below. The role
-value was not captured or inferred. No further header, field, endpoint, query, role or model was
-admitted. The remaining Claude Code matrix is unrun. This is a P3 evidence report, not release approval.
+Role-review baseline proxy: `b376599` plus the documented system-role admission below
+Status: **PASS against the loopback fake: both official SDKs and the full Claude Code matrix.**
+The newly authorized role-value diagnostic identified `system`; current API schema, official
+SDK types and the dedicated guide document it. Only that missing role was added. Claude Code
+2.1.302 then passed plain output, streaming, a scratch-file read, the expected refused model,
+and a background/small-model attempt with the exact setup-page environment. No new unexpected
+refusal appeared. No real API call or live smoke test occurred; this is not release approval.
 
 ## Versions and isolation
 
@@ -595,3 +596,180 @@ offline comparison of 1,078 cases against the pre-change validator found zero ac
 mismatches. No role or other capability was admitted. Plain Claude Code operation remains
 blocked at this rule, and streaming, tool, refused-model and background/small-model scenarios
 remain unrun under the stop instruction.
+
+
+## Documented role review and completed Claude Code matrix (2026-10-18)
+
+This follow-up explicitly authorized the diagnostic to retain the role string itself. A fresh
+scratch run against the unchanged b376599 policy recorded:
+
+```json
+{
+  "path": "$.messages[1].role",
+  "type": "string",
+  "rule": "message_role",
+  "role": "system"
+}
+```
+
+Its two message roles were user and system. No message content was captured. This diagnostic
+invocation exited 1 with the fixed unsupported-option error, before counting or generation.
+Its complete HTTP trace was HEAD /proxy/api/hello (no query, model or beta; 401), followed by
+POST /proxy/v1/messages?beta=true (Sonnet, B1 below, version 2023-06-01, max_tokens 32000,
+stream true; 400). Header validation passed. The fake accepted zero provider calls and the
+ledger remained empty.
+
+### Current documentation and admission boundary
+
+Checked the [Messages API reference](https://platform.claude.com/docs/en/api/messages/create)
+and its [downloadable Markdown](https://platform.claude.com/docs/en/api/messages/create.md),
+plus the official TypeScript SDK's
+[MessageParam](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/messages/messages.ts)
+and [BetaMessageParam](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/beta/messages/messages.ts)
+on 2026-10-18. All three schemas explicitly list user, assistant and system. The reference's
+introductory prose still has a contradictory older statement excluding system input messages.
+The dedicated [mid-conversation system-message guide](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages)
+resolves the ambiguity: Sonnet 5.5 supports them without a beta header, as instructions added
+to prompt history that can use the ordinary prompt cache.
+
+Claude's decision is recorded in contract.md: add only system to the already allowed user and
+assistant roles on both endpoints. The role changes the instructions within counted input;
+it does not select a model, raise max_tokens or add a server-side billed attempt. The existing
+count, input/cache-price reservation and final-usage accounting remain in force. Message-level
+output_config, clear_at and extra fields are still refused, as are undocumented roles and the
+four previously refused experimental beta values. There is no general diagnostic value capture
+in production; the temporary test harness alone records the separately authorized role strings.
+
+### Matrix conditions and results
+
+The installed CLI was rechecked as 2.1.302. Each invocation used a fresh HOME, an empty saved
+configuration, a scratch working folder, no session persistence, and an environment constructed
+from scratch with exactly these seven setup-page exports (the base URL and token were local
+synthetic replacements):
+
+```sh
+export ANTHROPIC_BASE_URL="http://127.0.0.1:<local-proxy-port>/proxy"
+export ANTHROPIC_API_KEY="<fresh synthetic course token>"
+export ANTHROPIC_MODEL="claude-sonnet-5-5"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="claude-sonnet-5-5"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-sonnet-5-5"
+export CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000
+export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1
+```
+
+HOME, PATH and TMPDIR were the only additional process environment entries. No existing key,
+login or setting was inherited. The same OS loopback-only sandbox covered the proxy, fake,
+CLI and child processes. The fake accepted only the exact synthetic provider credential and
+rejected a manufactured real-looking key. The fetch adapter mapped only the two reviewed
+logical provider routes to the fake; its transport seam refused every other destination, and
+redirects were disabled. Each fresh harness passed both destination-denial probes and the
+credential-rejection probe before a client ran.
+
+| Scenario | Client result | Evidence |
+| --- | --- | --- |
+| Plain `-p` | Exit 0 | Exact fixed acknowledgment returned; one streamed generation settled. |
+| Streaming `-p --output-format stream-json --verbose --include-partial-messages` | Exit 0 | Ten client JSON events, including message_start, content_block_delta, message_delta and message_stop; acknowledgment present; complete usage settled. |
+| Scratch-file tool round trip | Exit 0 | Fake requested Read on the scratch fixture; Claude Code returned a tool_result and made a second generation. A targeted verification below confirmed a successful result containing the fixture marker, retaining only booleans. |
+| `--model claude-haiku-5-5` | Exit 1, expected | Client displayed the fixed allowed-Sonnet error. No count or generation reached the fake and no ledger row was created. |
+| Background/small-model attempt | Exit 0 | Fake requested Agent with model haiku and run_in_background true. A separate child request reached the proxy as claude-sonnet-5-5; main continuations also used Sonnet. Four generations settled. |
+| Client count_tokens, if used | Not called directly | No Claude Code count endpoint call occurred. The proxy itself made one free upstream count call before each accepted generation, with the same model and beta values. |
+
+The Read scenario used --allowedTools Read and --permission-mode dontAsk. The Agent attempt
+used --allowedTools Agent,Read with the same permission mode. These flags permit the synthetic
+local tool checks; no extra client environment setting was added. The fake, rather than model
+reasoning, determined which tool was requested. This proves the client's tool execution and
+small-model alias routing against the local fake; it does not test real model quality or every
+automatic background task that Claude Code could run.
+
+### Every client request in the five-scenario matrix
+
+B1 and B2 contain the same three allowed beta values, with the exact received order preserved:
+
+```text
+B1: claude-code-20250219,interleaved-thinking-2025-05-14,effort-2025-11-24
+B2: interleaved-thinking-2025-05-14,claude-code-20250219,effort-2025-11-24
+```
+
+Every POST used API version 2023-06-01, max_tokens 32000 and stream true. Every HEAD had no
+version or beta header and no body/model. The hello probe's 401 was tolerated by the client;
+no hello endpoint was admitted. The explicit Haiku trial was the only refused message.
+
+| # | Scenario | Method | Path | Query | Model | Beta | Status |
+| --- | --- | --- | --- | --- | --- | --- | ---: |
+| 1 | plain | HEAD | `/proxy/api/hello` | `` | none | none | 401 |
+| 2 | plain | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B1 | 200 |
+| 3 | streaming | HEAD | `/proxy/api/hello` | `` | none | none | 401 |
+| 4 | streaming | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B1 | 200 |
+| 5 | tool | HEAD | `/proxy/api/hello` | `` | none | none | 401 |
+| 6 | tool | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B1 | 200 |
+| 7 | tool | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B1 | 200 |
+| 8 | refused-model | HEAD | `/proxy/api/hello` | `` | none | none | 401 |
+| 9 | refused-model | POST | `/proxy/v1/messages` | `?beta=true` | claude-haiku-5-5 | B2 | 400 |
+| 10 | background | HEAD | `/proxy/api/hello` | `` | none | none | 401 |
+| 11 | background | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B1 | 200 |
+| 12 | background | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B1 | 200 |
+| 13 | background | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B1 | 200 |
+| 14 | background | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B1 | 200 |
+
+All eight accepted generations settled to 100 input tokens and 20 output tokens each, with
+zero cache use, matching the fake's complete usage. Each charged $0.0004 from a $0.346096
+reservation; total charged $0.0032. The fake recorded 16 provider requests: eight free counts
+and eight generations, each at the same `/v1/messages/count_tokens?beta=true` or
+`/v1/messages?beta=true` path/query and Sonnet model. It received B1 on every request. There
+were no unknown/reserved ledger rows or holds.
+
+### Targeted tool-result verification
+
+The first matrix captured tool_result presence, which alone cannot prove a successful file
+read. Two further targeted invocations (Read and background Agent) therefore used another
+fresh guarded harness, recording only successful_tool_result and scratch_read_confirmed
+booleans in addition to the same sanitized trace. The Read follow-up returned both booleans
+true: the successful client result contained the scratch fixture marker. No file content or
+tool-result text was retained. The background follow-up returned a successful Agent result
+and again issued its separate Sonnet child request. The fake ended that child turn with text
+instead of requesting Read, so scratch_read_confirmed was false there; this is no claim that
+the background child read the file. All six generations settled normally.
+
+The complete trace of these two verification invocations was:
+
+| # | Scenario | Method | Path | Query | Model | Beta | Status |
+| --- | --- | --- | --- | --- | --- | --- | ---: |
+| 1 | tool | HEAD | `/proxy/api/hello` | `` | none | none | 401 |
+| 2 | tool | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B1 | 200 |
+| 3 | tool | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B1 | 200 |
+| 4 | background | HEAD | `/proxy/api/hello` | `` | none | none | 401 |
+| 5 | background | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B1 | 200 |
+| 6 | background | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B1 | 200 |
+| 7 | background | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B1 | 200 |
+| 8 | background | POST | `/proxy/v1/messages` | `?beta=true` | claude-sonnet-5-5 | B1 | 200 |
+
+All six accepted POSTs used B1, API version 2023-06-01, max_tokens 32000 and stream true.
+Their twelve provider requests were six automatic counts and six generations, using B1,
+Sonnet and the same two `?beta=true` provider paths. Each generation settled to the same
+$0.0004 usage charge; total $0.0024. No new refusal appeared in these checks.
+
+### Final verification and limits
+
+This follow-up made eight non-interactive client invocations: one role-value diagnostic,
+five matrix scenarios and two targeted tool checks. None timed out or requested login.
+The raw CLI output, request bodies, prompts, answers and tool results were processed only in
+memory. Review found that continuation outlines initially retained tool-call argument key
+names even though their values were redacted. Those argument structures and tool-result
+content outlines were removed from both saved matrix/verification artifact sets. The test
+helper now reduces tool-call/result blocks to name/type fields too, with a regression test
+that failed before the fix. No client was rerun for this cleanup; already-redacted tool-block
+name/type labels were preserved without inventing their original values. Saved evidence
+contains roles, approved trace metadata, ordinary keys/types, tool name/type fields and
+success booleans. A content-marker scan of the scratch databases and client state found
+no prompt, answer or fixture markers (5 files in the diagnostic harness, 18 in the matrix
+harness and 9 in the targeted harness). No real credential was loaded or printed. All three
+harnesses were shut down and their six listening ports were confirmed closed.
+
+The role tests were run before admission: the three system-role acceptance/stream checks
+failed with 400 while the other 15 passed. After the one-role admission all 18 passed. Final
+required suites: database 87 passed; browser 83 passed with 3 existing conditional skips;
+browser against site/ 81 passed with 5 existing conditional skips; server 478 passed. There
+were no failures. Independent code review found no expansion beyond the documented role or
+accounting gap. The original SDK passes remain recorded above; those clients were not rerun
+in this follow-up. No live smoke call, deployment or real-provider compatibility check was
+performed. P3's fake-upstream client matrix is complete and awaits Claude's review.
