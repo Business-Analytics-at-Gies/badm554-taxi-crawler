@@ -31,6 +31,8 @@ function config(env = process.env) {
   };
 }
 function rerunConfig(base) {
+  const opensAt = base.env.RERUN_OPENS_AT || '2026-10-23T05:00:00Z';
+  if (!Number.isFinite(Date.parse(opensAt))) throw new Error('Invalid RERUN_OPENS_AT');
   const cfg = config({ ...base.env,
     TUTOR_CLOSES_AT: base.env.RERUN_CLOSES_AT || '2026-10-27T04:59:00Z',
     RECEIPTS_CLOSE_AT: base.env.RERUN_CLOSES_AT || '2026-10-27T04:59:00Z',
@@ -38,6 +40,8 @@ function rerunConfig(base) {
     DB_PATH: `${base.dbPath}.rerun.sqlite`,
   });
   return { ...cfg, identityPath: `${base.dbPath}.identity.sqlite`,
+    opensAt: new Date(opensAt).toISOString(),
+    earlyAccess: new Set((base.env.RERUN_EARLY_ACCESS || '').split(',').map(name => name.trim().toLowerCase()).filter(Boolean)),
     pilot: 'badm554-rerun-2026-10-23', dataset: 'rerun-v1-trip-id-2026-10-18',
     receiptPrefix: 'RERUN', receiptFloors: { 1: 'rerun-1', 2: 'rerun-2', 3: 'rerun-3' },
     prompt: readFileSync(join(__dirname, 'rerun-prompt.md'), 'utf8'),

@@ -141,8 +141,27 @@ The approved plan still requires its separate server security review before lear
 
 `/rerun/` is served alongside the unchanged `/learn/` pilot landing page. The same
 sign-in protects both games. `/api/rerun/` exposes `me`, `join`, `tutor/ask`,
-`tutor/continue`, `tutor/history`, `receipt` and `forget` with the pilot's request
+`tutor/continue`, `tutor/history`, `check`, `receipt` and `forget` with the pilot's request
 shapes. Requests to `/api/` retain their pilot meanings.
+
+The Rerun opens at `RERUN_OPENS_AT`, default `2026-10-23T05:00:00Z`
+(Fri 10-23, midnight CDT). Before then, `/rerun/` serves a plain opening notice,
+close time and credit requirement; Rerun assets/data, tutor requests, checks and
+receipts are refused by the server. `POST /api/rerun/check` accepts `{ "floor": 1 }`
+(floors 1–3) and authorizes the browser's isolated check before it starts. Receipts
+and tutor requests independently enforce access, including from an old game tab.
+The clock and exemptions are evaluated on the server for every request.
+
+`RERUN_EARLY_ACCESS` is empty by default. Operators may set a comma-separated list
+**only in Azure app settings**, never in repository configuration or committed
+files. Entries are trimmed and compared case-insensitively to the signed-in
+[Easy Auth principal name](https://learn.microsoft.com/en-us/azure/app-service/configure-authentication-user-identities).
+This requires the existing protected Easy Auth ingress, an authenticated principal
+ID and its `X-MS-CLIENT-PRINCIPAL-NAME`; IDs, request bodies and join cookies cannot
+substitute for that name. Local dev mode uses only the synthetic identity `dev`.
+The list and names are never returned to the page or stored in game records.
+After opening, no exemption is needed. Early access does not override closing
+times, tutor-off or budgets. The pilot's access rules stay unchanged.
 
 The Rerun defaults to a $50 total tutor budget and a tutor/receipt deadline of
 `2026-10-27T04:59:00Z` (Mon 10-26, 11:59 PM CDT). Its optional overrides are

@@ -14,7 +14,7 @@ function within(root, file) {
   const path = relative(root, file);
   return path !== '..' && !path.startsWith(`..${sep}`) && !require('node:path').isAbsolute(path);
 }
-async function serveStatic(req, res, siteRoot, dataRoot) {
+async function serveStatic(req, res, siteRoot, dataRoot, authorize) {
   if (!['GET', 'HEAD'].includes(req.method)) refuse(405, 'bad_request', 'That method is not available.');
   let path;
   try { path = decodeURIComponent(req.url.split('?')[0]); } catch { refuse(400, 'bad_request', 'That address is not valid.'); }
@@ -37,10 +37,12 @@ async function serveStatic(req, res, siteRoot, dataRoot) {
     const info = await stat(actualFile);
     if (!info.isFile()) refuse(404, 'bad_request', 'That file could not be found.');
     const mime = MIME[extname(actualFile).toLowerCase()] || 'application/octet-stream';
+    res.setHeader('Cache-Control', mime === 'application/wasm' ? 'public, max-age=3600' : 'no-cache');
+    // Authorize the resolved file, including symlink/encoded aliases, before reading it.
+    if (authorize && await authorize({ actualRoot, actualFile, data })) return;
     const bytes = req.method === 'HEAD' ? null : await readFile(actualFile);
     res.setHeader('Content-Type', mime);
     res.setHeader('Content-Length', info.size);
-    res.setHeader('Cache-Control', mime === 'application/wasm' ? 'public, max-age=3600' : 'no-cache');
     res.end(bytes);
   } catch (error) {
     if (error.status) throw error;

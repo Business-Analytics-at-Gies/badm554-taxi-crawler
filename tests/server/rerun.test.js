@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const { writeFileSync } = require('node:fs');
 const { dirname, join } = require('node:path');
-const { fixture } = require('./helpers');
+const { rerunFixture: fixture } = require('./helpers');
 
 test('Rerun has its own deadline, ledger, conversation and receipt floor identities', async t => {
   const f = await fixture(t);

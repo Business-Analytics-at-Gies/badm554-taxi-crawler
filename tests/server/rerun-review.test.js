@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { fixture } = require('./helpers');
+const { rerunFixture: fixture } = require('./helpers');
 
 test('R3 review: actual Rerun prompt and show_code tool require a floor attempt AND two direct requests', async t => {
   let payload;

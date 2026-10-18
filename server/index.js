@@ -4,6 +4,7 @@ const { Store } = require('./store');
 const { Tutor, object } = require('./tutor');
 const { Auth, mutationGuard, cookie } = require('./auth');
 const { serveStatic } = require('./static');
+const { rerunAccess } = require('./rerun-access');
 const { join } = require('node:path');
 const { HttpError, refuse } = require('./errors');
 
@@ -22,6 +23,7 @@ function createApp(options = {}) {
     rerun.tutor = new Tutor(rcfg, rstore, now, options.model, options.fetchImpl);
     rstore.recover();
   } catch (error) { rerun?.store.close(); store.close(); throw error; }
+  const access = rerunAccess(rerun.config, auth, now);
   const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
@@ -35,7 +37,7 @@ function createApp(options = {}) {
         return;
       }
       if (!req.url.split('?')[0].startsWith('/api/')) {
-        await serveStatic(req, res, options.siteRoot || join(cfg.root, 'site'), options.dataRoot || join(cfg.root, 'data'));
+        await serveStatic(req, res, options.siteRoot || join(cfg.root, 'site'), options.dataRoot || join(cfg.root, 'data'), access.staticGate(req, res));
         return;
       }
       const isRerun = req.url.startsWith('/api/rerun/');
@@ -56,10 +58,17 @@ function createApp(options = {}) {
       }
       const principal = req.method === 'POST' && route === '/api/join' ? auth.join(body, res) : auth.identify(req);
       const session = principal.id;
+      // Privacy/sign-in/status remain available; all game actions require access.
+      if (isRerun && !['/api/me', '/api/join', '/api/forget'].includes(route)) access.guard(req);
       let result;
       if ((req.method === 'GET' && route === '/api/me') || (req.method === 'POST' && route === '/api/join')) {
         const usage = gameStore.usage(principal.quota);
-        result = { session, mode: cfg.authMode, tutor: { open: gameTutor.open(), closes_at: gameCfg.closesAt, spent_today_usd: usage.spent, cap_usd: gameCfg.daily, questions_left: Math.max(0, gameCfg.questions - usage.questions) } };
+        result = { session, mode: cfg.authMode, tutor: { open: gameTutor.open() && (!isRerun || access.allowed(req)), closes_at: gameCfg.closesAt, spent_today_usd: usage.spent, cap_usd: gameCfg.daily, questions_left: Math.max(0, gameCfg.questions - usage.questions) } };
+      }
+      else if (isRerun && req.method === 'POST' && route === '/api/check') {
+        object(body, ['floor']);
+        if (![1, 2, 3].includes(body?.floor)) refuse(400, 'bad_request', 'Please choose a floor from 1 to 3.');
+        result = { ok: true };
       }
       else if (req.method === 'POST' && route === '/api/tutor/ask') result = await gameTutor.ask(session, body, principal.quota);
       else if (req.method === 'POST' && route === '/api/tutor/continue') result = await gameTutor.continue(session, body, principal.quota);

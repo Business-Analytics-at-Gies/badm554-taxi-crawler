@@ -110,7 +110,8 @@ async function receipt(){
 }
 $('retry-code').addEventListener('click',()=>act(receipt));
 $('check-button').addEventListener('click',()=>act(async()=>{
- savePipeline();$('result-table').replaceChildren();$('condition-hint').textContent='';$('game-message').textContent='Checking the full run sequence in isolated state…';
+ savePipeline();passedFloor=null;lastCheck=null;$('receipt').textContent='';$('retry-code').hidden=true;$('result-table').replaceChildren();$('condition-hint').textContent='';$('game-message').textContent='Checking the full run sequence in isolated state…';
+ await post('/api/rerun/check',{floor});
  const result=await check(floor,$('pipeline').value);lastCheck=result;passedFloor=result.pass?floor:null;$('receipt').textContent='';$('retry-code').hidden=true;
  if(!result.ok){$('game-message').textContent=result.error||'The check could not run.';return;}
  const t=table(['Run','Rows','Distinct trip_id','Revenue','Result'],result.runs.map(r=>[r.run,r.rows??'—',r.distinctTripIds??'—',money(r.revenue),r.pass?'Pass':'Fail']));
