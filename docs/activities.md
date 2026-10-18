@@ -40,5 +40,6 @@ price before switching and set the activity's budget cap from it.
 | Taxi Crawler (pilot) | Data quality | Fri 10-16 | Sat 10-17, 6:30 PM CDT | $150 | Closed; 31 issues triaged and answered |
 | The Rerun | W9 M6a: rebuildable ETL | Fri 10-23 | Mon 10-26, 11:59 PM CDT | $50 | Building (`docs/rerun/design.md`) |
 | Next, proposed | W10 M6b: integrate and deploy | Fri 10-30 | Mon 11-02 night | to set | Not designed |
+| Build a SQL game (individual) | W11 M7: validation | Week 11 (Mon 11-02 to Sun 11-08) | to set | $5 per student, $150 total, Sonnet only, via the student API proxy | Decided 2026-10-18; details open (`docs/student-api/design.md`) |
 
 Credit ends Thu 11-05. An activity after that bills at normal rates unless new credit arrives.

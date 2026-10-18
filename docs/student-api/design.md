@@ -107,5 +107,6 @@ Claude Code docs during the build, and a test proves Claude Code runs with Sonne
    default **$150** for the first activity, so the proxy cannot use up the $250 credit that the
    games also draw on (about 72 students at $5 would be $360). Vishal can change it.
 3. ~~Models~~ Answered (Vishal, 2026-10-18): **Sonnet only** (`claude-sonnet-5-5`).
-4. When is the first build activity, and what do students build? The credit ends Thu 11-05; after
-   that, use bills at normal rates.
+4. ~~Activity~~ Answered (Vishal, 2026-10-18): students build a small SQL game, individually, in
+   Week 11 (M7: validation, Mon 11-02 to Sun 11-08). So the proxy must be live and tested by
+   Mon 11-02; the build runs after The Rerun ships (Fri 10-23). Credit ends Thu 11-05.
