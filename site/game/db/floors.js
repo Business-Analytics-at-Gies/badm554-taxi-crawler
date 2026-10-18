@@ -71,7 +71,7 @@ export function plantSelectSql(n, kind, count, firstId, seed) {
   if (kind === 'time_travel') repl.push("pickup_at - INTERVAL '7 minutes' AS dropoff_at");
   const filter = hasZoneCols ? `${ORDINARY} AND zone_flag = 'ok'` : ORDINARY;
   return `SELECT * REPLACE (${repl.join(', ')}) FROM (
-  SELECT * FROM ${src} WHERE ${filter} ORDER BY hash(row_id, ${Number(seed)}) LIMIT ${Number(count)}) s`;
+  SELECT * FROM ${src} WHERE ${filter} ORDER BY system.main.hash(row_id, ${Number(seed)}) LIMIT ${Number(count)}) s`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -81,16 +81,21 @@ const MONEY_TYPES = /^(DOUBLE|FLOAT|REAL|DECIMAL.*|NUMERIC.*)$/i;
 
 function norm(col, wantType, haveName) {
   const id = qi(haveName ?? col);
-  if (MONEY_TYPES.test(wantType)) return `round(TRY_CAST(${id} AS DOUBLE), 2) AS ${qi(col)}`;
+  if (MONEY_TYPES.test(wantType)) return `system.main.round(TRY_CAST(${id} AS DOUBLE), 2) AS ${qi(col)}`;
   return `TRY_CAST(${id} AS ${wantType}) AS ${qi(col)}`;
 }
 
 async function columnsOf(db, schema, table) {
-  const rows = await db.rows(`SELECT column_name, data_type FROM information_schema.columns
-    WHERE table_schema = ${qs(schema)} AND lower(table_name) = ${qs(table)} ORDER BY ordinal_position`);
+  // Fully qualify the immutable built-ins: information_schema views themselves expand through
+  // unqualified duckdb_* calls, which learner macros in main can shadow.
+  const rows = await db.rows(`SELECT column_name, data_type FROM system.main.duckdb_columns()
+    WHERE database_name = 'memory' AND schema_name = ${qs(schema)}
+      AND system.main.lower(table_name) = ${qs(table)} ORDER BY column_index`);
   if (!rows.length) {
-    const exists = await db.one(`SELECT count(*) FROM information_schema.tables
-      WHERE table_schema = ${qs(schema)} AND lower(table_name) = ${qs(table)}`);
+    const exists = await db.one(`SELECT system.main.count(*) FROM (
+      SELECT table_name FROM system.main.duckdb_tables() WHERE database_name = 'memory' AND schema_name = ${qs(schema)}
+      UNION ALL SELECT view_name FROM system.main.duckdb_views() WHERE database_name = 'memory' AND schema_name = ${qs(schema)}
+    ) t WHERE system.main.lower(table_name) = ${qs(table)}`);
     if (!exists) return null;
   }
   const map = new Map();
@@ -99,8 +104,8 @@ async function columnsOf(db, schema, table) {
 }
 
 async function wantColumns(db, schema, table) {
-  const rows = await db.rows(`SELECT column_name, data_type FROM information_schema.columns
-    WHERE table_schema = ${qs(schema)} AND table_name = ${qs(table)} ORDER BY ordinal_position`);
+  const rows = await db.rows(`SELECT column_name, data_type FROM system.main.duckdb_columns()
+    WHERE database_name = 'memory' AND schema_name = ${qs(schema)} AND table_name = ${qs(table)} ORDER BY column_index`);
   return rows.map((r) => ({ name: r.column_name, type: r.data_type }));
 }
 
@@ -109,13 +114,13 @@ const selectNorm = (cols, have, from) =>
 
 // Multiset difference both ways. Each side is wrapped, so a UNION ALL inside one side stays whole.
 async function diff(db, a, b) {
-  const minus = (x, y) => `SELECT count(*) FROM (SELECT * FROM (${x}) EXCEPT ALL SELECT * FROM (${y}))`;
+  const minus = (x, y) => `SELECT system.main.count(*) FROM (SELECT * FROM (${x}) EXCEPT ALL SELECT * FROM (${y}))`;
   const [r] = await db.rows(`SELECT (${minus(a, b)}) AS only_a, (${minus(b, a)}) AS only_b`);
   return { onlyA: Number(r.only_a), onlyB: Number(r.only_b) };
 }
 
 async function breakdown(db, from, col) {
-  const rows = await db.rows(`SELECT TRY_CAST(${qi(col)} AS VARCHAR) AS k, count(*) AS n FROM ${from} GROUP BY ALL ORDER BY n DESC, k`);
+  const rows = await db.rows(`SELECT TRY_CAST(${qi(col)} AS VARCHAR) AS k, system.main.count(*) AS n FROM ${from} GROUP BY ALL ORDER BY n DESC, k`);
   return rows.map((r) => `${r.k ?? 'NULL'} ${fmt(Number(r.n))}`).join('; ') || 'no rows';
 }
 
@@ -142,7 +147,7 @@ function columnReport(want, have, { allowExtra }) {
 
 async function plantedNote(db, from, plantedEver) {
   if (!plantedEver.length) return '';
-  const k = Number(await db.one(`SELECT count(*) FROM ${from} WHERE TRY_CAST(row_id AS BIGINT) IN (${plantedEver.join(', ')})`));
+  const k = Number(await db.one(`SELECT system.main.count(*) FROM ${from} WHERE TRY_CAST(row_id AS BIGINT) IN (${plantedEver.join(', ')})`));
   return k ? ` (${fmt(k)} of them were planted by the tutor and are gone now; rebuild the table)` : '';
 }
 
@@ -158,8 +163,8 @@ async function checkFloor1(db, plantedEver) {
   };
   const want = await wantColumns(db, BASE, 'trips_raw');
   const have = await columnsOf(db, S, 'trips_clean');
-  const expRows = Number(await db.one(`SELECT count(*) FROM ${ref(1)}.trips_clean`));
-  const expKeys = Number(await db.one(`SELECT count(*) FROM (SELECT DISTINCT ${list(TRIP_KEY)} FROM ${ref(1)}.trips_clean)`));
+  const expRows = Number(await db.one(`SELECT system.main.count(*) FROM ${ref(1)}.trips_clean`));
+  const expKeys = Number(await db.one(`SELECT system.main.count(*) FROM (SELECT DISTINCT ${list(TRIP_KEY)} FROM ${ref(1)}.trips_clean)`));
   const colsText = `${want.length} columns: ${list(want.map((c) => c.name))}`;
   if (!have) {
     out.push(R.exists.fail('a table named trips_clean', 'not found'));
@@ -175,12 +180,12 @@ async function checkFloor1(db, plantedEver) {
     const note = onlyA ? await plantedNote(db, from, plantedEver) : '';
     out.push(R.rows.of(onlyA === 0, '0 changed or extra rows', `${fmt(onlyA)} rows that are not rows of trips_raw${note}`));
   }
-  const rc = Number(await db.one(`SELECT count(*) FROM ${from}`));
+  const rc = Number(await db.one(`SELECT system.main.count(*) FROM ${from}`));
   out.push(R.count.of(rc === expRows, fmt(expRows), fmt(rc)));
   const keyCols = want.filter((c) => TRIP_KEY.includes(c.name));
   if (keyCols.some((c) => !have.has(c.name))) out.push(R.keys.skip(`${fmt(expKeys)} trip keys`));
   else {
-    const k = Number(await db.one(`SELECT count(*) FROM (SELECT DISTINCT * FROM (${selectNorm(keyCols, have, from)}))`));
+    const k = Number(await db.one(`SELECT system.main.count(*) FROM (SELECT DISTINCT * FROM (${selectNorm(keyCols, have, from)}))`));
     out.push(R.keys.of(k === expKeys && rc === k, `${fmt(expKeys)} trip keys, one row each`, `${fmt(k)} trip keys in ${fmt(rc)} rows`));
   }
   return out;
@@ -201,7 +206,7 @@ async function checkFloor2(db) {
   const need = [...want, ...extra];
   const have = await columnsOf(db, S, 'trips_clean');
   const refFrom = `${ref(2)}.trips_clean`;
-  const expRows = Number(await db.one(`SELECT count(*) FROM ${refFrom}`));
+  const expRows = Number(await db.one(`SELECT system.main.count(*) FROM ${refFrom}`));
   const expFlags = await breakdown(db, refFrom, 'zone_flag');
   if (!have) {
     out.push(R.exists.fail('a table named trips_clean', 'not found'));
@@ -211,7 +216,7 @@ async function checkFloor2(db) {
   const cr = columnReport(need, have, { allowExtra: true });
   out.push(R.cols.of(cr.ok, `${list(want.map((c) => c.name))}, pu_zone, do_zone, zone_flag`, cr.got));
   const from = `${S}.trips_clean`;
-  const rc = Number(await db.one(`SELECT count(*) FROM ${from}`));
+  const rc = Number(await db.one(`SELECT system.main.count(*) FROM ${from}`));
   out.push(R.count.of(rc === expRows, fmt(expRows), fmt(rc)));
   const flagCols = [{ name: 'row_id', type: 'BIGINT' }, ...extra];
   if (flagCols.some((c) => !have.has(c.name))) out.push(R.flags.skip(expFlags));
@@ -245,9 +250,9 @@ async function checkFloor3(db) {
   const wantQ = [...want, { name: 'reason', type: 'VARCHAR' }];
   const hc = await columnsOf(db, S, 'trips_clean');
   const hq = await columnsOf(db, S, 'quarantine');
-  const expIn = Number(await db.one(`SELECT count(*) FROM ${ref(3)}.trips`));
-  const expC = Number(await db.one(`SELECT count(*) FROM ${ref(3)}.trips_clean`));
-  const expQ = Number(await db.one(`SELECT count(*) FROM ${ref(3)}.quarantine`));
+  const expIn = Number(await db.one(`SELECT system.main.count(*) FROM ${ref(3)}.trips`));
+  const expC = Number(await db.one(`SELECT system.main.count(*) FROM ${ref(3)}.trips_clean`));
+  const expQ = Number(await db.one(`SELECT system.main.count(*) FROM ${ref(3)}.quarantine`));
   const expReasons = await breakdown(db, `${ref(3)}.quarantine`, 'reason');
   out.push(hc ? R.clean.ok('a table named trips_clean', 'found') : R.clean.fail('a table named trips_clean', 'not found'));
   out.push(hq ? R.quar.ok('a table named quarantine', 'found') : R.quar.fail('a table named quarantine', 'not found'));
@@ -261,10 +266,10 @@ async function checkFloor3(db) {
   const Q = `${S}.quarantine`;
   if (!hc.has('row_id') || !hq.has('row_id')) return [...out, R.overlap.skip('0'), R.all.skip(partText), R.reasons.skip(expReasons)];
   const rid = (have, from) => `SELECT TRY_CAST(${qi(have.get('row_id').name)} AS BIGINT) AS row_id FROM ${from}`;
-  const both = Number(await db.one(`SELECT count(*) FROM (${rid(hc, C)} INTERSECT ${rid(hq, Q)})`));
+  const both = Number(await db.one(`SELECT system.main.count(*) FROM (${rid(hc, C)} INTERSECT ${rid(hq, Q)})`));
   out.push(R.overlap.of(both === 0, '0 row_ids in both', `${fmt(both)} row_ids in both`));
-  const nc = Number(await db.one(`SELECT count(*) FROM ${C}`));
-  const nq = Number(await db.one(`SELECT count(*) FROM ${Q}`));
+  const nc = Number(await db.one(`SELECT system.main.count(*) FROM ${C}`));
+  const nq = Number(await db.one(`SELECT system.main.count(*) FROM ${Q}`));
   const d = await diff(db, `${rid(hc, C)} UNION ALL ${rid(hq, Q)}`, `SELECT row_id FROM ${ref(3)}.trips`);
   out.push(R.all.of(d.onlyA === 0 && d.onlyB === 0, partText,
     `${fmt(nc)} + ${fmt(nq)} = ${fmt(nc + nq)}; ${fmt(d.onlyB)} trips missing, ${fmt(d.onlyA)} extra or repeated`));

@@ -246,14 +246,31 @@ async function execStatements(conn, stmts, { maxRows, timeoutMs }) {
   return { ...out.v, ms, executed };
 }
 
-async function sysRows(sql) {
-  const t = await eng.sys.query(sql);
+async function connectionRows(conn, sql) {
+  const t = await conn.query(sql);
   return t.toArray().map((r) => {
     const o = r.toJSON();
     for (const k of Object.keys(o)) o[k] = toNum(o[k]);
     return o;
   });
 }
+const sysRows = (sql) => connectionRows(eng.sys, sql);
+
+// Two statements share a transaction id only when the learner has an explicit transaction open.
+// A speculative BEGIN would abort that transaction. Start/roll back only our own read snapshot.
+async function learnerRead(fn) {
+  const conn = eng.lc;
+  const txid = async () => (await connectionRows(conn, 'SELECT system.main.current_transaction_id() AS id'))[0].id;
+  const ownTransaction = await txid() !== await txid();
+  if (ownTransaction) await conn.query('BEGIN TRANSACTION');
+  try { return await fn(conn); }
+  finally {
+    if (ownTransaction) {
+      try { await conn.query('ROLLBACK'); } catch { /* the worker may have restarted */ }
+    }
+  }
+}
+
 const checkDb = {
   rows: sysRows,
   one: async (sql) => { const r = await sysRows(sql); return r.length ? Object.values(r[0])[0] : null; },
@@ -263,11 +280,13 @@ async function refreshTables() {
   if (!current || !eng) { tables = []; return; }
   const S = learner(current);
   try {
-    const names = await sysRows(`SELECT table_name AS name, 'table' AS kind FROM duckdb_tables() WHERE schema_name = ${qs(S)}
-      UNION ALL SELECT view_name, 'view' FROM duckdb_views() WHERE schema_name = ${qs(S)} AND NOT internal ORDER BY 1`);
+    const names = await sysRows(`SELECT table_name AS name, 'table' AS kind FROM system.main.duckdb_tables()
+      WHERE database_name = 'memory' AND schema_name = ${qs(S)} AND NOT internal
+      UNION ALL SELECT view_name, 'view' FROM system.main.duckdb_views()
+      WHERE database_name = 'memory' AND schema_name = ${qs(S)} AND NOT internal ORDER BY 1`);
     const out = [];
     for (const t of names) {
-      const rows = t.kind === 'table' ? Number(await checkDb.one(`SELECT count(*) FROM ${S}."${t.name.replace(/"/g, '""')}"`)) : null;
+      const rows = t.kind === 'table' ? Number(await checkDb.one(`SELECT system.main.count(*) FROM memory.${S}."${t.name.replace(/"/g, '""')}"`)) : null;
       out.push(t.kind === 'table' ? { name: t.name, rows } : { name: t.name, rows, view: true });
     }
     tables = out;
@@ -399,23 +418,28 @@ export function inspect(name, { rows = 0 } = {}) {
     if (typeof name !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return refused();
     try {
       await ensure();
-      const schema = learner(current);
-      // Only catalogued physical tables qualify. Views could reach tables outside this floor.
-      const matches = await sysRows(`SELECT table_name FROM duckdb_tables()
-        WHERE schema_name = ${qs(schema)} AND lower(table_name) = lower(${qs(name)}) AND NOT internal`);
-      if (!matches.length) return refused();
-      const table = matches[0].table_name;
-      const target = `${schema}."${table.replace(/"/g, '""')}"`;
-      const description = await sysRows(`DESCRIBE ${target}`);
-      const count = typeof rows === 'number' && Number.isFinite(rows) ? Math.min(LIMITS.inspectRows, Math.max(0, Math.floor(rows))) : 0;
-      let preview = [];
-      if (count) {
-        const r = await execStatements(eng.lc, [`SELECT * FROM ${target} LIMIT ${count}`], { maxRows: count, timeoutMs: LIMITS.timeoutMs });
-        if (r.hung || r.fatal) await restartEngine('inspection stopped');
-        if (r.error) return { ok: false, error: 'The table preview could not be read.' };
-        preview = r.rows;
-      }
-      return { ok: true, table, columns: description.map((c) => ({ name: c.column_name, type: c.column_type })), rows: preview };
+      return await learnerRead(async (conn) => {
+        const schema = learner(current);
+        // The immutable system catalog cannot be replaced by a learner macro or view. All
+        // metadata and rows use the learner's same snapshot, including uncommitted DDL.
+        const matches = await connectionRows(conn, `SELECT table_name FROM system.main.duckdb_tables()
+          WHERE database_name = 'memory' AND schema_name = ${qs(schema)}
+            AND system.main.lower(table_name) = ${qs(name.toLowerCase())} AND NOT internal`);
+        if (!matches.length) return refused();
+        const table = matches[0].table_name;
+        const target = `memory.${schema}."${table.replace(/"/g, '""')}"`;
+        const description = await connectionRows(conn, `SELECT column_name, data_type FROM system.main.duckdb_columns()
+          WHERE database_name = 'memory' AND schema_name = ${qs(schema)} AND table_name = ${qs(table)} ORDER BY column_index`);
+        const count = typeof rows === 'number' && Number.isFinite(rows) ? Math.min(LIMITS.inspectRows, Math.max(0, Math.floor(rows))) : 0;
+        let preview = [];
+        if (count) {
+          const r = await execStatements(conn, [`SELECT * FROM ${target} LIMIT ${count}`], { maxRows: count, timeoutMs: LIMITS.timeoutMs });
+          if (r.hung || r.fatal) await restartEngine('inspection stopped');
+          if (r.error) return { ok: false, error: 'The table preview could not be read.' };
+          preview = r.rows;
+        }
+        return { ok: true, table, columns: description.map((c) => ({ name: c.column_name, type: c.data_type })), rows: preview };
+      });
     } catch {
       return { ok: false, error: 'The table could not be inspected.' };
     }

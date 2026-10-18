@@ -41,6 +41,9 @@ shape and SQL limit.
 
 `await db.inspect(name, { rows = 0 } = {})` inspects a real table in the **active learner floor**.
 It resolves the table afresh each call, so replacement and floor changes take effect immediately.
+Existence, columns and preview use one snapshot on the learner connection, including uncommitted
+table creation/replacement. An existing learner transaction is left open; inspection never commits
+or rolls it back. Catalog lookups use immutable system functions, not replaceable learner objects.
 The name is a bare identifier (`[A-Za-z_][A-Za-z0-9_]*`), matched without regard to case. SQL,
 quoted or qualified names, missing tables and views are refused. Caller-supplied SQL is never run.
 
