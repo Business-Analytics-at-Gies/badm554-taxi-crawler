@@ -46,6 +46,7 @@ test('R5: tutor hard stop leaves learner work alone and restores only its own ac
   const p=await h.call('plant','negative_fare',3);
   assert.equal(p.error,undefined,p.error);
   await h.call('unplant',[p.row_ids[0]]);
+  assert.deepEqual((await h.call('tutorQuery','SELECT count(*) FROM trips_raw')).rows,[[7347]],'the next tutor request rebuilds after learner cleanup');
   assert.equal(await h.page.evaluate(()=>testWorkers.size),2,'one learner worker, one tutor worker');
   await h.page.evaluate(()=>{
     window.dbEvents.splice(0);

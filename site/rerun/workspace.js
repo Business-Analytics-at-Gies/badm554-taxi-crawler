@@ -6,14 +6,27 @@ const DATA = new URL('../../data/rerun/', import.meta.url);
 const quote = s => `"${s.replaceAll('"', '""')}"`;
 const ref = (...parts) => parts.map(quote).join('.');
 const values = table => table.toArray().map(row => table.schema.fields.map(f => row[f.name]));
-async function database() {
+function database() {
   const worker = new Worker(new URL('duckdb-browser-eh.worker.js', VENDOR));
-  const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
-  try {
-    await db.instantiate(new URL('duckdb-eh.wasm', VENDOR).href);
-    await db.open({ maximumThreads: 1, query: { castDecimalToDouble: false, castBigIntToDouble: false, castTimestampToDate: false } });
-    return { db, conn: await db.connect(), parser: await db.connect(), close: () => worker.terminate() };
-  } catch (e) { worker.terminate(); throw e; }
+  let closed = false;
+  const copy = {
+    close() { if (!closed) { closed=true; worker.terminate(); } },
+    assertOpen() { if (closed) throw new Error('The SQL workspace stopped.'); },
+  };
+  try { copy.db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker); }
+  catch (e) { copy.close(); throw e; }
+  // The owner receives close synchronously, before any startup await. Even an
+  // instantiate promise that never settles cannot hide its worker from timeout cleanup.
+  copy.ready = (async () => {
+    try {
+      await copy.db.instantiate(new URL('duckdb-eh.wasm', VENDOR).href); copy.assertOpen();
+      await copy.db.open({ maximumThreads: 1, query: { castDecimalToDouble: false, castBigIntToDouble: false, castTimestampToDate: false } }); copy.assertOpen();
+      copy.conn = await copy.db.connect(); copy.assertOpen();
+      copy.parser = await copy.db.connect(); copy.assertOpen();
+      return copy;
+    } catch (e) { copy.close(); throw e; }
+  })();
+  return copy;
 }
 function result(table) {
   const fields = table.schema.fields;
@@ -39,7 +52,7 @@ export async function createWorkspace(day = 1) {
     finally { clearTimeout(timer); }
   }
   try {
-    source = await database(); live = await database();
+    source = database(); await source.ready; live = database(); await live.ready;
     await source.conn.query(`SET custom_extension_repository='${new URL('extensions',VENDOR).href}'; LOAD parquet`);
     for (let n=1;n<=3;n++) {
       const response = await fetch(new URL(`day${n}.parquet`, DATA));
@@ -118,12 +131,13 @@ export async function tutorQuery(day, sql) {
   if (typeof sql!=='string' || sql.length>4000) throw new Error('The tutor can only run read-only SQL.');
   let copy, timer;
   const work = (async () => {
-    copy = await database();
+    copy = database(); await copy.ready;
     await copy.conn.query(`SET custom_extension_repository='${new URL('extensions',VENDOR).href}'; LOAD parquet; LOAD json`);
     for (let n=1;n<=day;n++) {
       const response = await fetch(new URL(`day${n}.parquet`,DATA));
       if (!response.ok) throw new Error(`Could not load day ${n}. Please reload to try again.`);
-      await copy.db.registerFileBuffer(`day${n}.parquet`,new Uint8Array(await response.arrayBuffer()));
+      const bytes = new Uint8Array(await response.arrayBuffer()); copy.assertOpen();
+      await copy.db.registerFileBuffer(`day${n}.parquet`,bytes);
       await copy.conn.query(n===1 ? `CREATE TABLE main.raw_trips AS FROM 'day${n}.parquet'` : `INSERT INTO main.raw_trips FROM 'day${n}.parquet'`);
       await copy.db.dropFile(`day${n}.parquet`);
     }
