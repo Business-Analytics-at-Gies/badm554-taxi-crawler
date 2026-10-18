@@ -5,13 +5,13 @@ Last Updated: 2026-10-18
 Agent: crew-codex-proxy
 Initial proxy: approved P2 commit `d7b2f07ce7308418da3bd750b92a6673999510d6`
 First resumed proxy: `7a6726c` plus the exact client-marker addition subsequently committed as `b1934c6`
-Latest exact-setup proxy: `b1934c6ad5de4fbda339e61437f9bdf5e9889714`
-Status: **BLOCKED on a new unsupported-option refusal with the exact recommended environment.**
-Both official SDKs passed. The initial client marker is now admitted and the experimental-beta
-setting is retained. The latest run sent only the three approved beta values, but still received
-400 before upstream dispatch. Testing stopped again as instructed. The exact nested request
-key/value causing this refusal was not captured and is not asserted here. No further header,
-field, endpoint, query or model was admitted. This is a P3 evidence report, not release approval.
+Exact-setup baseline proxy: `b1934c6ad5de4fbda339e61437f9bdf5e9889714`
+Diagnostic proxy: `7f0b461` plus internal diagnostic plumbing with unchanged admission rules
+Status: **BLOCKED by `message_role` at `$.messages[1].role`, whose value type is `string`.**
+Both official SDKs passed. One separately authorized diagnostic retry with the exact recommended
+environment identified the failed rule and captured the full sanitized outline below. The role
+value was not captured or inferred. No further header, field, endpoint, query, role or model was
+admitted. The remaining Claude Code matrix is unrun. This is a P3 evidence report, not release approval.
 
 ## Versions and isolation
 
@@ -391,7 +391,207 @@ found no overclaim of successful operation. Both local ports were confirmed clos
 profile matched the earlier profile byte-for-byte, and the scratch stores/Claude state contained
 neither raw course tokens nor the synthetic prompt/answer/file markers.
 
-Latest regression verification: database 87 passed; browser 83 passed with 3 existing conditional
+Exact-setup attempt regression verification: database 87 passed; browser 83 passed with 3 existing conditional
 skips; browser against `site` 81 passed with 5 existing conditional skips; server 447 passed.
 All four required suites have zero failures. These are regression results, not a completed
 Claude Code matrix. Only this report changes in the resulting commit.
+
+
+## Authorized sanitized diagnostic retry (2026-10-18)
+
+Exactly one further Claude Code invocation was authorized to diagnose the refusal, without
+admitting any option. It used the same seven setup-page exports, including
+CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 and the 32,000-token allowance, a fresh empty HOME and
+working folder, a new synthetic database/token, and the identical loopback-only sandbox and
+credential/destination guards. Claude Code remained version 2.1.302. No client setting, request
+or policy was changed to get past validation.
+
+The internal policy entry points now return a diagnostic to the local harness only. They run
+the same validators as production and return either null or exactly path/type/rule. The failing
+value is reduced to its type before the diagnostic consumer receives it. Normal production
+calls still throw the original fixed HttpError, attach no diagnostic fields, expose no HTTP
+switch/route for diagnostics, and write no new log or table data. The key/type outline is a
+separate helper under tests/server, which production does not import. The local harness called
+these helpers on the in-memory request; it never wrote the original body to disk or logs.
+
+The captured reason was:
+
+```json
+{
+  "path": "$.messages[1].role",
+  "type": "string",
+  "rule": "message_role"
+}
+```
+
+`messages[1]` is the second message. The existing message-role rule refused that string. This
+report does not record, infer or guess the string value and does not propose admitting it. The
+header diagnostic was null: the header validator accepted the recorded version and beta values.
+
+Every request in the single diagnostic invocation was captured, including headers at request
+start so the earlier HEAD-header gap is resolved for this invocation:
+
+| # | Method | Path | Query | Model | Beta | Status |
+| --- | --- | --- | --- | --- | --- | ---: |
+| 1 | HEAD | `/proxy/api/hello` | none | no body/model | absent | 401 |
+| 2 | POST | `/proxy/v1/messages` | `?beta=true` | `claude-sonnet-5-5` | exact three-value header below | 400 |
+
+```text
+claude-code-20250219,interleaved-thinking-2025-05-14,effort-2025-11-24
+```
+
+The POST used API version 2023-06-01, max_tokens 32000 and stream true. Claude Code exited 1,
+without timing out or asking for reauthentication, and displayed the same fixed course error.
+The fake received zero accepted upstream requests and the ledger had zero rows. The guard
+checks again rejected one manufactured real-looking key and two non-fake destinations. The
+local services were shut down afterward; there was no second diagnostic invocation or later
+matrix scenario. No real API call occurred.
+
+### Full request key/type outline
+
+All ordinary leaf values are represented only by their JSON value type. Every object key and
+array entry is retained outside tools. For tools, the authorized exception retains only each
+tool's name and any type field; no tool in this request supplied a type field, so each entry
+below contains only its name. Descriptions, input schemas, tool arguments, prompt/system text,
+metadata values and the refused role string are not reproduced.
+
+Review found that an inherited auxiliary capture also retained selected tool-schema structure
+outside this outline. That capture was removed from the harness and both saved diagnostic
+artifacts. The retained tool records were checked to contain only names and type fields. This
+cleanup did not invoke Claude Code again or change the captured reason or outline below.
+
+```json
+{
+  "model": "string",
+  "messages": [
+    {
+      "role": "string",
+      "content": [
+        {
+          "type": "string",
+          "text": "string"
+        },
+        {
+          "type": "string",
+          "text": "string",
+          "cache_control": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    {
+      "role": "string",
+      "content": "string"
+    }
+  ],
+  "system": [
+    {
+      "type": "string",
+      "text": "string"
+    },
+    {
+      "type": "string",
+      "text": "string",
+      "cache_control": {
+        "type": "string"
+      }
+    },
+    {
+      "type": "string",
+      "text": "string",
+      "cache_control": {
+        "type": "string"
+      }
+    }
+  ],
+  "tools": [
+    {
+      "name": "Agent"
+    },
+    {
+      "name": "Bash"
+    },
+    {
+      "name": "CronCreate"
+    },
+    {
+      "name": "CronDelete"
+    },
+    {
+      "name": "CronList"
+    },
+    {
+      "name": "DesignSync"
+    },
+    {
+      "name": "Edit"
+    },
+    {
+      "name": "EnterWorktree"
+    },
+    {
+      "name": "ExitWorktree"
+    },
+    {
+      "name": "ListAgents"
+    },
+    {
+      "name": "NotebookEdit"
+    },
+    {
+      "name": "Read"
+    },
+    {
+      "name": "ReportFindings"
+    },
+    {
+      "name": "ScheduleWakeup"
+    },
+    {
+      "name": "SendMessage"
+    },
+    {
+      "name": "Skill"
+    },
+    {
+      "name": "TaskStop"
+    },
+    {
+      "name": "WebFetch"
+    },
+    {
+      "name": "WebSearch"
+    },
+    {
+      "name": "Workflow"
+    },
+    {
+      "name": "Write"
+    }
+  ],
+  "metadata": {
+    "user_id": "string"
+  },
+  "max_tokens": "number",
+  "thinking": {
+    "type": "string"
+  },
+  "output_config": {
+    "effort": "string"
+  },
+  "stream": "boolean"
+}
+```
+
+The new tests cover refusal path/type/rule results, absence of actual values, valid-input null
+diagnostics, key/type outline privacy and the unchanged fixed production HTTP error with no
+new persisted/logged detail. All 458 server tests passed before the client retry. The final run,
+including an additional test for the exact second-message role path using a synthetic value,
+passed all 459 server tests. The other required suites passed: 87 database tests; 83 UI tests
+with 3 existing conditional skips; and 81 UI tests against site/ with 5 existing conditional
+skips. There were no failures. An additional
+offline comparison of 1,078 cases against the pre-change validator found zero accept/refuse
+mismatches. No role or other capability was admitted. Plain Claude Code operation remains
+blocked at this rule, and streaming, tool, refused-model and background/small-model scenarios
+remain unrun under the stop instruction.
