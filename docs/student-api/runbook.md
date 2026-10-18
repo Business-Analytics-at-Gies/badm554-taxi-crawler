@@ -50,3 +50,7 @@ Model casting: Codex at high reasoning effort.
 ## Run log
 
 - 2026-10-18: branch `proxy` from main. P1 dispatched.
+- 2026-10-18: P1 contract approved after Claude's review (output cap, beta query, count preflight, daily $2.50).
+- 2026-10-18: P2 review rounds 1 to 4 (FIX 5, FIX 2, FIX 1, SHIP at d7b2f07).
+- 2026-10-18: P3 real clients: both SDKs pass; Claude Code needed claude-code-20250219 and the documented system role (Claude's decisions); CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 required. Reviews rounds 5 to 7 (per-role content allow lists; web-search citations refused): SHIP at 9e6a53c.
+- Next (by Fri 10-30, each step with Vishal's yes): merge after The Rerun ships; deploy with PROXY_ENABLED=0; exclude /proxy from Easy Auth and read back the host config (/keys/ and /api/keys* still protected); one live smoke call; enable.
