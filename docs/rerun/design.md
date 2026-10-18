@@ -93,6 +93,11 @@ they press it.
 
 ## Build
 
+- Repo (Vishal, 2026-10-18): same repo as Taxi Crawler, so backend fixes land once. Rename the repo
+  to a general name (for example `badm554-sql-games`) after The Rerun closes on Mon 10-26.
+- Pilot spend for reference (aggregates, 2026-10-18): $1.86 for 175 tutor calls by 20 learners;
+  78% was prompt-cache writes.
+
 - Codex builds it on a branch of the pilot code, as a second game served at `/rerun/` by the same
   server and login. The v2 work continues on its own branch; The Rerun does not wait for v2.
 - Claude writes `docs/rerun/floors.md` with the counts and the acceptance tests first, reviews
