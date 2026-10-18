@@ -1,0 +1,102 @@
+[
+  {
+    "name": "run_sql",
+    "description": "Run a read-only SQL query on your own copy of this floor's tables (DuckDB). The learner does not see the result unless you tell them. Use it to check a claim before you make it.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "sql": {
+          "type": "string",
+          "maxLength": 4000
+        }
+      },
+      "required": [
+        "sql"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "navigate",
+    "description": "Show a floor guide. Say why first. This does not change the learner workspace.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "room": {
+          "type": "string",
+          "enum": [
+            "floor1",
+            "floor2",
+            "floor3"
+          ]
+        }
+      },
+      "required": [
+        "room"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "highlight",
+    "description": "Put a glowing frame and a short note on something on the learner's screen.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "enum": [
+            "pipeline",
+            "console",
+            "run-button",
+            "check-button",
+            "result-table",
+            "tables-list"
+          ]
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 120
+        }
+      },
+      "required": [
+        "target",
+        "note"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "show_code",
+    "description": "Show the learner a real file in your panel: a floor's reference SQL, the floor-check code, or the floor rules. Give the whole answer or show reference SQL only after the learner has run an attempt on that floor AND asked directly twice. Both conditions must concern that same floor.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "enum": [
+            "floor1-reference",
+            "floor2-reference",
+            "floor3-reference",
+            "floor-check",
+            "floors-rules"
+          ]
+        }
+      },
+      "required": [
+        "file"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "look",
+    "description": "Get the full current page state (the short one comes with every question).",
+    "input_schema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    }
+  }
+]

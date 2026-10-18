@@ -10,14 +10,13 @@ class Auth {
     if (config.authMode === 'join' && !config.joinCode) throw new Error('JOIN_CODE is required for join authentication');
   }
   identify(req) {
-    const { authMode, env } = this.config;
+    const { authMode } = this.config;
     if (authMode === 'dev') return this.store.devSession();
     if (authMode === 'entra') {
       // Only App Service's protected Easy Auth ingress may supply this header.
       // A local/unprotected process never trusts a browser-supplied copy.
-      const trusted = env.WEBSITE_SITE_NAME && String(env.WEBSITE_AUTH_ENABLED).toLowerCase() === 'true';
-      const subject = trusted && req.headers['x-ms-client-principal-id'];
-      if (typeof subject === 'string' && subject.trim() && subject.length <= 256 && !/[\s,]/.test(subject)) return this.store.entraSession(subject);
+      const subject = this.trustedSubject(req);
+      if (subject) return this.store.entraSession(subject);
     }
     if (authMode === 'join') {
       const values = (req.headers.cookie || '').split(';').map(v => v.trim()).filter(v => v.startsWith('tc_session='));
@@ -30,6 +29,18 @@ class Auth {
       }
     }
     refuse(401, 'not_signed_in', 'Please sign in to continue.');
+  }
+  trustedSubject(req) {
+    const { authMode, env } = this.config;
+    const trusted = authMode === 'entra' && env.WEBSITE_SITE_NAME && String(env.WEBSITE_AUTH_ENABLED).toLowerCase() === 'true';
+    const subject = trusted && req.headers['x-ms-client-principal-id'];
+    return typeof subject === 'string' && subject.trim() && subject.length <= 256 && !/[\s,]/.test(subject) ? subject : null;
+  }
+  principalName(req) {
+    if (this.config.authMode === 'dev') return 'dev';
+    if (!this.trustedSubject(req)) return null;
+    const name = req.headers['x-ms-client-principal-name'];
+    return typeof name === 'string' && name.length <= 1024 && !/[,\x00-\x1f\x7f]/.test(name) ? name.trim().toLowerCase() : null;
   }
   join(body, res) {
     if (this.config.authMode !== 'join') refuse(400, 'bad_request', 'Class-code login is not enabled.');

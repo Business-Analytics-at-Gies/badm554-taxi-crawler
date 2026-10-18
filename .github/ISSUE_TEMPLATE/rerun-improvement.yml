@@ -1,0 +1,32 @@
+name: Improvement (The Rerun)
+description: Suggest one improvement to The Rerun. Required for its extra credit.
+title: "Rerun improvement: "
+labels: ["rerun-feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing The Rerun. This repository is **public** and shows your GitHub username.
+        Leave out names, NetIDs, email addresses, grades and other personal information.
+        Paste the issue link with your three RERUN codes into the Canvas assignment.
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options: ["Floor 1: Run it twice", "Floor 2: A new day", "Floor 3: Late corrections and rebuild", "The tutor", "The guide", "Pipeline and Scratch", "Something else"]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What should change?
+      description: Describe one concrete improvement.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would it help?
+      description: What happened while you played?
+    validations:
+      required: true

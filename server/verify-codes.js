@@ -2,7 +2,7 @@
 // Run with real grading records only in Codex Edu. Crew tests use synthetic records.
 const { readFileSync } = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
-const { config } = require('./config');
+const { config, rerunConfig } = require('./config');
 
 function parseCsv(source) {
   const rows = [];
@@ -28,7 +28,10 @@ function parseCsv(source) {
   if (field || row.length || ended) pushRow();
   return rows;
 }
-function verifyCodes(source, identity, pilot, dataset) {
+function verifyCodes(source, identity, pilot, dataset, game = {}) {
+  const prefix = game.receiptPrefix || 'TAXI';
+  const pattern = new RegExp(`\\b${prefix}-[123]-[A-Z]{8}\\b`, 'g');
+  const floorNumber = value => game.receiptFloors ? Number(Object.keys(game.receiptFloors).find(k => game.receiptFloors[k] === value)) || null : value;
   const [header, ...rows] = parseCsv(source);
   if (!header) throw new Error('CSV is empty');
   const names = header.map(s => s.trim().toLowerCase());
@@ -44,11 +47,11 @@ function verifyCodes(source, identity, pilot, dataset) {
     if (!learner) throw new Error('CSV learner is missing');
     learners.add(learner);
     const pasted = row[codeIndex].toUpperCase().trim();
-    const codes = pasted.match(/\bTAXI-[123]-[A-Z]{8}\b/g) || [];
-    if (!codes.length || pasted.replace(/\bTAXI-[123]-[A-Z]{8}\b/g, '').replace(/[\s,;|]/g, '')) records.push({ learner, code: null, floor: null, ownership: 'unknown', flags: ['invalid_code'] });
+    const codes = pasted.match(pattern) || [];
+    if (!codes.length || pasted.replace(pattern, '').replace(/[\s,;|]/g, '')) records.push({ learner, code: null, floor: null, ownership: 'unknown', flags: ['invalid_code'] });
     for (const code of new Set(codes)) {
       const receipt = lookup.get(code, pilot, dataset);
-      const record = { learner, code, floor: receipt?.floor || null, ownership: 'unknown', flags: [] };
+      const record = { learner, code, floor: receipt ? floorNumber(receipt.floor) : null, ownership: 'unknown', flags: [] };
       if (!receipt) record.flags.push('unknown_code');
       else if (receipt.mode === 'entra') {
         record.ownership = 'entra';
@@ -74,11 +77,13 @@ function verifyCodes(source, identity, pilot, dataset) {
 if (require.main === module) {
   let identity;
   try {
-    if (process.argv.length !== 3) throw new Error('Usage: node server/verify-codes.js <codes.csv>');
-    const cfg = config();
-    const source = readFileSync(process.argv[2], 'utf8');
-    identity = new DatabaseSync(`${cfg.dbPath}.identity.sqlite`, { readOnly: true });
-    const report = verifyCodes(source, identity, cfg.pilot, cfg.dataset);
+    const args = process.argv.slice(2);
+    const isRerun = args.length === 3 && args[0] === '--game' && args[1] === 'rerun';
+    if (!isRerun && args.length !== 1) throw new Error('Usage: node server/verify-codes.js [--game rerun] <codes.csv>');
+    const base = config(), cfg = isRerun ? rerunConfig(base) : base;
+    const source = readFileSync(args.at(-1), 'utf8');
+    identity = new DatabaseSync(`${base.dbPath}.identity.sqlite`, { readOnly: true });
+    const report = verifyCodes(source, identity, cfg.pilot, cfg.dataset, cfg);
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     process.exitCode = report.learners.length && report.learners.every(l => l.complete) ? 0 : 1;
   } catch (error) {

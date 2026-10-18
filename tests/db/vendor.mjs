@@ -27,8 +27,9 @@ const stripMap = (buf) => Buffer.from(buf.toString('utf8').replace(/\n?\/\/# sou
 writeFileSync(join(out, 'duckdb-browser-eh.worker.js'), stripMap(readFileSync(join(pkgDir, 'dist/duckdb-browser-eh.worker.js'))));
 writeFileSync(join(out, 'duckdb-eh.wasm'), readFileSync(join(pkgDir, 'dist/duckdb-eh.wasm')));
 // This build has no built-in Parquet reader; DuckDB would fetch it from extensions.duckdb.org.
-// Vendor the signed extension so db.js can load it same-origin (custom_extension_repository).
+// Vendor the signed extensions for same-origin Parquet loading and native SQL syntax trees.
 const EXTENSIONS = {
+  'extensions/v1.5.4/wasm_eh/json.duckdb_extension.wasm': '993b19f7929cc305b2529c548f2842e8e7a5b112d1c88f31c84798b51901ca16',
   'extensions/v1.5.4/wasm_eh/parquet.duckdb_extension.wasm': '4845705bbd69fc9ad52878d96a505c73cae4a6c509822079cc2413e5eb437f95',
 };
 for (const [rel, sha] of Object.entries(EXTENSIONS)) {
