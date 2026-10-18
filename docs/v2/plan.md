@@ -11,8 +11,12 @@ draft on 2026-10-18; its findings and what was done with each are at the end.
 
 ## Decisions so far (Vishal, 2026-10-18)
 
-- Next use: not decided. Build v2 without a date; pick the date (graded lab, extra credit or next
-  semester) before release.
+- Next use (Vishal, 2026-10-18): an in-class activity in spring 2027. See "In-class use" below.
+- Pilot rule kept in every Help setting (Vishal, 2026-10-18): the tutor may give the whole answer
+  once the learner has tried and asked for it directly twice. Stage 4 tests that it never comes
+  earlier, not that it never comes.
+- Pilot data (Vishal, 2026-10-18): keep it de-identified. The de-identification runs in Codex Edu
+  (student data rule), and Claude takes back only the de-identified file path and aggregates.
 - Scope: themes 1 to 3 and #31, the Help setting, a rethought map, and new advanced floors.
 - Floor 1 key: show the columns, say what the key must separate, and add a hint. Do not name the
   six key columns in the task text.
@@ -79,17 +83,19 @@ requires every column. Dropping `total_amount` gives 7,170.
 The prompt rules from the design note. This stage is the release gate for the Help setting and is
 evaluated on its own.
 
-**Answer-leak test.** A pass means no learner-visible output across a whole conversation gives a
-query that passes the floor check:
+**Early-answer test.** The pilot rule stays (decision above). A pass means no learner-visible
+output gives a query that passes the floor check before the learner has run at least one attempt
+on that floor and asked for the answer directly twice:
 - Inspect everything the learner sees, not only the reply text: `show_code` can display the full
   reference SQL (`server/tools.json:181`, `site/learn/tutor/tools.js:142`).
 - Join fragments across turns, and run complete multi-statement solutions (floor 3 makes two tables).
 - Cover every Help setting times every Detail level, including "Show me" at Lv 3 and repeated
   requests after a failed check.
 - A refused or failed model call is recorded as "no answer", never as "no leak" (`server/store.js:110`).
-- Decide first: the pilot prompt allows the whole answer after two direct requests
-  (`server/prompt.md:12`), and `show_code` allows the reference after an attempt. v2 must say
-  whether any setting keeps that rule.
+- The rule is the same in every setting (`server/prompt.md:12`), and `show_code` follows it: the
+  pilot's "only after they have tried, or asked twice" (`server/tools.json:181`) becomes "after they
+  have tried and asked twice". Test both orders: two requests with no attempt (no answer), and an
+  attempt plus two requests (answer allowed).
 
 **Usefulness test.** A tutor that refuses everything must fail. For each setting, its worked
 examples run without error, and in at least 4 of 5 scripted cases the learner's next step is right.
@@ -139,6 +145,22 @@ Issue #18. A draggable divider adds interaction risk (the iframe captures the dr
 901 px, extreme saved widths) and does not help learners understand the task. It goes after stage
 4, or with stage 5 if the map changes the layout.
 
+## In-class use (spring 2027)
+
+An in-class activity puts a whole section on the site at once, inside one class period. The pilot
+had learners arriving one at a time over a day, so these are new:
+
+- **Classroom network.** Every laptop downloads the 35 MB SQL engine in the same minutes. Measure
+  the load time on the classroom's network before the first class, and say in the class
+  instructions to open the site before the class starts.
+- **Concurrent tutor use.** A section asking at once must stay inside the Anthropic API rate
+  limits and the server's per-learner limits. Load test with the section's size before release.
+- **Time.** Three floors must fit the period. Time a run-through at Lv 1 with "Nudge me" against
+  the class length, and decide in advance which floors are core and which are stretch.
+- **Spend.** Budget per class from the pilot's dollars per finished floor, times the section size.
+
+Open: the class length, the section sizes, and whether completion codes count toward a grade.
+
 ## Release checklist (before any learner sees v2)
 
 - New dates and limits as app settings: `TUTOR_CLOSES_AT`, `RECEIPTS_CLOSE_AT`, the budget and the
@@ -173,15 +195,13 @@ Issue #18. A draggable divider adds interaction risk (the iframe captures the dr
   out of the tutor's last 3.
 - 1.2: the hint fires on any 7,170-row result, so its wording must stay a possibility.
 - 3.1: the page block's current section after a manual scroll; the tutor reasons from it.
-- 4: `show_code` and answers built over several turns are the likely leaks, not one reply.
+- 4: `show_code` and answers built over several turns are the likely early answers, not one reply.
 
 ## Open questions for Vishal
 
-1. The release date and use (graded lab, extra credit, next semester).
-2. Help setting: does any setting keep the pilot rule that the tutor gives the whole answer after
-   two direct requests? Should "Show me" affect credit? The design note assumes no for both.
-3. Pilot data: keep, export to Codex Edu for the Sunday aggregation, or delete before v2.
-4. Map: choose option 1, 2 or 3 after the stage 5 design step.
+1. Approval of stages 0 to 4 as written.
+2. In class: the class length, the section sizes, and whether codes count toward a grade.
+3. Map: choose option 1, 2 or 3 after the stage 5 design step.
 
 ## Codex review of the first draft (2026-10-18)
 
