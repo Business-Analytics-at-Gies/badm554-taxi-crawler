@@ -17,9 +17,9 @@ class Store {
     this.now = now;
     mkdirSync(dirname(config.dbPath), { recursive: true, mode: 0o700 });
     this.chat = new DatabaseSync(config.dbPath);
-    this.identity = new DatabaseSync(`${config.dbPath}.identity.sqlite`);
+    this.identity = new DatabaseSync((config.identityPath || `${config.dbPath}.identity.sqlite`));
     chmodSync(config.dbPath, 0o600);
-    chmodSync(`${config.dbPath}.identity.sqlite`, 0o600);
+    chmodSync((config.identityPath || `${config.dbPath}.identity.sqlite`), 0o600);
     for (const db of [this.chat, this.identity]) db.exec('PRAGMA busy_timeout=5000; PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA secure_delete=ON;');
     this.chat.exec(`
       CREATE TABLE IF NOT EXISTS history (session TEXT, role TEXT, text TEXT, at TEXT);
@@ -163,8 +163,10 @@ class Store {
   }
   receipt(session, floor) {
     const { pilot, dataset, receiptSecret } = this.config;
+    const publicFloor = floor;
+    floor = this.config.receiptFloors?.[floor] ?? floor;
     const old = this.identity.prepare('SELECT floor,code FROM receipts WHERE pilot=? AND dataset=? AND session=? AND floor=?').get(pilot, dataset, session, floor);
-    if (old) return { ...old };
+    if (old) return { ...old, floor: publicFloor };
     let code;
     do {
       const entropy = randomBytes(32);
@@ -172,10 +174,10 @@ class Store {
       // Rejection sampling gives each of the 26 letters equal probability.
       const letters = [...bytes].filter(n => n < 234).map(n => String.fromCharCode(65 + n % 26)).join('').slice(0, 8);
       if (letters.length !== 8) continue;
-      code = `TAXI-${floor}-${letters}`;
+      code = `${this.config.receiptPrefix || 'TAXI'}-${publicFloor}-${letters}`;
     } while (!code || this.identity.prepare('SELECT 1 FROM receipts WHERE code=?').get(code));
     this.identity.prepare('INSERT OR IGNORE INTO receipts VALUES (?,?,?,?,?,?)').run(pilot, dataset, session, floor, new Date(this.now()).toISOString(), code);
-    return { ...this.identity.prepare('SELECT floor,code FROM receipts WHERE pilot=? AND dataset=? AND session=? AND floor=?').get(pilot, dataset, session, floor) };
+    return { ...this.identity.prepare('SELECT floor,code FROM receipts WHERE pilot=? AND dataset=? AND session=? AND floor=?').get(pilot, dataset, session, floor), floor: publicFloor };
   }
   close() { this.chat.close(); this.identity.close(); }
 }

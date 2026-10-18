@@ -136,3 +136,40 @@ transport test uses a local function in place of fetch; it makes no network call
 The full browser game, real Easy Auth/tenant configuration, Azure persistent-share behavior, model
 provider behavior, three real conversation costs and live deployment are integration checks for Claude.
 The approved plan still requires its separate server security review before learners get a link.
+
+## The Rerun (second game)
+
+`/rerun/` is served alongside the unchanged `/learn/` pilot landing page. The same
+sign-in protects both games. `/api/rerun/` exposes `me`, `join`, `tutor/ask`,
+`tutor/continue`, `tutor/history`, `receipt` and `forget` with the pilot's request
+shapes. Requests to `/api/` retain their pilot meanings.
+
+The Rerun defaults to a $50 total tutor budget and a tutor/receipt deadline of
+`2026-10-27T04:59:00Z` (Mon 10-26, 11:59 PM CDT). Its optional overrides are
+`RERUN_BUDGET_TOTAL_USD` and `RERUN_CLOSES_AT`; pilot budget and deadline overrides
+do not change it. Per-learner caps and the teaching/transport safeguards are the
+same as the pilot. `TUTOR_OFF=1` switches off both tutors.
+
+With configured `DB_PATH`, Rerun chat, questions, settings and spending persist
+separately in `DB_PATH.rerun.sqlite`. Identity stays in the existing
+`DB_PATH.identity.sqlite`. Rerun receipts use their own game/dataset namespace and
+stored floor IDs `rerun-1`, `rerun-2`, `rerun-3`, while the HTTP floor remains 1–3.
+Codes are `RERUN-<floor>-<8 letters>`. Forget removes both games' chats and revokes
+the shared sign-in; it preserves both games' spending and receipts.
+
+For synthetic tests, or real grading records only in the Edu account:
+
+```sh
+node server/verify-codes.js --game rerun path/to/codes.csv
+```
+
+The existing command without `--game rerun` still checks only TAXI codes. Both
+modes bind receipts to their game, dataset and sign-in, with the same ownership
+and duplicate-code checks. Receipts retain the pilot's trust model: the browser
+asserts that a floor passed; the server does not independently rerun DuckDB.
+
+Rerun's guide, saved Pipeline, Scratch and isolated check are documented in
+`docs/rerun/r3-verification.md`. Its tutor uses `rerun-prompt.md` and the smaller
+`rerun-tools.json`: read-only SQL on its own pristine copy, guide navigation,
+highlighting, real source files and current page state. It cannot run or change
+the learner's pipeline, advance their day, plant data or issue completion codes.
