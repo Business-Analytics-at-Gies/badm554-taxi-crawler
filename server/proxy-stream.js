@@ -28,9 +28,15 @@ async function* lines(body) {
   else if (parts.length) yield { raw: Buffer.concat(parts), complete: false };
 }
 
-async function passStream(response, res, signal, settle, inspectUsage) {
+async function passStream(response, res, signal, settle, inspectUsage, invalidateAccounting) {
   let rawParts = [], data = [], eventName = '', firstLine = true;
-  let usage, started = false, stopped = false, invalid = false, finalDelta = false, previousOutput = 0;
+  let usage, started = false, stopped = false, invalid = false, finalDelta = false;
+  let invalidAccounting = false;
+  const inspect = (update, partial = false, previous) => {
+    try { inspectUsage(update, partial, previous); return true; }
+    catch { invalidAccounting = true; return false; }
+  };
+  const invalidate = () => { invalidAccounting = true; invalidateAccounting(); };
   const send = async frame => { if (!res.write(frame)) await once(res, 'drain', { signal }); };
   const dispatch = async () => {
     // An event field is authoritative even when its data is empty, invalid JSON, or absent.
@@ -39,24 +45,28 @@ async function passStream(response, res, signal, settle, inspectUsage) {
       let value;
       try { value = JSON.parse(data.join('\n')); } catch { invalid = true; }
       if (value?.type === 'error') throw new Error('Proxy stream failed');
+      // Accounting on an unexpected event is still accounting. Never let event type
+      // or a premature stop hide a malformed counter or an extra billed attempt.
+      if (value && Object.hasOwn(value, 'usage') && value.type !== 'message_delta') { inspect(value.usage); invalidate(); }
+      if (value?.message && Object.hasOwn(value.message, 'usage') && value.type !== 'message_start') { inspect(value.message.usage); invalidate(); }
+      if (stopped && value?.type !== 'ping') invalidate();
       if (value?.type === 'message_start') {
-        if (started) invalid = true;
+        if (started) { invalid = true; invalidate(); }
         started = true;
-        usage = value.message?.usage && { ...value.message.usage };
-        if (usage) inspectUsage(usage);
+        const next = value.message?.usage;
+        if (inspect(next) && !invalidAccounting) usage = { ...next };
       } else if (value?.type === 'message_delta') {
-        if (!started || !usage || !value.usage) invalid = true;
+        const valid = inspect(value.usage, true);
+        if (!started || !usage || !valid) invalid = true;
         else {
-          inspectUsage(value.usage);
-          if (!Number.isSafeInteger(value.usage.output_tokens) || value.usage.output_tokens < previousOutput) invalid = true;
-          previousOutput = value.usage.output_tokens;
           finalDelta = typeof value.delta?.stop_reason === 'string' && !!value.delta.stop_reason;
           // Null optional fields in deltas mean no update, not zero billing.
-          usage = { ...usage, ...Object.fromEntries(Object.entries(value.usage).filter(([, v]) => v != null)) };
+          const merged = { ...usage, ...Object.fromEntries(Object.entries(value.usage).filter(([, v]) => v != null)) };
+          if (inspect(merged, false, usage) && !invalidAccounting) usage = merged;
         }
       } else if (value?.type === 'message_stop') {
         if (stopped) invalid = true;
-        if (started && finalDelta && !invalid && !stopped) {
+        if (started && finalDelta && !invalid && !invalidAccounting && !stopped) {
           try { settle(usage); stopped = true; } catch { invalid = true; }
         }
       }

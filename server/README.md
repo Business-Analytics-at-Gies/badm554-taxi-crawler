@@ -166,8 +166,10 @@ is written to these stores or process logs.
 - Request fields and beta headers use explicit reviewed allow lists; the API version is pinned
   to `2023-06-01`. Unpriced options (including compaction, US-only inference and server fallbacks)
   refuse before any upstream call. The contract explains each permitted field and beta.
-- Complete usage sums billed iterations without adding their aggregate twice. Unrecognized
-  usage fields keep the reservation and persist a budget hold. Streaming parses SSE events,
+- Complete usage sums billed iterations without adding their aggregate twice. Ordinary counters
+  and cache durations must agree with non-compaction iterations. Unrecognized, malformed,
+  negative or inconsistent usage keeps the reservation and persists a budget hold, including
+  bad intermediate updates that a later update replaces. Streaming parses SSE events,
   suppresses complete/incomplete provider errors, and settles only complete final usage.
   Successful JSON answers and streamed events have no artificial byte limit; buffers remain
   transient memory, with no answer content written to disk.

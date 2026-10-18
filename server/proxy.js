@@ -155,7 +155,10 @@ class Proxy {
       if (!countOnly && body.stream) {
         res.statusCode = response.status;
         res.setHeader('Content-Type', 'text/event-stream'); res.flushHeaders();
-        await passStream(response, res, control.signal, usage => { this.store.settle(id, usage); settled = true; }, usage => this.store.inspectUsage(usage));
+        await passStream(response, res, control.signal,
+          usage => { this.store.settle(id, usage); settled = true; },
+          (usage, partial, previous) => this.store.inspectUsage(usage, id, partial, previous),
+          () => this.store.hold(id));
         if (!settled) this.store.unknown(id);
         res.end();
       } else {

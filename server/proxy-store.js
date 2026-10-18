@@ -1,6 +1,6 @@
 const { randomBytes, randomUUID, createHash } = require('node:crypto');
 const { refuse } = require('./errors');
-const { fields, bill, UnpricedUsage } = require('./proxy-usage');
+const { fields, bill, progress } = require('./proxy-usage');
 const { PRICES } = require('./model');
 const nano = n => {
   const result = Math.ceil(n * 1e9 - 1e-7);
@@ -132,16 +132,27 @@ class ProxyStore {
       }
     });
   }
-  hold() { this.db.prepare("INSERT OR REPLACE INTO proxy_settings VALUES ('budget_hold','1')").run(); }
-  inspectUsage(usage) {
-    try { fields(usage, this.cfg.model); }
-    catch (error) { if (error instanceof UnpricedUsage) this.hold(); throw error; }
+  hold(id) {
+    this.store.transaction(() => {
+      this.db.prepare("INSERT OR REPLACE INTO proxy_settings VALUES ('budget_hold','1')").run();
+      if (id) {
+        // Late malformed accounting must undo even a settlement at message_stop.
+        this.db.prepare("UPDATE proxy_ledger SET amount=reserved,status='unknown' WHERE id=?").run(id);
+        this.db.prepare(`UPDATE proxy_request_log SET status='unknown',input_tokens=NULL,output_tokens=NULL,
+          cache_creation_input_tokens=NULL,cache_read_input_tokens=NULL,cache_write_hour_tokens=NULL,
+          cost_usd=(SELECT reserved/1000000000.0 FROM proxy_ledger WHERE id=?) WHERE id=?`).run(id, id);
+      }
+    });
+  }
+  inspectUsage(usage, id, partial = false, previous) {
+    try { fields(usage, this.cfg.model, false, partial); if (previous) progress(previous, usage); }
+    catch (error) { this.hold(id); throw error; }
   }
   settle(id, usage, countOnly = false) {
     let amount = 0;
     if (!countOnly) {
       try { const result = bill(usage, PRICES[this.cfg.model], this.cfg.model); amount = nano(result.usd); usage = result.usage; }
-      catch (error) { if (error instanceof UnpricedUsage) this.hold(); throw error; }
+      catch (error) { this.hold(id); throw error; }
     }
     this.store.transaction(() => {
       const row = this.db.prepare('SELECT * FROM proxy_ledger WHERE id=?').get(id);

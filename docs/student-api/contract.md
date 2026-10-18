@@ -561,8 +561,9 @@ top-level aggregate again. When absent/empty, use the ordinary usage counters. E
 model must name the allowed Sonnet (or null for an ordinary message entry). Advisor/fallback
 entries require that exact model; compaction entries have no model field. Each iteration admits
 only its documented type, token/cache counts and applicable model field, not top-level metadata.
-A list smaller than
-the ordinary reported totals is inconsistent and cannot earn a refund. Persist only summed
+The non-compaction iterations must agree exactly with the ordinary reported totals, including
+the separate five-minute and one-hour cache-write counts. Compaction is additional billed work
+outside those ordinary totals. Any contradictory report cannot earn a refund. Persist only summed
 input/output/cache counters and cost, never the original iteration object or content.
 
 The known schema includes input/output counts, cache creation/read counts and 5m/1h breakdown,
@@ -571,8 +572,14 @@ fallback_credit=null, and standard/global service/geo/speed metadata. Unknown fi
 level, unknown iteration types/models, nonstandard pricing indicators, or charged server-tool
 usage retain the full reservation and set a persistent proxy-only budget hold. Even an unknown
 zero/null field is held. Inspect each SSE usage update before merging so later updates cannot
-erase evidence of an unfamiliar counter. Ordinary malformed/missing/incomplete usage also
-keeps its full reservation; original unknown objects are not written to any table or log.
+erase evidence of an unfamiliar or malformed counter. Every supplied counter must be a safe,
+nonnegative integer, with the SDK's documented nullable delta input/cache counters treated as
+no update. Complete usage requires numeric input/output counts. Cache-duration totals and
+thinking/output detail must be consistent, both within an update and after merging. Malformed,
+negative, missing required counters or internally inconsistent usage keeps the full reservation
+as unknown and sets the persistent hold. Incomplete/failed/cancelled transport without invalid
+usage keeps its reservation without inferring a billing-schema error. Original unknown objects
+are not written to any table or log.
 
 A defensive response with top-level 0/0 and a compaction iteration of 144 input/276 output
 settles to $0.003048. Twenty such responses debit $0.060960. The request controls that could
@@ -620,3 +627,43 @@ local synthetic server confirmed that key setup includes the recommended 32K out
 experimental-beta settings, reload hides the once-only credential, and the page fits a 375px
 viewport. No actual-client, live-provider, host-configuration or deployment check was performed;
 those remain P3. All calls and identities in these checks were local fakes and synthetic data.
+
+## Claude's P2 review round 2 decisions (2026-10-18)
+
+The same persistent hold and full unknown reservation now apply to every unusable accounting
+report: unknown schema, malformed/negative/fractional/unsafe counters, missing required complete
+usage, inconsistent cache-duration sums, contradictory ordinary/iteration reports, or thinking
+detail larger than the inclusive output count. Ordinary usage and the sum of non-compaction
+iterations must agree in every counter and both cache durations. Compaction remains separately
+billed. No contradiction is resolved by choosing the cheaper report.
+
+Validate each streaming usage update before merging, then validate the merged report against
+the previous report. All cumulative token/cache counters and both duration counts must not
+decrease. Previously reported iterations cannot disappear, change type, or reduce counters.
+The SDK's documented null input/cache delta values mean no update; they cannot replace existing
+counts with zero. Complete usage still requires numeric input/output counters. These are Claude's
+review decisions, not new defaults chosen by Vishal.
+
+Keep a separate invalid-accounting flag through the rest of the stream. A later clean update,
+replacement iteration list or clean stop cannot clear it or grant a refund. Inspect usage even
+when it is attached to an unexpected event; that unsupported placement itself requires a hold,
+including well-formed counters that the normal message accounting would otherwise ignore.
+An additional non-ping event after message_stop or
+a repeated message_start makes the accounting inconsistent. If invalid accounting arrives after
+an earlier message_stop settlement, atomically restore the full reservation as unknown, clear
+the formerly settled token counters, and persist the hold. Transport failures/incompleteness
+without invalid accounting retain the reservation under the existing rules. No invalid usage
+object, prompt, answer or provider error text is written to a table or log.
+
+`tests/server/proxy-review-r2.test.js` covers both review reproductions and the surrounding
+counter/schema/stream-update cases. The new tests were run failing before the corresponding
+fixes; the normal cache/compaction and nullable-delta cases continue to settle successfully.
+`.p2-review-r2.md` remains an uncommitted review input. All verification uses synthetic identities,
+temporary stores and a local fake upstream, never the real API.
+
+Final R2 local verification: database 87 passed; browser 83 passed/3 existing conditional skips;
+browser against `site` 81 passed/5 existing conditional skips; server 275 passed, including
+41 R2 checks. Zero failures remain. No actual-client run, real-provider call, deployment or host
+configuration change was performed; those remain P3.
+The final independent review found no remaining actionable accounting defect and reran all
+41 R2 checks successfully.
