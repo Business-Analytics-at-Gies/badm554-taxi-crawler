@@ -31,6 +31,14 @@ npm test                  # node --test, both files, about 15 s
 2026-10-16 17:35 CDT). The earlier ordering mistake equalled the reference on this data, so it
 was replaced (v2 plan stage 0.4, 2026-10-18).
 
+## The Rerun (R1)
+
+`npm test` also runs `rerun-data.test.mjs` (DuckDB CLI required) and `rerun.test.mjs`
+(the real vendored DuckDB-WASM, separate from the pilot engine). They check reproducible
+extracts, all valid/wrong scripts under `rerun/sql/`, and the exact first failing run.
+The contract and CLI counts are in `docs/rerun/floors.md`. The multi-run harness is test-only;
+the Rerun runtime engine is deferred to R2. No pilot acceptance tests are changed.
+
 ## Vendored files (`site/vendor/duckdb/`)
 
 `npm run vendor` rebuilds them and writes `VERSION.json` (versions and SHA-256 of each file).
