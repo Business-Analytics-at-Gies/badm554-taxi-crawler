@@ -9,7 +9,8 @@ also has its own design file.
 ## Decisions (Vishal, 2026-10-18)
 
 - Games in general beat video prep. New games, not the same game every week.
-- API credit: **$250 available until Thu 2026-11-05.** Use it for more activities. The pilot
+- API credit: **$250 available until Thu 2026-11-05.** Use it for more activities. It is on the same
+  Anthropic organization and shared by all its workspaces, so the server's current key draws on it. The pilot
   spent $1.86 (175 tutor calls, 20 learners; aggregates).
 - **Every activity has a feedback loop:** a required GitHub issue entry (one improvement).
 - A stronger tutor model is allowed when it helps.
