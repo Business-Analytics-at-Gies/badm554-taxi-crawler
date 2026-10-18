@@ -11,7 +11,8 @@ draft on 2026-10-18; its findings and what was done with each are at the end.
 
 ## Decisions so far (Vishal, 2026-10-18)
 
-- Next use (Vishal, 2026-10-18): an in-class activity in spring 2027. See "In-class use" below.
+- Next use (Vishal, 2026-10-18): spring 2027, either in class or outside class as preparation for
+  a class. Not decided which. See "Spring use" below.
 - Pilot rule kept in every Help setting (Vishal, 2026-10-18): the tutor may give the whole answer
   once the learner has tried and asked for it directly twice. Stage 4 tests that it never comes
   earlier, not that it never comes.
@@ -145,10 +146,14 @@ Issue #18. A draggable divider adds interaction risk (the iframe captures the dr
 901 px, extreme saved widths) and does not help learners understand the task. It goes after stage
 4, or with stage 5 if the map changes the layout.
 
-## In-class use (spring 2027)
+## Spring use (2027)
 
-An in-class activity puts a whole section on the site at once, inside one class period. The pilot
-had learners arriving one at a time over a day, so these are new:
+**As preparation outside class.** Learners play before the class, spread over a few days, as in
+the pilot. The pilot's limits and load were enough for that. The class then starts from what they
+found (for example, why 174, why an inner join lost 25 rows), so the codes are due before class.
+
+**In class.** A whole section is on the site at once, inside one class period. The pilot had
+learners arriving one at a time over a day, so these are new:
 
 - **Classroom network.** Every laptop downloads the 35 MB SQL engine in the same minutes. Measure
   the load time on the classroom's network before the first class, and say in the class
@@ -159,7 +164,11 @@ had learners arriving one at a time over a day, so these are new:
   the class length, and decide in advance which floors are core and which are stretch.
 - **Spend.** Budget per class from the pilot's dollars per finished floor, times the section size.
 
-Open: the class length, the section sizes, and whether completion codes count toward a grade.
+Preparation needs none of the in-class items above, so it is the lower-risk first use. In-class
+use needs the load test before release.
+
+Open: in class or as preparation; the class length and section sizes (in class); whether
+completion codes count toward a grade.
 
 ## Release checklist (before any learner sees v2)
 
@@ -200,7 +209,8 @@ Open: the class length, the section sizes, and whether completion codes count to
 ## Open questions for Vishal
 
 1. Approval of stages 0 to 4 as written.
-2. In class: the class length, the section sizes, and whether codes count toward a grade.
+2. Spring use: in class or as preparation; the class length and section sizes if in class;
+   whether codes count toward a grade.
 3. Map: choose option 1, 2 or 3 after the stage 5 design step.
 
 ## Codex review of the first draft (2026-10-18)
