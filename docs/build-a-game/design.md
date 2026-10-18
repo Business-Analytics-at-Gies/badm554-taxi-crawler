@@ -1,4 +1,4 @@
-# Build a SQL game (Week 11): design (draft)
+# Build a SQL game (Week 11): design
 
 Created: 2026-10-18
 Last Updated: 2026-10-18
