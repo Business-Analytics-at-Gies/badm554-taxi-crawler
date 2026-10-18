@@ -201,6 +201,13 @@ items stay here in case that changes.
 - Codex reviews each stage until a round returns nothing actionable (two rounds at least).
 - Close every issue a stage fixes, with a comment that names the commit.
 
+## Known pilot defects to fix in v2
+
+- Floor 1's "unchanged rows" check accepts a small change to a value: adding 0.001 miles to
+  `trip_distance` still passes (found by crew-codex-rerun, 2026-10-18; evidence in
+  `docs/rerun/r2-review-r1-verification.md` on branch `rerun`). Fix with the floor packs (2.0):
+  compare exact values, as The Rerun's grader now does. Test: that change fails floor 1.
+
 ## Review Focus
 
 - 0.1: any module that still writes the hash itself erases the other keys.
