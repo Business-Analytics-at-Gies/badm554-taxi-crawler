@@ -104,10 +104,21 @@ async function appendDay(db, batch) {
   finally { await db.loader.query(`DROP TABLE ${staging}`); }
 }
 async function truthForDay(truth, day) {
+  if (truth.day === day) return truth.expected;
   await truth.conn.query(`CREATE OR REPLACE TABLE raw_expected AS ${Array.from({ length: day }, (_, i) => `FROM day${i+1}`).join(' UNION ALL ')};
     CREATE OR REPLACE TABLE expected AS SELECT * FROM raw_expected
     QUALIFY row_number() OVER(PARTITION BY trip_id ORDER BY loaded_at DESC,row_id DESC)=1`);
-  return metrics(truth.conn, 'expected');
+  // Only immutable trusted data is cached, scoped to this check and day. Every
+  // run still reads and verifies the actual pipeline raw/output objects afresh.
+  truth.expected = await metrics(truth.conn, 'expected');
+  truth.reference = {
+    rawSchema: await signature(truth.conn, 'raw_expected'),
+    rawExact: await canonicalRows(truth, 'raw_expected', { cents: false }),
+    rawCents: new Set(await canonicalRows(truth, 'raw_expected')),
+    content: await canonicalRows(truth, 'expected', { metadata: day === 3 }),
+  };
+  truth.day = day;
+  return truth.expected;
 }
 async function copySnapshot(source, truth, table, name, maxRows) {
   // A wrong huge output need not cross the worker boundary. The counts already reject it.
@@ -131,7 +142,9 @@ function exactNumber(value, type) {
   if (typeof value === 'bigint') return fraction(value);
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) return `n:${value}`;
-    if (value === 0) return 'n:0/1';
+    // BigInt(number) preserves an integral IEEE value exactly, including large
+    // integers. Avoid allocating a DataView and reducing its binary fraction.
+    if (Number.isInteger(value)) return fraction(BigInt(value));
     const bits = new DataView(new ArrayBuffer(8));
     bits.setFloat64(0, value);
     const word = bits.getBigUint64(0);
@@ -147,6 +160,15 @@ function exactNumber(value, type) {
 }
 async function schema(conn, table) {
   return rows(await conn.query(`DESCRIBE ${table}`)).map((r) => [foldIdentifier(r[0]), r[1]]);
+}
+async function signature(conn, table) {
+  return JSON.stringify((await schema(conn, table)).sort((a, b) => a[0].localeCompare(b[0])));
+}
+const contentIndexes = COLUMNS.map((name, index) => ['row_id','loaded_at'].includes(name) ? -1 : index).filter(index => index >= 0);
+function tripContent(rows, metadata) {
+  if (metadata) return rows;
+  // Project the already-exact tokens, without another Arrow transfer/conversion.
+  return rows.map(row => { const values = JSON.parse(row); return JSON.stringify(contentIndexes.map(index => values[index])); });
 }
 async function canonicalRows(truth, table, { cents = true, metadata = true } = {}) {
   const types = new Map(await schema(truth.conn, table));
@@ -189,11 +211,8 @@ async function compare(db, truth, run, expected, scriptError) {
   let rawOK = false;
   try {
     if (await originalRaw(db) && await copySnapshot(db, truth, db.raw.ref, 'raw_got', 7351)) {
-      const signature = async (table) => JSON.stringify((await schema(truth.conn, table))
-        .sort((a, b) => a[0].localeCompare(b[0])));
-      rawOK = await signature('raw_got') === await signature('raw_expected')
-        && sameRows(await canonicalRows(truth, 'raw_got', { cents: false }),
-          await canonicalRows(truth, 'raw_expected', { cents: false }));
+      rawOK = await signature(truth.conn, 'raw_got') === truth.reference.rawSchema
+        && sameRows(await canonicalRows(truth, 'raw_got', { cents: false }), truth.reference.rawExact);
     }
   } catch { /* Dropped, replaced or changed original raw table. */ }
   add('raw_unchanged', rawOK);
@@ -204,10 +223,8 @@ async function compare(db, truth, run, expected, scriptError) {
       && JSON.stringify([...columns].sort()) === JSON.stringify([...COLUMNS].sort());
     if (schemaOK && await copySnapshot(db, truth, output.ref, 'got', expected.rows)) {
       const got = await canonicalRows(truth, 'got');
-      const raw = new Set(await canonicalRows(truth, 'raw_expected'));
-      provenanceOK = got.every((row) => raw.has(row));
-      contentOK = sameRows(await canonicalRows(truth, 'got', { metadata: run.day === 3 }),
-        await canonicalRows(truth, 'expected', { metadata: run.day === 3 }));
+      provenanceOK = got.every((row) => truth.reference.rawCents.has(row));
+      contentOK = sameRows(tripContent(got, run.day === 3), truth.reference.content);
     }
   } catch {
     if (schemaOK) provenanceOK = false;

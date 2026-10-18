@@ -91,3 +91,24 @@ test('R3 review: pilot link stays on one line without horizontal page scrolling'
   expect(await link.evaluate(el=>el.getBoundingClientRect().height<=parseFloat(getComputedStyle(el).lineHeight)+1)).toBe(true);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
+
+test('R3 review: keyboard skip opens and focuses the guide, preserves Floor 3 and survives reload', async ({page}) => {
+  await open(page,3); await show(page,'Game');
+  await page.locator('#pipeline').fill('-- saved Floor 3 work');
+  const skip=page.getByRole('link',{name:'Skip to the guide',exact:true});
+  await skip.focus(); await expect(skip).toBeFocused(); await page.keyboard.press('Enter');
+  await expect(page.locator('#guide')).toBeVisible();
+  await expect(page.locator('#tab-guide')).toHaveAttribute('aria-selected','true');
+  await expect(page.locator('#guide-body')).toBeFocused();
+  const intro=await page.locator('#guide-body > p').first().boundingBox(),bar=await page.locator('.guide-bar').boundingBox();
+  expect(intro.y).toBeGreaterThanOrEqual(bar.y+bar.height-1);
+  await expect(page.locator('#floor3-h')).toBeVisible();
+  await expect(page).toHaveURL(/#floor3$/);
+  expect(await page.evaluate(()=>rerun.state().floor)).toBe(3);
+  await page.reload(); await expect(page.locator('#engine-status')).toHaveText('SQL ready');
+  await expect(page).toHaveURL(/#floor3$/);
+  await expect(page.locator('#floor3-h')).toBeVisible();
+  await show(page,'Game'); await expect(page.locator('#floor-picker')).toHaveValue('3');
+  await expect(page.locator('#pipeline')).toHaveValue('-- saved Floor 3 work');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});

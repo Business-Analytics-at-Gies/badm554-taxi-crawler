@@ -27,6 +27,10 @@ document.querySelector('.tabs').setAttribute('role','tablist');
 for(const key of ['guide','game','tutor'])$(`tab-${key}`).addEventListener('click',()=>showPanel(key));
 document.querySelector('.tabs').addEventListener('keydown',e=>{const order=['guide','game','tutor'],i=order.indexOf(activePanel),n={ArrowRight:i+1,ArrowLeft:i-1,Home:0,End:2}[e.key];if(n!==undefined){e.preventDefault();showPanel(order[(n+3)%3],true);}});
 mq.addEventListener('change',panelRoles);panelRoles();showPanel('guide');
+document.querySelector('.skip').addEventListener('click',event=>{
+ event.preventDefault();showPanel('guide');syncFloorHash(floor);
+ $('guide').scrollTop=0;$('guide-body').focus({preventScroll:true});$('guide').scrollIntoView({block:'nearest'});
+});
 function showGuide(n){
  guideFloor=n;
  $('guide').scrollTop=0;
