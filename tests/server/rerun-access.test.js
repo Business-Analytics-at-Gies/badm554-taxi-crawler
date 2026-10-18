@@ -127,3 +127,93 @@ test('resolved Rerun files remain protected through symlink aliases', async t =>
   assert.match(await (await fetch(f.base+'/preview.html')).text(), /Come back then/);
   for(const path of ['/preview.js','/data/preview.parquet']) assert.equal((await fetch(f.base+path)).status,403);
 });
+
+const exchangeQuestion = {question:'What does the current row count tell us?',page:'<page>floor: 1; day: 1</page>'};
+const exchangeAction = {id:'synthetic-trip-count',name:'run_sql',input:{sql:'SELECT COUNT(*) AS trips FROM raw_trips'}};
+const exchangeIntro = 'I will check the current row count.';
+const exchangeReply = 'There are 2400 loads. What do you predict a second run will do?';
+const exchangeOutput = '{"columns":["trips"],"rows":[[2400]]}';
+function exchangeModel() {
+  const observed = [];
+  return { observed, model:async payload => {
+    observed.push(structuredClone(payload));
+    return {
+      stop_reason:observed.length === 1 ? 'tool_use' : 'end_turn',
+      content:observed.length === 1
+        ? [{type:'text',text:exchangeIntro},{type:'tool_use',...exchangeAction}]
+        : [{type:'text',text:exchangeReply}],
+      usage:{input_tokens:100,output_tokens:30},
+    };
+  }};
+}
+async function startExchange(f, headers, observed) {
+  const ask = await f.request('/api/rerun/tutor/ask', exchangeQuestion, headers);
+  assert.equal(ask.status, 200);
+  assert.equal(ask.body.done, false);
+  assert.equal(ask.body.text, exchangeIntro);
+  assert.deepEqual(ask.body.tool_calls, [exchangeAction]);
+  assert.equal(observed.length, 1);
+  // The browser returns this synthetic tool result, using the action ID actually issued.
+  return {turn:ask.body.turn,results:[{id:ask.body.tool_calls[0].id,ok:true,output:exchangeOutput}]};
+}
+async function finishExchange(f, headers, continuation, observed) {
+  const done = await f.request('/api/rerun/tutor/continue', continuation, headers);
+  assert.equal(done.status, 200);
+  assert.equal(done.body.turn, continuation.turn);
+  assert.equal(done.body.done, true);
+  assert.equal(done.body.text, exchangeReply);
+  assert.deepEqual(done.body.tool_calls, []);
+  assert.equal(observed.length, 2);
+  assert.deepEqual(observed[1].messages.at(-1), {
+    role:'user',content:[{type:'tool_result',tool_use_id:exchangeAction.id,content:exchangeOutput,is_error:false}],
+  });
+}
+
+test('listed learner completes a tutor tool exchange and retrieves its history before opening', async t => {
+  const {model,observed} = exchangeModel();
+  const f = await fixture(t, {model,env:{...trusted,RERUN_EARLY_ACCESS:'TESTER@EXAMPLE.INVALID'},now:()=>OPEN-1});
+  const headers = identity('Tester@Example.Invalid');
+  const continuation = await startExchange(f, headers, observed);
+  await finishExchange(f, headers, continuation, observed);
+  const spent = f.app.rerun.store.total();
+  const history = await f.request('/api/rerun/tutor/history', undefined, headers);
+  assert.equal(history.status, 200);
+  assert.deepEqual(history.body.messages.map(({role,text})=>({role,text})), [
+    {role:'learner',text:exchangeQuestion.question},
+    {role:'tutor',text:exchangeIntro},
+    {role:'tutor',text:exchangeReply},
+  ]);
+  assert.equal(observed.length, 2, 'history retrieval does not call the model');
+  assert.equal(f.app.rerun.store.total(), spent, 'history retrieval spends nothing');
+});
+
+for (const [label,time] of [['at',OPEN],['after',OPEN+1]]) {
+  test(`unlisted learner completes a tutor tool exchange ${label} opening`, async t => {
+    const {model,observed} = exchangeModel();
+    const f = await fixture(t, {model,env:{...trusted,RERUN_EARLY_ACCESS:'other@example.invalid'},now:()=>time});
+    const headers = identity('unlisted@example.invalid');
+    const continuation = await startExchange(f, headers, observed);
+    await finishExchange(f, headers, continuation, observed);
+  });
+}
+
+test('removing early access refuses a valid pending continuation without consuming it', async t => {
+  const {model,observed} = exchangeModel();
+  const f = await fixture(t, {model,env:{...trusted,RERUN_EARLY_ACCESS:'tester@example.invalid'},now:()=>OPEN-1});
+  const headers = identity();
+  const continuation = await startExchange(f, headers, observed);
+  const me = await f.request('/api/rerun/me', undefined, headers);
+  const session = me.body.session;
+  const pending = f.app.rerun.store.turn(session), spent = f.app.rerun.store.total();
+  assert.equal(pending.done, false);
+  assert.equal(pending.id, continuation.turn);
+  f.app.rerun.config.earlyAccess.clear();
+  const refused = await f.request('/api/rerun/tutor/continue', continuation, headers);
+  assert.equal(refused.status, 403);
+  assert.equal(refused.body.error, 'rerun_not_open');
+  assert.equal(observed.length, 1, 'refusal must happen before calling the model');
+  assert.equal(f.app.rerun.store.total(), spent, 'refusal must not spend money');
+  assert.deepEqual(f.app.rerun.store.turn(session), pending, 'refusal must leave the valid turn pending');
+  f.app.rerun.config.earlyAccess.add('tester@example.invalid');
+  await finishExchange(f, headers, continuation, observed);
+});
