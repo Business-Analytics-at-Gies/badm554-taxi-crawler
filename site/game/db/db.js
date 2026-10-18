@@ -10,7 +10,7 @@ import {
 
 export const LIMITS = Object.freeze({
   learnerRows: 200, tutorRows: 50, lensRows: 500, cellChars: 200, timeoutMs: 10000, killGraceMs: 3000,
-  lastQueries: 3, querySqlChars: 1000,
+  lastQueries: 3, querySqlChars: 1000, history: 20, inspectRows: 10,
 });
 
 const VENDOR = new URL('../../vendor/duckdb/', import.meta.url);
@@ -23,7 +23,7 @@ let eng = null; // { adb, sys, lc (learner), tc (tutor), version, broken }
 let assets = null; // { parquet, csv, refSql, dataset }
 let initPromise = null;
 let current = null;
-const floors = { 1: null, 2: null, 3: null }; // per floor once set up: { log: [sql], lastQueries: [] }
+const floors = { 1: null, 2: null, 3: null }; // per floor: { log: [sql], lastQueries: [], history: [] }
 const plantedEver = { 1: new Set(), 2: new Set(), 3: new Set() };
 let plants = []; // [{ row_id, kind }] on the current floor
 let nextPlantId = PLANT_ID_START;
@@ -320,7 +320,7 @@ export function loadFloor(n) {
       if (current !== n && plants.length) await removePlants(plants.map((p) => p.row_id));
       if (!floors[n]) {
         await runAll(eng.sys, floorSetupSql(n, learner(n)));
-        floors[n] = { log: [], lastQueries: [] };
+        floors[n] = { log: [], lastQueries: [], history: [] };
       }
       await enterFloor(n);
       await refreshTables();
@@ -339,7 +339,7 @@ export function restartFloor(n) {
     try {
       await ensure();
       if (current === n) await removePlants(plants.map((p) => p.row_id));
-      floors[n] = { log: [], lastQueries: [] };
+      floors[n] = { log: [], lastQueries: [], history: [] };
       try {
         await runAll(eng.sys, floorSetupSql(n, learner(n)));
       } catch {
@@ -380,8 +380,45 @@ export function query(sql, { timeoutMs = LIMITS.timeoutMs } = {}) {
     if (stmts.slice(0, r.executed).some(changesState) || r.hung || r.fatal) await refreshTables();
     const entry = { sql: String(sql).slice(0, LIMITS.querySqlChars), rowCount: error ? null : r.rowCount, error: error ?? null };
     floors[n].lastQueries = [...floors[n].lastQueries, entry].slice(-LIMITS.lastQueries);
+    floors[n].history = [...floors[n].history, { ...entry, sql: String(sql), ms: r.ms, at: new Date().toISOString() }].slice(-LIMITS.history);
     emit('query', { floor: n, ...entry, ms: r.ms });
     return result;
+  });
+}
+
+/** Full learner runs, oldest first; separate from the tutor's short three-query record. */
+export async function history(n = current) {
+  return [1, 2, 3].includes(n) ? (floors[n]?.history ?? []).map((entry) => ({ ...entry })) : [];
+}
+
+/** Read only an active-floor table's columns and up to ten rows, without recording a run. */
+export function inspect(name, { rows = 0 } = {}) {
+  return serial(async () => {
+    const refused = () => ({ ok: false, error: 'Choose an existing table on the current floor using its bare name.' });
+    if (!current) return { ok: false, error: 'No floor is loaded yet.' };
+    if (typeof name !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return refused();
+    try {
+      await ensure();
+      const schema = learner(current);
+      // Only catalogued physical tables qualify. Views could reach tables outside this floor.
+      const matches = await sysRows(`SELECT table_name FROM duckdb_tables()
+        WHERE schema_name = ${qs(schema)} AND lower(table_name) = lower(${qs(name)}) AND NOT internal`);
+      if (!matches.length) return refused();
+      const table = matches[0].table_name;
+      const target = `${schema}."${table.replace(/"/g, '""')}"`;
+      const description = await sysRows(`DESCRIBE ${target}`);
+      const count = typeof rows === 'number' && Number.isFinite(rows) ? Math.min(LIMITS.inspectRows, Math.max(0, Math.floor(rows))) : 0;
+      let preview = [];
+      if (count) {
+        const r = await execStatements(eng.lc, [`SELECT * FROM ${target} LIMIT ${count}`], { maxRows: count, timeoutMs: LIMITS.timeoutMs });
+        if (r.hung || r.fatal) await restartEngine('inspection stopped');
+        if (r.error) return { ok: false, error: 'The table preview could not be read.' };
+        preview = r.rows;
+      }
+      return { ok: true, table, columns: description.map((c) => ({ name: c.column_name, type: c.column_type })), rows: preview };
+    } catch {
+      return { ok: false, error: 'The table could not be inspected.' };
+    }
   });
 }
 
@@ -552,5 +589,5 @@ export async function state() {
 
 export default {
   init, loadFloor, restartFloor, query, tutorQuery, lensRows, plant, unplant, undoExperiments, check,
-  cancel, state, addEventListener, removeEventListener, LIMITS,
+  cancel, state, history, inspect, addEventListener, removeEventListener, LIMITS,
 };
