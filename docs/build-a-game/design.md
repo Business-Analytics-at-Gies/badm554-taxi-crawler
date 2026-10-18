@@ -2,7 +2,7 @@
 
 Created: 2026-10-18
 Last Updated: 2026-10-18
-Status: **Decisions recorded; the open items below need Vishal before the build.**
+Status: **Decided 2026-10-18.** The starter folder and the Canvas items still need Vishal's check.
 
 ## Decisions (Vishal, 2026-10-18)
 
@@ -28,13 +28,17 @@ Status: **Decisions recorded; the open items below need Vishal before the build.
 3. Builds the game with Claude (Claude Code or the SDK), runs it in the browser, and writes three
    lines in `CHECK.md`: the check, the dirty rows it catches (with a count), and how the player
    learns it.
-4. Submits the folder (where: open item 1) and files one improvement issue.
+4. Commits the folder to `members/<netid>/w11-game/` in their team repo and files one improvement
+   issue.
 
-## Open items for Vishal
+## Answered (Vishal, 2026-10-18)
 
-1. Where students submit: their team repo under `members/<netid>/w11-game/`, or a Canvas upload.
-2. Participation points: the number, and whether an unfinished but submitted game earns them.
-3. Starter folder: Claude drafts it with Codex and Vishal checks it before Mon 11-02.
+1. Submission: the student's **team repo**, under `members/<netid>/w11-game/`.
+2. Participation: **2 points.** Claude's default, which Vishal can change: a submitted folder with a
+   running game and a filled `CHECK.md` earns them; an unfinished game that runs and states its
+   check also earns them (low stakes). Checking submissions is student data, so it runs in Codex
+   Edu, not in a Claude session.
+3. Starter folder: **Codex drafts it**; Vishal checks it before Mon 11-02.
 
 ## Dependencies
 
