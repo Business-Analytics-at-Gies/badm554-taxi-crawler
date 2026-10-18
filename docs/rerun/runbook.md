@@ -28,7 +28,7 @@ Model casting: Codex at high reasoning effort.
 8. Tests that Claude wrote are the acceptance contract. Do not weaken or delete them. If one looks
    wrong, stop and say why.
 9. Green means all of: `cd tests/db && npm test`; `cd tests/ui && npx playwright test`;
-   `cd tests/ui && DB_SITE=../../site npx playwright test`; `node --test tests/server/`. Report
+   `cd tests/ui && DB_SITE=../../site npx playwright test`; `node --test tests/server/*.test.js`. Report
    every failure by name, including ones you did not cause.
 10. When a stage is done, reply with: the commits, the test counts per suite, and anything you
     deferred or could not verify. Then stop and wait.
