@@ -1,8 +1,9 @@
 // Small SQL text helpers: split statements, find the first keyword, guard the tutor's queries.
-// Aware of 'strings', "identifiers", $tag$ dollar quotes$tag$, -- line and /* block */ comments.
+// Aware of plain/E-escaped strings, quoted identifiers, dollar strings and nested comments.
 
-function skipQuoted(s, i, q) {
+function skipQuoted(s, i, q, escapes = false) {
   for (let j = i + 1; j < s.length; j++) {
+    if (escapes && s[j] === '\\') { j++; continue; }
     if (s[j] === q) {
       if (s[j + 1] === q) j++;
       else return j + 1;
@@ -12,17 +13,32 @@ function skipQuoted(s, i, q) {
 }
 
 function skipLineComment(s, i) {
-  const j = s.indexOf('\n', i);
-  return j < 0 ? s.length : j + 1;
+  for (let j = i + 2; j < s.length; j++) {
+    if (s[j] === '\n' || s[j] === '\r') return j + 1;
+  }
+  return s.length;
 }
 
 function skipBlockComment(s, i) {
-  const j = s.indexOf('*/', i + 2);
-  return j < 0 ? s.length : j + 2;
+  let depth = 1;
+  for (let j = i + 2; j < s.length; j++) {
+    if (s[j] === '/' && s[j + 1] === '*') { depth++; j++; }
+    else if (s[j] === '*' && s[j + 1] === '/') {
+      j++;
+      if (--depth === 0) return j + 1;
+    }
+  }
+  return s.length;
 }
 
+// DuckDB identifiers can contain $, digits and non-ASCII characters. A quote prefix
+// embedded in such an identifier must not consume the SQL that follows it.
+const identifierPart = (c) => c !== undefined && /[A-Za-z0-9_$\u0080-\uFFFF]/.test(c);
+const dollarQuote = /\$(?:[A-Za-z_\u0080-\uFFFF][A-Za-z0-9_\u0080-\uFFFF]*)?\$/y;
 function dollarTag(s, i) {
-  const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(s.slice(i, i + 64));
+  if (identifierPart(s[i - 1])) return null;
+  dollarQuote.lastIndex = i;
+  const m = dollarQuote.exec(s);
   return m ? m[0] : null;
 }
 
@@ -36,7 +52,10 @@ function scan(s, visit) {
     const d = s[i + 1];
     let kind = null;
     let end = i;
-    if (c === "'") { kind = 'string'; end = skipQuoted(s, i, "'"); }
+    if ((c === 'E' || c === 'e') && d === "'" && !identifierPart(s[i - 1])) {
+      kind = 'string'; end = skipQuoted(s, i + 1, "'", true);
+    }
+    else if (c === "'") { kind = 'string'; end = skipQuoted(s, i, "'"); }
     else if (c === '"') { kind = 'ident'; end = skipQuoted(s, i, '"'); }
     else if (c === '-' && d === '-') { kind = 'comment'; end = skipLineComment(s, i); }
     else if (c === '/' && d === '*') { kind = 'comment'; end = skipBlockComment(s, i); }

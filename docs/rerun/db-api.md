@@ -16,7 +16,9 @@ const result = await check(3, pipelineSql); // optional third argument: { timeou
 
 - `floor`: numeric 1, 2 or 3. Each call starts from pristine data, independent of other checks.
 - `pipelineSql`: nonempty SQL, at most 100,000 characters; comments alone are empty.
-  SQL is split with the pilot's existing quote/comment-aware helper, which is unchanged.
+  SQL is split with the shared pilot helper, including nested block comments, plain and
+  E-escaped strings, dollar-quoted strings and quoted identifiers. The vendored public API
+  exposes tokenization, but no statement-extraction API; the shared scanner remains synchronous.
 - `timeoutMs`: positive finite time limit per run, default 10,000 ms, maximum 30,000 ms.
   It covers pipeline statements, result draining and comparisons. A hard timeout terminates
   the check worker so even a blocked query cannot hold up subsequent checks.
