@@ -49,8 +49,8 @@ covers Claude Code only, not the SDK).
 - **Endpoints:** only `POST /v1/messages` and `POST /v1/messages/count_tokens`, plus whatever
   Claude Code needs to start (to be confirmed with a test). Batches, files, skills, admin and
   every other endpoint are refused.
-- **Models:** an allow list set per activity (default: Sonnet and Haiku; Opus only if Vishal turns
-  it on). `max_tokens` capped per activity.
+- **Models:** an allow list set per activity. Default and first activity: `claude-sonnet-5-5` only
+  (Vishal, 2026-10-18). A request for any other model is refused with a message naming the allowed one. `max_tokens` capped per activity.
 - **Money:** the pilot's reserve-first ledger. Reserve the worst case before the call, settle to the
   real cost from the final usage (including streamed answers). Refuse when the student's activity
   cap, the student's daily cap, or the activity's total cap would be passed.
@@ -98,8 +98,9 @@ covers Claude Code only, not the SDK).
 
 1. ~~Data~~ Answered (Vishal, 2026-10-18): "its ok to send student prompts to anthropic." Students'
    prompts may go to Anthropic's API through this proxy. Told on the setup page; no text stored.
-2. Budget: a per-student cap per activity (for example $5) and the total cap for the first
-   activity.
-3. Models: Sonnet and Haiku only, or Opus too?
+2. ~~Budget~~ Answered (Vishal, 2026-10-18): **$5 per student per activity.** Total cap: Claude's
+   default **$150** for the first activity, so the proxy cannot use up the $250 credit that the
+   games also draw on (about 72 students at $5 would be $360). Vishal can change it.
+3. ~~Models~~ Answered (Vishal, 2026-10-18): **Sonnet only** (`claude-sonnet-5-5`).
 4. When is the first build activity, and what do students build? The credit ends Thu 11-05; after
    that, use bills at normal rates.
