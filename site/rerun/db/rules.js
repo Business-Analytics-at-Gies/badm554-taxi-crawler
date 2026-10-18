@@ -14,10 +14,3 @@ export const RUNS = Object.freeze([
 ].map(Object.freeze));
 export const scenario = (floor) => RUNS.slice(0, floor === 1 ? 2 : floor === 2 ? 4 : 7);
 export const quote = (s) => `"${s.replaceAll('"', '""')}"`;
-export const projection = (table, metadata = true) => `SELECT ${COLUMNS
-  .filter((c) => metadata || !['row_id', 'loaded_at'].includes(c))
-  .map((c) => ['fare_amount', 'tip_amount', 'total_amount'].includes(c)
-    ? `round(${quote(c)},2) AS ${quote(c)}` : quote(c)).join(',')} FROM ${table}`;
-export const equal = (a, b) => `NOT EXISTS (
-  (SELECT * FROM (${a}) EXCEPT ALL SELECT * FROM (${b}))
-  UNION ALL (SELECT * FROM (${b}) EXCEPT ALL SELECT * FROM (${a})))`;
