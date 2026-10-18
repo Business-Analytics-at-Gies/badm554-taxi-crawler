@@ -61,6 +61,12 @@ trip key and the rules stated up front. The table columns show in the table list
 
 ## Data
 
+**Trip key (decided 2026-10-18, Claude, from crew-codex-rerun's question):** each trip carries a
+stable `trip_id` from the source system, unchanged through re-sends and corrections. The pilot's
+six-column key cannot work here: it includes `total_amount`, which the day 3 corrections change.
+The guide states this up front: `trip_id` names the trip; `row_id` and `loaded_at` name the load.
+
+
 From `data/trips_raw.parquet` (the pilot's extract) and its trip key. Planted:
 
 - Day 1: about 2,400 trips. Day 2: about 2,400 new trips plus about 120 re-sent day-1 trips.
