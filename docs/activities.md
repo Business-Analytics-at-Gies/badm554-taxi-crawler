@@ -38,7 +38,7 @@ price before switching and set the activity's budget cap from it.
 | Activity | Week topic | Open | Close | Tutor cap | Status |
 |---|---|---|---|---|---|
 | Taxi Crawler (pilot) | Data quality | Fri 10-16 | Sat 10-17, 6:30 PM CDT | $150 | Closed; 31 issues triaged and answered |
-| The Rerun | W9 M6a: rebuildable ETL | Fri 10-23 | Mon 10-26, 11:59 PM CDT | $50 | Building (`docs/rerun/design.md`) |
+| The Rerun | W9 M6a: rebuildable ETL | Fri 10-23 | Mon 10-26, 11:59 PM CDT | $50 | Deployed 2026-10-18 (`d6fd686`); opens Fri 10-23 00:00 CDT to learners; Vishal has early access (`docs/rerun/design.md`) |
 | Next, proposed | W10 M6b: integrate and deploy | Fri 10-30 | Mon 11-02 night | to set | Not designed |
 | Build a SQL game (individual, participation) | W11 M7: one validation check | Mon 11-02 | Thu 11-05, 11:59 PM CDT | $5 per student, $150 total, Sonnet only, via the student API proxy | Decided 2026-10-18 (`docs/build-a-game/design.md`) |
 
