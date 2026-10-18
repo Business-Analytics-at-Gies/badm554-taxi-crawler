@@ -263,7 +263,7 @@ async function learnerRead(fn) {
   const txid = async () => (await connectionRows(conn, 'SELECT system.main.current_transaction_id() AS id'))[0].id;
   const ownTransaction = await txid() !== await txid();
   if (ownTransaction) await conn.query('BEGIN TRANSACTION');
-  try { return await fn(conn); }
+  try { return await fn(conn, { learnerTransactionOpen: !ownTransaction }); }
   finally {
     if (ownTransaction) {
       try { await conn.query('ROLLBACK'); } catch { /* the worker may have restarted */ }
@@ -418,7 +418,7 @@ export function inspect(name, { rows = 0 } = {}) {
     if (typeof name !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return refused();
     try {
       await ensure();
-      return await learnerRead(async (conn) => {
+      return await learnerRead(async (conn, { learnerTransactionOpen }) => {
         const schema = learner(current);
         // The immutable system catalog cannot be replaced by a learner macro or view. All
         // metadata and rows use the learner's same snapshot, including uncommitted DDL.
@@ -431,14 +431,20 @@ export function inspect(name, { rows = 0 } = {}) {
         const description = await connectionRows(conn, `SELECT column_name, data_type FROM system.main.duckdb_columns()
           WHERE database_name = 'memory' AND schema_name = ${qs(schema)} AND table_name = ${qs(table)} ORDER BY column_index`);
         const count = typeof rows === 'number' && Number.isFinite(rows) ? Math.min(LIMITS.inspectRows, Math.max(0, Math.floor(rows))) : 0;
-        let preview = [];
+        const result = { ok: true, table, columns: description.map((c) => ({ name: c.column_name, type: c.data_type })), rows: [] };
         if (count) {
+          // Even a physical table can evaluate generated expressions on SELECT. A failure
+          // would abort the learner's open transaction; a success can still advance sequences.
+          if (learnerTransactionOpen) return {
+            ...result,
+            previewSkipped: 'Preview skipped while your transaction is open. Commit or roll back to preview rows.',
+          };
           const r = await execStatements(conn, [`SELECT * FROM ${target} LIMIT ${count}`], { maxRows: count, timeoutMs: LIMITS.timeoutMs });
           if (r.hung || r.fatal) await restartEngine('inspection stopped');
           if (r.error) return { ok: false, error: 'The table preview could not be read.' };
-          preview = r.rows;
+          result.rows = r.rows;
         }
-        return { ok: true, table, columns: description.map((c) => ({ name: c.column_name, type: c.data_type })), rows: preview };
+        return result;
       });
     } catch {
       return { ok: false, error: 'The table could not be inspected.' };

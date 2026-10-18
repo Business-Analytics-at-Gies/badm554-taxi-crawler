@@ -41,9 +41,14 @@ shape and SQL limit.
 
 `await db.inspect(name, { rows = 0 } = {})` inspects a real table in the **active learner floor**.
 It resolves the table afresh each call, so replacement and floor changes take effect immediately.
-Existence, columns and preview use one snapshot on the learner connection, including uncommitted
-table creation/replacement. An existing learner transaction is left open; inspection never commits
-or rolls it back. Catalog lookups use immutable system functions, not replaceable learner objects.
+Existence and columns are read on the learner connection, including uncommitted table
+creation/replacement. When inspection starts its own read transaction, the preview uses that same
+snapshot. When the learner already has a transaction open, only existence and
+columns are read: a requested preview is skipped, returning `rows: []` and a `previewSkipped`
+explanation string. No row expressions are evaluated in that transaction. This prevents generated
+columns from changing sequences or aborting unfinished work. The learner transaction is left open;
+inspection never commits or rolls it back. Catalog lookups use immutable system functions, not
+replaceable learner objects.
 The name is a bare identifier (`[A-Za-z_][A-Za-z0-9_]*`), matched without regard to case. SQL,
 quoted or qualified names, missing tables and views are refused. Caller-supplied SQL is never run.
 
@@ -57,6 +62,8 @@ Success returns:
 `rows` defaults to `[]`. A finite numeric row request is rounded down and clamped to 0–10;
 other values request zero rows. A preview reads the first available rows without imposing an
 order, as with `SELECT * FROM table LIMIT n`, and returns fewer when the table has fewer rows.
+Previews resume after the learner commits or rolls back their transaction; column inspection
+remains available throughout. A zero-row request does not add `previewSkipped`.
 Cells use the same browser-safe conversion and 200-character limit as `query()`.
 
 Failure returns `{ ok: false, error: string }`, including when no floor is loaded; it does not
