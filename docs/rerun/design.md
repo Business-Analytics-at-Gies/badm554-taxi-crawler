@@ -61,6 +61,12 @@ trip key and the rules stated up front. The table columns show in the table list
 
 ## Data
 
+**Trip key (decided 2026-10-18, Claude, from crew-codex-rerun's question):** each trip carries a
+stable `trip_id` from the source system, unchanged through re-sends and corrections. The pilot's
+six-column key cannot work here: it includes `total_amount`, which the day 3 corrections change.
+The guide states this up front: `trip_id` names the trip; `row_id` and `loaded_at` name the load.
+
+
 From `data/trips_raw.parquet` (the pilot's extract) and its trip key. Planted:
 
 - Day 1: about 2,400 trips. Day 2: about 2,400 new trips plus about 120 re-sent day-1 trips.
@@ -86,6 +92,11 @@ they press it.
 - The learner feedback issue (one improvement) as in the pilot, with a new label.
 
 ## Build
+
+- Repo (Vishal, 2026-10-18): same repo as Taxi Crawler, so backend fixes land once. Rename the repo
+  to a general name (for example `badm554-sql-games`) after The Rerun closes on Mon 10-26.
+- Pilot spend for reference (aggregates, 2026-10-18): $1.86 for 175 tutor calls by 20 learners;
+  78% was prompt-cache writes.
 
 - Codex builds it on a branch of the pilot code, as a second game served at `/rerun/` by the same
   server and login. The v2 work continues on its own branch; The Rerun does not wait for v2.

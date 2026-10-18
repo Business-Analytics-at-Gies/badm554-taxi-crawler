@@ -1,6 +1,7 @@
 // The guide: rooms (map + three floors), slides, and the detail level. State lives in the URL hash
 // (#room=floor1&slide=f1-key&lv=2), so a reload keeps the place without browser storage.
-export const ROOMS = ['map', 'floor1', 'floor2', 'floor3'];
+import { ROOMS, readHash, writeHash } from './hash.js';
+export { ROOMS } from './hash.js';
 import { readCodes, validCode, CODES_KEY } from './codes.js';
 
 export function createGuide(root = document) {
@@ -50,9 +51,8 @@ export function createGuide(root = document) {
     listeners.forEach(fn => fn(state()));
   }
 
-  function writeHash() {
-    const h = `#room=${cur.room}&slide=${cur.slide}&lv=${cur.level}`;
-    if (location.hash !== h) history.replaceState(null, '', h);
+  function saveHash() {
+    writeHash(cur);
   }
 
   function resolveSlide(room, slide) {
@@ -69,18 +69,16 @@ export function createGuide(root = document) {
     const id = resolveSlide(room, slide);
     if (!id) return { ok: false, why: `room ${room} has no slide "${slide}"; slides: ${slides(room).map(s => s.id).join(', ')}` };
     cur = { ...cur, room, slide: id };
-    writeHash(); render(focus);
+    saveHash(); render(focus);
     return { ok: true };
   }
 
-  function setLevel(n) { cur = { ...cur, level: n }; writeHash(); render(false); }
+  function setLevel(n) { cur = { ...cur, level: [1, 2, 3].includes(n) ? n : 1 }; saveHash(); render(false); }
 
   function fromHash() {
-    const p = new URLSearchParams(location.hash.slice(1));
-    const room = ROOMS.includes(p.get('room')) ? p.get('room') : 'map';
-    const lv = Number(p.get('lv'));
-    cur = { room, slide: resolveSlide(room, p.get('slide')) || resolveSlide(room), level: [1, 2, 3].includes(lv) ? lv : cur.level };
-    writeHash(); render(false);
+    const { room, slide, level } = readHash();
+    cur = { room, slide: resolveSlide(room, slide) || resolveSlide(room), level };
+    saveHash(); render(false);
   }
 
   guide.addEventListener('change', e => { if (e.target.name === 'lv') setLevel(Number(e.target.value)); });
