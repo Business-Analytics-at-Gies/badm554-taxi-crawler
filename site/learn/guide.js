@@ -3,6 +3,7 @@
 import { ROOMS, readHash, writeHash } from './hash.js';
 export { ROOMS } from './hash.js';
 import { readCodes, validCode, CODES_KEY } from './codes.js';
+import { FLOOR1_TASK, RERUN_INSTRUCTION } from './tasks.js';
 
 export function createGuide(root = document) {
   const guide = root.getElementById('guide');
@@ -10,6 +11,18 @@ export function createGuide(root = document) {
   const slides = r => [...rooms[r].querySelectorAll('.slide')];
   const listeners = new Set();
   let cur = { room: 'map', slide: 'overview', level: 1 };
+
+  const firstTask = guide.querySelector('#f1-task .task');
+  const label = root.createElement('strong');
+  label.textContent = 'Your task:';
+  firstTask.replaceChildren(label, ' ');
+  // Keep identifiers readable as code while using the same plain wording as the game.
+  for (const part of FLOOR1_TASK.split(/(\b[a-z]+_[a-z_]+\b)/)) {
+    if (/^[a-z]+_[a-z_]+$/.test(part)) {
+      const code = root.createElement('code'); code.textContent = part; firstTask.append(code);
+    } else firstTask.append(part);
+  }
+  for (const task of guide.querySelectorAll('.room .task')) task.append(` ${RERUN_INSTRUCTION}`);
 
   for (const r of ROOMS) {
     const list = slides(r);

@@ -181,7 +181,9 @@ async function checkFloor1(db, plantedEver) {
     out.push(R.rows.of(onlyA === 0, '0 changed or extra rows', `${fmt(onlyA)} rows that are not rows of trips_raw${note}`));
   }
   const rc = Number(await db.one(`SELECT system.main.count(*) FROM ${from}`));
-  out.push(R.count.of(rc === expRows, fmt(expRows), fmt(rc)));
+  const countRule = R.count.of(rc === expRows, fmt(expRows), fmt(rc));
+  if (rc > 6997 && rc <= 7170) countRule.hint += ' You may have merged trips that are not rerun copies. Check whether their amounts differ.';
+  out.push(countRule);
   const keyCols = want.filter((c) => TRIP_KEY.includes(c.name));
   if (keyCols.some((c) => !have.has(c.name))) out.push(R.keys.skip(`${fmt(expKeys)} trip keys`));
   else {

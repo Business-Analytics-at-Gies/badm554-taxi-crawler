@@ -3,9 +3,10 @@
 import { createMap } from './map.js';
 import { friendlyError } from './errors.js';
 import { readCodes, writeCodes, validCode, CODES_KEY } from '/learn/codes.js';
+import { FLOOR1_TASK, RERUN_INSTRUCTION } from '/learn/tasks.js';
 
 const FLOORS = {
-  1: { title: 'Floor 1: The double shift', input: 'trips_raw', task: 'Create trips_clean with exactly one row per trip key, and every column of trips_raw.',
+  1: { title: 'Floor 1: The double shift', input: 'trips_raw', task: FLOOR1_TASK,
     dirt: `SELECT row_id, pu_location_id, do_location_id FROM trips_raw
 QUALIFY count(*) OVER (PARTITION BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount) > 1` },
   2: { title: 'Floor 2: Nowhere zones', input: 'trips', task: 'Create trips_clean with every row of trips, plus three columns:\n- pu_zone and do_zone: the zone name from zones (NULL when there is no match)\n- zone_flag: the first label that applies, checking both pu_location_id and do_location_id:\n  1. \'unmatched\' if either id is NULL or not in zones\n  2. \'unknown\' if either id is 264\n  3. \'outside_nyc\' if either id is 265\n  4. \'ok\' otherwise',
@@ -32,25 +33,28 @@ let engine = 'loading';
 let lastCheck = null;
 let running = false;
 let codes = readCodes();
+const clearedFloors = () => [1, 2, 3].filter(n => validCode(n, codes[n]));
 
 function renderCodeList() {
   const all = $('receipt-all');
   all.replaceChildren();
-  for (const f of [1, 2, 3]) {
+  const cleared = clearedFloors();
+  for (const f of cleared) {
     const li = document.createElement('li');
-    li.textContent = `Floor ${f}: ${codes[f] || 'not cleared yet'}`;
+    li.textContent = `Floor ${f}: ${codes[f]}`;
     all.append(li);
   }
+  $('copy-all-btn').hidden = cleared.length === 0;
 }
 function showSavedCodes(n) {
   renderCodeList();
-  const any = Object.keys(codes).length > 0;
+  const any = clearedFloors().length > 0;
   $('receipt').hidden = !any;
-  if (!any) return;
   const code = codes[n];
   $('receipt-h').textContent = code ? `Floor ${n} cleared` : 'Saved completion codes';
   $('receipt-line').textContent = code ? `Your code for floor ${n}:` : 'Codes saved in this browser:';
   $('receipt-code').textContent = code || '';
+  $('receipt-current').hidden = !code;
   $('copy-btn').hidden = !code;
   $('copy-status').textContent = '';
   $('next-floor').hidden = !code || n === 3;
@@ -198,11 +202,13 @@ async function receipt(n) {
     writeCodes(codes);
     $('receipt-line').textContent = `Your code for floor ${n}:`;
     $('receipt-code').textContent = data.code;
+    $('receipt-current').hidden = false;
     $('copy-btn').hidden = false;
     emit({ type: 'cleared', floor: n, code: data.code });
   } catch (e) {
     $('receipt-line').textContent = e.message;
     $('receipt-code').textContent = '';
+    $('receipt-current').hidden = true;
     $('copy-btn').hidden = true;
   }
   renderCodeList();
@@ -215,7 +221,7 @@ async function setFloor(n) {
   const f = FLOORS[n];
   document.title = `Taxi Crawler · ${f.title}`;
   $('floor-title').textContent = f.title;
-  $('floor-task').textContent = f.task;
+  $('floor-task').textContent = `${f.task}\n${RERUN_INSTRUCTION}`;
   $('check-btn').textContent = `Check floor ${n}`;
   for (const b of document.querySelectorAll('.floor-pick button')) b.setAttribute('aria-pressed', String(Number(b.dataset.floor) === n));
   showSavedCodes(n);
@@ -257,15 +263,17 @@ $('restart-btn').addEventListener('click', async () => {
   await setFloor(floor);
   $('result-status').textContent = `Floor ${floor} restarted.`;
 });
-$('copy-btn').addEventListener('click', async () => {
-  const code = $('receipt-code').textContent;
-  try { await navigator.clipboard.writeText(code); $('copy-status').textContent = 'Copied.'; }
+async function copyCodes(text, source) {
+  $('copy-status').textContent = '';
+  try { await navigator.clipboard.writeText(text); $('copy-status').textContent = 'Copied.'; }
   catch {
-    const r = document.createRange(); r.selectNodeContents($('receipt-code'));
+    const r = document.createRange(); r.selectNodeContents(source);
     const s = getSelection(); s.removeAllRanges(); s.addRange(r);
     $('copy-status').textContent = 'Selected. Press Ctrl+C or ⌘+C to copy.';
   }
-});
+}
+$('copy-btn').addEventListener('click', () => copyCodes($('receipt-code').textContent, $('receipt-code')));
+$('copy-all-btn').addEventListener('click', () => copyCodes(clearedFloors().map(n => codes[n]).join('\n'), $('receipt-all')));
 $('next-floor').addEventListener('click', () => { if (floor < 3) setFloor(floor + 1); });
 for (const b of document.querySelectorAll('.floor-pick button')) b.addEventListener('click', () => setFloor(Number(b.dataset.floor)));
 

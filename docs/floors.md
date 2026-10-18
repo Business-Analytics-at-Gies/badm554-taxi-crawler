@@ -1,7 +1,7 @@
 # Floors: frozen rules
 
 Created: 2026-10-16
-Last Updated: 2026-10-16
+Last Updated: 2026-10-18
 Status: **Frozen for the 2026-10-17 pilot.** Change only through Claude (the orchestrator), with a
 note in the change log at the bottom. Build agents: if a rule here looks wrong, stop and ask.
 
@@ -107,3 +107,4 @@ the fix. A learner can cheat by reading the served reference SQL; accepted for t
 
 - 2026-10-16 16:45 CDT: frozen (Claude, from the counts above).
 - 2026-10-16 17:35 CDT: floor 2 wrong solution (d) replaced. The old one ('unmatched' tested after 'unknown') equals the reference on this data, because no trip has both an unmatched id and 264/265 (found by crew-devin's test). The new (d) differs on 15 rows (checked with DuckDB).
+- 2026-10-18: v2 stage 1, items 1.1 and 1.2 (approved in `docs/v2/plan-as-approved.md`). The guide and game task now explain that a trip key is the set of columns that together identify one trip, that trips differing in any amount are different trips, and that `row_id` and `loaded_at` describe the load, not the trip. The task does not name the six key columns; the higher-detail guide and check hint still do. Floor 1 adds the possible-merge hint when `trips_clean` has 6,998 through 7,170 rows: "You may have merged trips that are not rerun copies. Check whether their amounts differ." The wording stays a possibility because removing trips can produce the same count. Pass rules, expected counts, and the pilot hint for `DISTINCT *` are unchanged.
