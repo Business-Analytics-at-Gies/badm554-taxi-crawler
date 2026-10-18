@@ -1,7 +1,7 @@
 // Created: 2026-10-18. Last Updated: 2026-10-18.
 // R2 check API. Each call owns its workers; no learner or pilot connection is accepted.
 import * as duckdb from '../../vendor/duckdb/duckdb-browser.mjs';
-import { cleanError, splitStatements } from '../../game/db/sql.js';
+import { cleanError, nativeStatements } from '../../game/db/sql.js';
 import { COLUMNS, quote, scenario } from './rules.js';
 
 const VENDOR = new URL('../../vendor/duckdb/', import.meta.url);
@@ -242,7 +242,7 @@ export async function check(floor, pipeline, options = {}) {
   const report = { ok: false, pass: false, floor, runs: [], firstFailure: null };
   const timeoutMs = options?.timeoutMs ?? LIMITS.timeoutMs;
   if (![1, 2, 3].includes(floor) || typeof pipeline !== 'string' || pipeline.length > LIMITS.maxSqlChars
-    || !splitStatements(pipeline).length || !Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > LIMITS.maxTimeoutMs) {
+    || !pipeline.trim().length || !Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > LIMITS.maxTimeoutMs) {
     return { ...report, error: 'Choose floor 1, 2 or 3 and supply a nonempty SQL pipeline and a valid time limit.' };
   }
   let truth, db, day = 0, unavailable = null;
@@ -250,6 +250,12 @@ export async function check(floor, pipeline, options = {}) {
     truth = await database();
     await loadTruth(truth, floor);
     db = await freshPipeline(truth, 1);
+    // Parse once under the same worker time limit. Parser failures are reported on
+    // each scenario run, before any statement can change data.
+    let statements, parseError;
+    try { statements = await bounded(db, () => nativeStatements(db.conn, pipeline), timeoutMs); }
+    catch (e) { parseError = e; if (/time limit/.test(safeMessage(e))) unavailable = safeMessage(e); }
+    if (statements && !statements.length) return { ...report, error: 'Supply a nonempty SQL pipeline.' };
     day = 1;
     for (const run of scenario(floor)) {
       const expected = await truthForDay(truth, run.day);
@@ -270,7 +276,8 @@ export async function check(floor, pipeline, options = {}) {
                 await appendDay(db, batch);
               }
               // Drain results rather than retaining arbitrary scratch SELECT output.
-              for (const statement of splitStatements(pipeline)) {
+              if (parseError) throw parseError;
+              for (const statement of statements) {
                 const reader = await db.conn.send(statement, true);
                 for await (const _ of reader) { /* discard result batches */ }
                 if (!await catalogsOK(db)) throw new Error('Extra databases or objects outside the expected catalog are not allowed.');

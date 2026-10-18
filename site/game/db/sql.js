@@ -9,7 +9,7 @@ function skipQuoted(s, i, q, escapes = false) {
       else return j + 1;
     }
   }
-  return s.length;
+  throw new Error('Unterminated quoted string or identifier.');
 }
 
 function skipLineComment(s, i) {
@@ -28,7 +28,7 @@ function skipBlockComment(s, i) {
       if (--depth === 0) return j + 1;
     }
   }
-  return s.length;
+  throw new Error('Unterminated /* comment.');
 }
 
 // DuckDB identifiers can contain $, digits and non-ASCII characters. A quote prefix
@@ -46,16 +46,18 @@ function dollarTag(s, i) {
 function scan(s, visit) {
   let i = 0;
   let code = 0;
+  let continuedEscape = false, afterString = false, newline = false;
   const flush = (end) => { if (end > code) visit('code', code, end); };
   while (i < s.length) {
     const c = s[i];
     const d = s[i + 1];
     let kind = null;
     let end = i;
+    if (afterString && /\s/.test(c)) { if (c === '\n' || c === '\r') newline = true; i++; continue; }
     if ((c === 'E' || c === 'e') && d === "'" && !identifierPart(s[i - 1])) {
-      kind = 'string'; end = skipQuoted(s, i + 1, "'", true);
+      kind = 'string'; end = skipQuoted(s, i + 1, "'", true); continuedEscape = true;
     }
-    else if (c === "'") { kind = 'string'; end = skipQuoted(s, i, "'"); }
+    else if (c === "'") { kind = 'string'; continuedEscape = afterString && newline && continuedEscape; end = skipQuoted(s, i, "'", continuedEscape); }
     else if (c === '"') { kind = 'ident'; end = skipQuoted(s, i, '"'); }
     else if (c === '-' && d === '-') { kind = 'comment'; end = skipLineComment(s, i); }
     else if (c === '/' && d === '*') { kind = 'comment'; end = skipBlockComment(s, i); }
@@ -64,14 +66,17 @@ function scan(s, visit) {
       if (tag) {
         const j = s.indexOf(tag, i + tag.length);
         kind = 'string';
-        end = j < 0 ? s.length : j + tag.length;
+        if (j < 0) throw new Error('Unterminated dollar-quoted string.');
+        end = j + tag.length; continuedEscape = false;
       }
     }
     if (kind) {
       flush(i);
       visit(kind, i, end);
+      if (kind !== 'comment') { afterString = kind === 'string'; newline = false; }
       i = code = end;
     } else {
+      afterString = false; continuedEscape = false; newline = false;
       i++;
     }
   }
@@ -173,4 +178,39 @@ export function cleanError(message) {
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+/** Production statement boundaries and syntax validation come from the vendored DuckDB.
+ * It exposes tokenize/getTableNames, not extractStatements. getTableNames invokes the
+ * native parser for the entire script before name discovery; a valid multi-statement script
+ * reports Expected a single statement, which is not a syntax error.
+ */
+export async function nativeStatements(conn, sql) {
+  const text = String(sql ?? '');
+  try { await conn.getTableNames(text); }
+  catch (error) {
+    let detail;
+    try { detail = JSON.parse(error.message); } catch { /* a non-JSON worker error */ }
+    if (detail?.exception_type === 'Parser' || /unterminated/i.test(error.message)) {
+      const message = detail?.exception_message || error.message;
+      throw new Error(message.startsWith('Parser Error:') ? message : `Parser Error: ${message}`);
+    }
+    // Name discovery can also bind against dummy tables and report Binder/Catalog
+    // errors for valid writes. Those belong to execution on the real connection;
+    // only native Parser errors reject the complete script here.
+    if (!detail?.exception_type) throw error;
+  }
+  const tokens = await conn.bindings.tokenize(text);
+  const bytes = new TextEncoder().encode(text), decode = new TextDecoder();
+  const out = []; let start = 0, meaningful = false;
+  for (let i=0; i<tokens.offsets.length; i++) {
+    const at = tokens.offsets[i];
+    if (tokens.types[i] === 5) continue;
+    if (tokens.types[i] === 3 && bytes[at] === 59) {
+      if (meaningful) out.push(decode.decode(bytes.slice(start, at)).trim());
+      start = at + 1; meaningful = false;
+    } else meaningful = true;
+  }
+  if (meaningful) out.push(decode.decode(bytes.slice(start)).trim());
+  return out;
 }

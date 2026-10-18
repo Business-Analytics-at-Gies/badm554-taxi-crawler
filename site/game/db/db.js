@@ -2,7 +2,7 @@
 // /vendor/duckdb/), the floors' tables, the tutor's copy, plants and floor checks.
 // Contract: docs/interfaces.md part 3. No function throws for SQL errors; they return { error }.
 import * as duckdb from '../../vendor/duckdb/duckdb-browser.mjs';
-import { changesState, cleanError, forbiddenReference, isReadOnly, splitStatements } from './sql.js';
+import { changesState, cleanError, forbiddenReference, isReadOnly, nativeStatements } from './sql.js';
 import {
   BASE, FLOORS, HIDDEN_SCHEMAS, PLANT_ID_START, PLANT_KINDS, TUTOR,
   checkFloor, floorSetupSql, learner, plantSelectSql, qs, referenceBuildSql,
@@ -74,7 +74,7 @@ async function loadAssets() {
 }
 
 async function runAll(conn, statements) {
-  for (const s of statements) for (const one of splitStatements(s)) await conn.query(one);
+  for (const s of statements) for (const one of await nativeStatements(conn, s)) await conn.query(one);
 }
 
 async function startEngine() {
@@ -381,9 +381,11 @@ export function query(sql, { timeoutMs = LIMITS.timeoutMs } = {}) {
     try { await ensure(); } catch (e) { return empty({ ms: 0, error: msg(e) }); }
     if (!current) return empty({ ms: 0, error: 'No floor is loaded yet.' });
     const n = current;
-    const stmts = splitStatements(sql);
-    if (!stmts.length) return empty({ ms: 0, error: 'Nothing to run.' });
-    const r = await execStatements(eng.lc, stmts, { maxRows: LIMITS.learnerRows, timeoutMs });
+    let stmts = [], parseError;
+    try { stmts = await nativeStatements(eng.lc, sql); } catch(e) { parseError = msg(e); }
+    if (!stmts.length && !parseError) return empty({ ms: 0, error: 'Nothing to run.' });
+    const r = parseError ? { columns: [], rows: [], rowCount: 0, truncated: false, executed: 0, ms: 0, error: parseError }
+      : await execStatements(eng.lc, stmts, { maxRows: LIMITS.learnerRows, timeoutMs });
     floors[n].log.push(...stmts.slice(0, r.executed).filter(changesState));
     let error = r.error;
     if (r.hung || r.fatal) {
@@ -455,7 +457,7 @@ export function inspect(name, { rows = 0 } = {}) {
 async function tutorExec(sql, maxRows, wrap) {
   await ensure();
   if (!current) return { error: 'No floor is loaded yet.' };
-  const stmts = splitStatements(sql);
+  const stmts = await nativeStatements(eng.tc, sql);
   if (stmts.length !== 1) return { error: stmts.length ? 'Run one statement at a time.' : 'Nothing to run.' };
   if (!isReadOnly(stmts[0])) return { error: 'Read-only: use SELECT, WITH, FROM, SHOW, DESCRIBE, SUMMARIZE or EXPLAIN.' };
   const bad = forbiddenReference(stmts[0], HIDDEN_SCHEMAS);
