@@ -39,10 +39,11 @@ Model casting: Codex at high reasoning effort for building and for reviews.
 |---|---|---|---|
 | 0 (0.1 to 0.3) | `v2/stage0` | `tests/db/stage0.test.mjs` (Claude); 0.1 UI tests (Codex writes) | Merged `2f51d22`, 2026-10-18 (review SHIP in round 3) |
 | 0.4 | `main` | `tests/db/solutions.mjs` | Done by Claude, `06bbfe1` |
-| 1 (1.1 to 1.4) | `v2/stage1` | Codex writes them from the plan's acceptance column; Claude reviews them first | Dispatched 2026-10-18 |
+| 1 (1.1 to 1.4) | `v2/stage1` | Codex wrote them; Claude approved `b616728` | Review SHIP round 2 (`b367618`). Held on its branch until The Rerun closes Mon 10-26, then merged |
 | 2 to 4 | later | Written at dispatch | Not started |
 
 ## Run log
 
 - 2026-10-18: worktree `../badm554-taxi-crawler-v2` on `v2/stage0` from `06bbfe1`. Stage 0 dispatched.
+- 2026-10-18: stage 1 review: FIX (1, JavaScript-off guide text), SHIP. v2 paused after stage 1; crew-codex-v2 moves to the student API proxy.
 - 2026-10-18: stage 0 review: FIX (2), FIX (1), SHIP. Merged `2f51d22`; all four suites green on main. Stage 1 on `v2/stage1`.
