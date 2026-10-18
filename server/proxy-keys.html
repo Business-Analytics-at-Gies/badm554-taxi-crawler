@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Course API setup · BADM 554</title>
+<style>
+:root{color-scheme:light;font-family:system-ui,sans-serif;color:#152b42;background:#f4f5f7}body{max-width:780px;margin:48px auto;padding:0 24px}h1{font-size:2rem;border-top:6px solid #e84a27;padding-top:24px}h2{font-size:1.2rem;margin-top:28px}p,li{line-height:1.65}button{font:inherit;cursor:pointer;padding:12px 18px;border:1px solid #152b42;border-radius:6px;background:#152b42;color:white;margin:6px 8px 6px 0}button.secondary{background:white;color:#152b42}button:disabled{opacity:.5}pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:18px;background:#e6ebf0;border-radius:6px}#secret{border-left:4px solid #e84a27;padding-left:16px}small{color:#455769}a{color:#174e83}
+</style>
+<body><p>BADM 554 / Build your SQL game</p><h1>Your course API token</h1>
+<p>Use Claude Code or the Anthropic SDK on course credit. Your own Illinois login identifies your budget. The real Anthropic key stays on the server.</p>
+<p id="status" role="status">Loading your activity…</p><p id="budget"></p>
+<button id="create" disabled>Create my token</button><button id="revoke" class="secondary" disabled>Revoke my token</button>
+<section id="secret" hidden><h2>Save this token now</h2><p>This is the only time you can see it. Reloading hides it. Creating another token replaces this one.</p><pre id="token"></pre><button id="hide" class="secondary">Hide token</button><h2>Recommended Claude Code setup</h2><pre id="settings"></pre></section>
+<h2>Keep your token private</h2><p>Use environment variables or a private <code>.env</code> file, and add that file to <code>.gitignore</code>. Never commit or share your token. Revoke it if it is exposed.</p>
+<p>We recommend <code>CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000</code> so concurrent long requests leave room in your daily budget. The proxy still supports requests up to the activity's output cap. Requests reserve budget while running, then settle to their actual usage.</p>
+<p>Your prompts and code go to Anthropic's API for processing. This course proxy stores usage counts and cost, but does not store or log your prompts, answers, or tool contents.</p>
+<h2>SDK setup</h2><p>Set the SDK's <code>base_url</code> (Python) or <code>baseURL</code> (TypeScript) to this server's <code>/proxy</code> URL, and use your course token as its API key. Do not append <code>/v1</code>.</p>
+<p><a href="https://code.claude.com/docs/en/env-vars">Official Claude Code settings reference</a> · <a href="/learn/">Back to the game</a></p>
+<script type="module">
+const $ = id => document.getElementById(id);
+let state;
+const clear = () => { $('token').textContent=''; $('settings').textContent=''; $('secret').hidden=true; };
+async function request(path, body) {
+  const r=await fetch(path,{cache:'no-store',...(body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{})});
+  if(!r.ok) throw new Error('Course API setup is unavailable. Please sign in again or contact the instructor.');
+  return r.json();
+}
+function render() {
+  const a=state.activity;
+  const active=state.key&&!state.key.revoked_at&&Date.parse(state.key.expires_at)>Date.now();
+  $('status').textContent=active?'Your token is active. Create another to replace it.':'Create a token to start, or replace a token you have lost.';
+  $('budget').textContent=`${a.model} · $${a.student_cap_usd.toFixed(2)} per activity · $${a.daily_cap_usd.toFixed(2)} per day · credit ends ${new Date(a.closes_at).toLocaleString()}. Activity usage: $${state.usage.activity_usd.toFixed(4)} (including reservations).`;
+  $('create').textContent=active?'Replace my token':'Create my token';
+  $('create').disabled=Date.now()>=Date.parse(a.closes_at); $('revoke').disabled=!active;
+}
+async function load(){state=await request('/api/keys');render();}
+async function act(action) {
+  $('create').disabled=true;$('revoke').disabled=true;clear();
+  try {
+    if(action==='create') {
+      const created=await request('/api/keys',{});
+      await load();$('secret').hidden=false;$('token').textContent=created.token;
+      $('settings').textContent=`export ANTHROPIC_BASE_URL="${location.origin}/proxy"\nexport ANTHROPIC_API_KEY="${created.token}"\nexport ANTHROPIC_MODEL="${created.activity.model}"\nexport ANTHROPIC_DEFAULT_SONNET_MODEL="${created.activity.model}"\nexport ANTHROPIC_DEFAULT_HAIKU_MODEL="${created.activity.model}"\nexport CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000\nclaude --model ${created.activity.model}`;
+    } else {await request('/api/keys/revoke',{});await load();$('status').textContent='Your token has been revoked.';}
+  } catch { $('status').textContent='Course API setup is unavailable. Please sign in again or contact the instructor.'; }
+}
+$('create').addEventListener('click',()=>act('create'));$('revoke').addEventListener('click',()=>act('revoke'));$('hide').addEventListener('click',clear);
+load().catch(()=>{$('status').textContent='Please sign in with Illinois login to manage your course token.';});
+</script></body></html>

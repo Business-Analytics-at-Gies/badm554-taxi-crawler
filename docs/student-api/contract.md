@@ -1,25 +1,26 @@
-# Student API proxy: P1 acceptance contract
+# Student API proxy: acceptance contract
 
 Created: 2026-10-18
 Last Updated: 2026-10-18
-Status: P1, for Claude's review before P2. This document specifies behavior; it does not ship a proxy.
+Status: P2 implemented and locally verified; P3 client and deployment gates remain separate.
 Sources: [binding runbook](runbook.md), [design](design.md), [pilot interfaces](../interfaces.md).
 
 ## Scope and finishing criteria
 
-P1 delivers this contract and executable server acceptance tests using synthetic identities,
-temporary databases and a loopback fake Anthropic service. Production server, games, deployment
-and login configuration stay untouched. Existing tests must remain green. New acceptance cases
-execute as Node TODO tests until P2; they are not passing proxy checks. Run them strictly with:
+P1 delivered this contract and executable acceptance tests against the unchanged pilot, using
+synthetic identities, temporary databases and a loopback fake. Claude approved revisions in
+98378db and authorized P2. P2 implements the routes, token/ledger stores, bounded streaming,
+setup page and aggregate/revoke CLI. Acceptance assertions now block the default server suite;
+there are no proxy TODO or skipped tests. The strict command remains available:
 
 ```sh
 PROXY_ACCEPTANCE=1 node --test tests/server/proxy-acceptance.test.js
 ```
 
-This must be red against the pilot (the routes do not exist). P2 must remove the TODO wrapper,
-make the strict suite pass, and keep the runbook's four suites green. No acceptance assertion may
-be weakened to fit an implementation. P3 separately runs the actual SDKs and Claude Code against
-the fake service. Neither P1 nor P2 establishes actual Claude Code startup compatibility.
+Finishing criteria: every reviewed acceptance case passes, all four runbook suites are green,
+local browser create/rotate/reload/revoke works, and independent code review has no open findings.
+P3 separately runs actual SDKs and Claude Code against the fake service. P2 does not establish
+real-client startup or hosted Easy Auth compatibility, and does not deploy or enable the proxy.
 
 ## Activity and settings
 
@@ -49,14 +50,15 @@ Cap overrides may lower approved limits for tests. Raising approved limits is an
 Unknown models, invalid numbers/dates or unavailable pricing fail closed. The activity model list
 is fixed to Sonnet in this first contract. `MODEL` for the tutor cannot widen it. Input is bounded
 by 1 MiB raw body and 200,000 counted input tokens. The byte-based input estimate is retired.
-Refuse requests beyond either bound, including count requests, without forwarding. URLs, model
+Refuse requests beyond the byte limit without upstream traffic. Reject counted input above the
+input limit after the free count, without dispatching generation. URLs, model
 names and upstream credentials cannot be selected through request fields or headers.
 
 ## Login and token routes
 
 `/keys/` is an authenticated Illinois-login page. Its API routes below are authenticated the same
 way as the pilot's `/api/me`: only trusted Easy Auth identity headers in protected hosting, with
-synthetic dev mode locally. Join-code sessions cannot mint course tokens. An unauthenticated
+synthetic dev mode locally (never available on hosted Azure). Join-code sessions cannot mint course tokens. An unauthenticated
 application request returns 401 JSON; protected hosting may instead perform its browser redirect.
 Cross-site mutations and non-JSON bodies are refused by the existing mutation guard. Responses,
 including the page, use `Cache-Control: no-store`. The page explains credit expiry, the budget,
@@ -153,7 +155,7 @@ upstream error messages or identity. Error responses are no-store and do not red
 | 404 | `endpoint_not_allowed` | Proxy endpoint or method outside the list |
 | 400 | `bad_request` | Invalid JSON, model missing, invalid output cap, extra key-route fields |
 | 400 | `model_not_allowed` | Model not exactly `claude-sonnet-5-5`; name allowed model in message |
-| 413 | `too_long` | Raw input or conservative input-token bound exceeded |
+| 413 | `too_long` | Raw input or counted input limit exceeded |
 | 415 | `bad_request` | Non-JSON proxy or keys mutation |
 | 429 | `cap_student_usd` | New reservation would exceed $5 owner/activity cap |
 | 429 | `cap_daily_usd` | New reservation would exceed daily cap |
@@ -181,7 +183,8 @@ Claude's review replaces byte-as-token reservations with a free upstream count p
 Validate auth, endpoint, body, model, tools, rate and in-flight limits first. Before counting,
 check that storage is writable and no cap/hold is already exhausted. Keep the request's
 in-flight slot during counting and generation. Construct the count body from the original
-model/messages/system/tools/tool_choice/thinking/output_config fields supported by count_tokens;
+model/messages/system/tools/tool_choice/thinking/output_config/cache_control/context_management/compaction/
+output_format/speed fields supported by count_tokens;
 never forward max_tokens or stream to the count endpoint. Preserve cache annotations within
 those fields. Strip generation-only top-level fields. A failed, timed-out, invalid or over-limit
 count fails closed: no generation, no charge. Count preflights consume one external-request rate
@@ -190,7 +193,11 @@ slot, not a second slot in addition to their generation. Never log or persist th
 Reserve `(ceil(counted_input_tokens * 1.10) + 1024) * highest_input_price / 1e6 +
 max_tokens * output_price / 1e6`, rounded upward to nanodollars. The 10% plus 1,024-token
 allowance guards the provider's documented estimation/scaffolding differences. Recheck money,
-expiry, revoke and close atomically after the count, before generation. The count is not an
+expiry, revoke and close after the count, before generation. Hold the identity write lock through
+final authorization, durable reservation and synchronous transport admission, serializing all
+revoke/rotation writers. Recheck again after reservation; if this refuses before transport is
+invoked, remove that undispatched reservation and log. In-flight calls admitted before revoke
+continue to settle. The same admission boundary protects explicit count requests. The count is not an
 unconditional mathematical guarantee; retain the persistent hold if actual billing exceeds the
 reservation. Use the existing confirmed Sonnet price table in `server/model.js`: input $2/M,
 output $10/M, 5-minute cache write $2.5/M, 1-hour cache write $4/M, cache read $0.2/M.
@@ -249,6 +256,7 @@ export ANTHROPIC_API_KEY="<show-once course token>"
 export ANTHROPIC_MODEL="claude-sonnet-5-5"
 export ANTHROPIC_DEFAULT_SONNET_MODEL="claude-sonnet-5-5"
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-sonnet-5-5"
+export CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000
 claude --model claude-sonnet-5-5
 ```
 
@@ -267,11 +275,11 @@ credential stripping, exact endpoints/model, payload/tool limits, each money lim
 persistence, races, streaming byte preservation and usage/cache accounting, cancellation/failure,
 recovery/holds, and absence of message text/credentials in persistence and logs.
 `proxy-harness.test.js` verifies fake HTTP, fragmented SSE, and fail-closed network routing.
-P1 TODO status is explicit so the runbook's regression gate remains meaningful; the strict run
-is the implementation gate. No local assertion proves App Service Easy Auth exclusion. Before
+P2 acceptance tests run as blocking assertions in the runbook server suite and in the strict run.
+No local assertion proves App Service Easy Auth exclusion. Before
 P3/deployment, Claude must read back the actual host login configuration: `/proxy` and `/proxy/*`
 excluded, `/keys/` and `/api/keys*` protected, Illinois tenant enforced and identity headers replaced.
-P1 does not inspect or alter Azure, contact students, read real records, deploy, or make live calls.
+P1/P2 do not inspect or alter Azure, contact students, read real records, deploy, or make live calls.
 
 ## P1 review compatibility evidence (2026-10-18)
 
@@ -284,8 +292,9 @@ allowed, and counted-input preflight replaces the byte estimate. These are not V
   lowering this variable covers every request, so a 4,096 proxy cap is not compatible by assumption.
 - [Current Sonnet 5.5 model limits](https://platform.claude.com/docs/en/models/sonnet-5-5/overview)
   document 128K maximum output. The proxy accepts this full range, including default clients,
-  without claiming an undocumented universal Claude Code default. Optional
-  `CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000` can lower most output reservations, but is not required.
+  without claiming an undocumented universal Claude Code default. The setup page must recommend
+  `CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000` (Claude review decision): two 150K-input requests then
+  reserve $1.968192 together, under $2.50. The server still accepts up to 128K output.
 - [Official TypeScript beta messages source](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/src/resources/beta/messages/messages.ts)
   sends `/v1/messages?beta=true` and `/v1/messages/count_tokens?beta=true`. Both literal query
   variants are allowed and preserved. Other queries, duplicate beta parameters, encodings and
@@ -295,8 +304,10 @@ allowed, and counted-input preflight replaces the byte estimate. These are not V
   Preflight counts all supported input content and fails closed; no byte/4 heuristic is used.
 
 The reviewed acceptance suite adds the 150,000-token/$1.944096 reservation case, both SDK beta
-paths, over-cap output refusal and refusal of every other query. P1 remains pending implementation;
-P2 removes TODO status and makes the complete strict suite pass before reporting green.
+paths, over-cap output refusal and refusal of every other query. P2 removes TODO status and makes the complete strict suite pass before reporting green.
+When only outstanding reservations prevent a request that otherwise fits its cap, return fixed
+plain text explaining that budget is tied up while another request finishes and to try again shortly
+(Claude review decision after 98378db).
 
 ## Revised P1 verification (2026-10-18)
 
@@ -409,3 +420,37 @@ the proxy and key routes do not exist yet. All tests use temporary synthetic dat
 - `proxy acceptance: revoking a token during input counting prevents generation after the count finishes`
 
 </details>
+
+## P2 completion evidence (2026-10-18)
+
+| Required suite | Passed | Failed | Skipped / TODO |
+| --- | ---: | ---: | --- |
+| `cd tests/db && npm test` | 87 | 0 | None |
+| `cd tests/ui && npx playwright test` | 83 | 0 | 3 existing conditional skips |
+| `cd tests/ui && DB_SITE=../../site npx playwright test` | 81 | 0 | 5 existing conditional skips |
+| `node --test tests/server/*.test.js` | 164 | 0 | None |
+
+Server totals: 49 unchanged pilot checks, 110 blocking proxy acceptance checks, and 5 fake-service
+safety checks. New cases cover the recommended 32K client setting, two simultaneous 150K-input
+requests, pending-reservation explanations, inline hosted-tool denial, count configuration
+preservation, missing final stream usage, prior-activity pool totals and serialized admission.
+No existing test was weakened or skipped. One P1 fixture was corrected to set the game-only
+daily cap to $200 before seeding $139.99; the production game daily default is unchanged.
+
+A fresh independent review found a post-count authorization race. Controlled revoke/close
+boundary tests reproduced it before the fix. Identity locking through durable reservation and
+transport admission, final revalidation and deletion of undispatched reservations closed the
+finding. An independent SQLite writer is demonstrably blocked during admission and can revoke
+afterward. Reviewer re-review passed all 115 proxy/harness checks and reported no remaining
+code defect. Both boundary tests explicitly assert no paid dispatch and no remaining ledger row.
+
+Local real-browser verification: create shows one synthetic token; replacement changes it and
+the old token returns401; reload removes the token with no local/session storage; revoke
+updates the status and disables its button; the page recommends the 32K setting. A 375px
+viewport has no horizontal overflow and its rendered page was visually inspected. The local
+browser/server were shut down afterward. No real upstream request or student record was used.
+
+P2 is complete locally. P3 remains deferred: official SDK and Claude Code end-to-end runs against
+the fake upstream, live-host Easy Auth read-back, and any separately authorized real smoke or
+deployment. The proxy remains disabled by default. No PR, merge, deployment or host change
+was performed.

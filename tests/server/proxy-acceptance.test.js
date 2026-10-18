@@ -6,10 +6,9 @@ const { join } = require('node:path');
 const { MODEL, KEY, PROMPT, ANSWER, PRIVATE_ERROR, message, count, reply, event, streamParts,
   fixture, until, tokenRow, ledger, seed, capture, assertPrivate } = require('./proxy-helpers');
 
-// P1 writes the contract, P2 implements it. TODO tests still EXECUTE their assertions.
-// PROXY_ACCEPTANCE=1 removes TODO so every failure blocks P2. Never skip these bodies.
+// P2: all reviewed acceptance assertions are blocking in the default server suite.
 const acceptance = (name, fn) => test(`proxy acceptance: ${name}`, {
-  timeout: 10000, ...(process.env.PROXY_ACCEPTANCE === '1' ? {} : { todo: 'P2 proxy implementation required; strict gate: PROXY_ACCEPTANCE=1' }),
+  timeout: 10000,
 }, fn);
 const noStore = r => assert.match(r.headers.get('cache-control') || '', /no-store/);
 async function refused(f, code, status, run) {
@@ -312,7 +311,7 @@ acceptance('daily cap resets at Chicago midnight while activity spend remains', 
 });
 
 acceptance('proxy and games budgets are independent in both directions', async t => {
-  const f = await fixture(t), k = await f.mint();
+  const f = await fixture(t, { CAP_DAILY_USD: '200' }), k = await f.mint();
   const game = f.app.store.reserve('synthetic-game', 'synthetic-game', 139.99, false);
   f.app.store.settle(game, 139.99, { input_tokens: 1, output_tokens: 1 });
   assert.equal((await f.send(k.token)).status, 200);
@@ -716,4 +715,111 @@ acceptance('revoking a token during input counting prevents generation after the
   assert.equal(r.body.error, 'invalid_token');
   assert.equal(f.upstream.messages.length, 0);
   assert.equal(ledger(f).length, 0);
+});
+
+acceptance('setup page recommends 32000 output tokens for concurrent Claude Code requests', async t => {
+  const f = await fixture(t);
+  const r = await f.request('/keys/', undefined, f.identity('synthetic-owner-a'));
+  assert.equal(r.status, 200);
+  assert.match(r.raw, /recommend/i);
+  assert.match(r.raw, /CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000/);
+});
+
+acceptance('cap refusal caused only by pending reservations explains to retry after another request finishes', async t => {
+  const f = await fixture(t), k = await f.mint();
+  f.upstream.countState.value = 150000;
+  f.upstream.queue.push({ kind: 'json', hold: true });
+  const body = message({ max_tokens: 128000 });
+  const first = f.send(k.token, body);
+  await until(() => f.upstream.messages.length === 1, 'outstanding long request');
+  const r = await refused(f, 'cap_daily_usd', 429, () => f.send(k.token, body));
+  assert.match(r.body.message, /while another request finishes/);
+  assert.match(r.body.message, /try again shortly/i);
+  assert.ok(!r.raw.includes(PROMPT));
+  f.upstream.release(); assert.equal((await first).status, 200);
+});
+
+acceptance('two long requests with recommended 32000 output fit the daily reservation budget', async t => {
+  const f = await fixture(t), k = await f.mint();
+  f.upstream.countState.value = 150000;
+  f.upstream.queue.push({ kind: 'json', hold: true }, { kind: 'json', hold: true });
+  const jobs = [f.send(k.token, message({ max_tokens: 32000 })), f.send(k.token, message({ max_tokens: 32000 }))];
+  await until(() => f.upstream.messages.length === 2, 'two long requests');
+  assert.equal(ledger(f).reduce((n, row) => n + row.amount, 0), 1968192000);
+  f.upstream.release(); f.upstream.release();
+  assert.ok((await Promise.all(jobs)).every(r => r.status === 200));
+});
+
+acceptance('inline message tool additions cannot enable hosted tools while ordinary client additions work', async t => {
+  const f = await fixture(t), k = await f.mint();
+  const messages = definition => [{ role: 'user', content: [
+    { type: 'text', text: PROMPT },
+    { type: 'tool_addition', tool: { type: 'tool_definition', definition } },
+  ] }];
+  await refused(f, 'tools_not_allowed', 403, () => f.send(k.token, message({ messages: messages({ type: 'web_search_20250305', name: 'web_search' }) })));
+  assert.equal(f.upstream.calls.length, 0);
+  const local = message({ messages: messages({ name: 'local_sql', input_schema: { type: 'object' } }) });
+  assert.equal((await f.send(k.token, local)).status, 200);
+  assert.deepEqual(f.upstream.messages[0].body, local);
+});
+
+acceptance('input count preserves cache and context configuration and strips only generation fields', async t => {
+  const f = await fixture(t), k = await f.mint();
+  const body = message({ cache_control: { type: 'ephemeral', ttl: '1h' },
+    context_management: { edits: [{ type: 'clear_tool_uses_20250919' }] } });
+  assert.equal((await f.send(k.token, body)).status, 200);
+  const counted = f.upstream.calls.find(call => call.path === '/v1/messages/count_tokens').body;
+  assert.deepEqual(counted.cache_control, body.cache_control);
+  assert.deepEqual(counted.context_management, body.context_management);
+  assert.equal(counted.max_tokens, undefined);
+});
+
+acceptance('a message_stop without final message_delta usage cannot refund the reservation', async t => {
+  const f = await fixture(t), k = await f.mint();
+  f.upstream.queue.push({ kind: 'stream', parts: [streamParts()[0], streamParts().at(-1)] });
+  await f.send(k.token, message({ stream: true }));
+  assert.equal(ledger(f)[0].status, 'unknown');
+  assert.equal(ledger(f)[0].amount, ledger(f)[0].reserved);
+});
+
+acceptance('the total proxy pool includes prior activities while student caps stay activity-specific', async t => {
+  const f = await fixture(t), k = await f.mint();
+  seed(f, k.key, 149.99, { activity: 'synthetic-prior-activity' });
+  await refused(f, 'budget_exhausted', 503, () => f.send(k.token));
+});
+
+for (const change of ['revoke', 'close']) {
+  acceptance(`a ${change} at the reservation boundary prevents paid dispatch and leaves no charge`, async t => {
+    const f = await fixture(t), k = await f.mint();
+    const store = f.app.proxy.store;
+    const reserve = store.reserve.bind(store);
+    t.mock.method(store, 'reserve', (...args) => {
+      const id = reserve(...args);
+      if (change === 'revoke') store.revoke(tokenRow(f, k.key.id).owner);
+      else f.setTime('2026-11-06T06:00:00Z');
+      return id;
+    });
+    await refused(f, 'invalid_token', 401, () => f.send(k.token));
+    assert.equal(f.upstream.messages.length, 0);
+    assert.equal(ledger(f).length, 0);
+  });
+}
+
+acceptance('an independent revoke writer is locked out until reservation and transport admission finish', async t => {
+  const f = await fixture(t), k = await f.mint();
+  const { DatabaseSync } = require('node:sqlite');
+  const other = new DatabaseSync(`${f.env.DB_PATH}.identity.sqlite`);
+  t.after(() => other.close());
+  other.exec('PRAGMA busy_timeout=0');
+  const original = f.app.proxy.store.reserve.bind(f.app.proxy.store);
+  let checked = false;
+  t.mock.method(f.app.proxy.store, 'reserve', (...args) => {
+    assert.throws(() => other.prepare('UPDATE proxy_tokens SET revoked_at=? WHERE id=?').run('2026-11-02T18:00:00.000Z', k.key.id), /locked/);
+    checked = true;
+    return original(...args);
+  });
+  assert.equal((await f.send(k.token)).status, 200);
+  assert.ok(checked);
+  other.prepare('UPDATE proxy_tokens SET revoked_at=? WHERE id=?').run('2026-11-02T18:00:00.000Z', k.key.id);
+  await refused(f, 'invalid_token', 401, () => f.send(k.token));
 });

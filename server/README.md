@@ -136,3 +136,49 @@ transport test uses a local function in place of fetch; it makes no network call
 The full browser game, real Easy Auth/tenant configuration, Azure persistent-share behavior, model
 provider behavior, three real conversation costs and live deployment are integration checks for Claude.
 The approved plan still requires its separate server security review before learners get a link.
+
+## Student API proxy (P2)
+
+The proxy is disabled by default (`PROXY_ENABLED=0`). Its reviewed contract and operational
+defaults are in `docs/student-api/contract.md`. It runs alongside the games, with independent
+`proxy_*` tables in the existing stores. No proxy prompt, answer, tool content or raw credential
+is written to these stores or process logs.
+
+- `/keys/` and `/api/keys*`: existing trusted Illinois identity (synthetic dev locally); join-code
+  login cannot issue course tokens. Create/replace shows the raw token once, revoke is idempotent,
+  and rotation/forget never resets the owner's budget. The page recommends
+  `CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000`, Sonnet for main/background work, and private environment variables.
+- `/proxy/v1/messages` and `/proxy/v1/messages/count_tokens`: course-token auth via x-api-key or
+  Bearer, independent of browser login. Only POST and the literal optional `?beta=true` are allowed.
+- Sonnet only (`claude-sonnet-5-5`), output cap 128000, per-student activity $5, daily $2.50, total
+  proxy pool $150 (including prior activities); daily boundaries are America/Chicago. These
+  revised operational defaults are Claude's decisions. Budget settings remain operator configurable.
+- Free input-count preflight precedes generation. Reserve counted input +10% +1024 tokens at
+  the highest input price plus the requested output limit. A 150K-input/128K-output request
+  reserves $1.944096; two such inputs with recommended 32K outputs reserve $1.968192 together.
+- Ledger reservations commit before dispatch. Identity admission serializes with revoke/rotation;
+  in-flight slots remain held through counting/streaming. Missing/failed/partial/cancelled usage
+  retains the full reservation. Complete final streamed usage settles once, including cache costs.
+- `PROXY_RPM=10`, owner in-flight 2, global in-flight 10, upstream timeout 45000 ms. Server-side
+  tools, including inline hosted-tool additions, are blocked. Custom client tools pass unchanged.
+
+For operator use, explicitly set `DB_PATH`; only run against real records in Codex Edu:
+
+```sh
+DB_PATH=/path/to/course-store.sqlite node server/proxy-admin.js aggregates
+DB_PATH=/path/to/course-store.sqlite node server/proxy-admin.js revoke --token-id <public-token-id>
+```
+
+The aggregates command opens the usage store read-only, returning per-activity and pseudonymous
+per-owner totals including unknown/reserved amounts. Revoke opens only the identity store for
+writing; it never retrieves plaintext credentials. The CLI never prints input arguments on error.
+
+The default server suite includes all blocking proxy acceptance checks and fake-upstream safety
+checks. `createApp({fetchImpl})` injects proxy transport. Tests block non-loopback network access
+and redirect following, use only synthetic keys, and never read a key file or the live database.
+
+**Operator/P3 boundary:** the application routes do not configure App Service Easy Auth. Before
+release, Claude must verify `/proxy` and `/proxy/*` are excluded from browser login while
+`/keys/` and `/api/keys*` remain protected, tenant restriction and identity-header replacement
+are enforced, and Python SDK, TypeScript SDK and Claude Code all work against the fake upstream.
+No host configuration, deployment, actual-client run or real API smoke call was performed in P2.

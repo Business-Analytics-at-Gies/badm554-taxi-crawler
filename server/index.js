@@ -6,16 +6,18 @@ const { Auth, mutationGuard, cookie } = require('./auth');
 const { serveStatic } = require('./static');
 const { join } = require('node:path');
 const { HttpError, refuse } = require('./errors');
+const { Proxy } = require('./proxy');
 
 function createApp(options = {}) {
   const cfg = config(options.env);
   const now = options.now || Date.now;
   const store = new Store(cfg, now);
-  let tutor, auth;
+  let tutor, auth, proxy;
   try {
     tutor = new Tutor(cfg, store, now, options.model, options.fetchImpl);
     auth = new Auth(cfg, store);
     store.recover();
+    proxy = new Proxy(cfg, store, now, options.fetchImpl);
   } catch (error) { store.close(); throw error; }
   const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -29,6 +31,7 @@ function createApp(options = {}) {
         res.end('ok');
         return;
       }
+      if (await proxy.handle(req, res, auth)) return;
       if (!req.url.split('?')[0].startsWith('/api/')) {
         await serveStatic(req, res, options.siteRoot || join(cfg.root, 'site'), options.dataRoot || join(cfg.root, 'data'));
         return;
@@ -77,10 +80,11 @@ function createApp(options = {}) {
   const close = async () => {
     if (closed) return;
     closed = true;
+    proxy.close();
     if (server.listening) await new Promise(resolve => server.close(resolve));
     store.close();
   };
-  return { server, store, tutor, config: cfg, close };
+  return { server, store, tutor, proxy, config: cfg, close };
 }
 if (require.main === module) {
   const app = createApp();
