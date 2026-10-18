@@ -4,13 +4,14 @@ Created: 2026-10-18
 Last Updated: 2026-10-18
 Agent: crew-codex-proxy
 Initial proxy: approved P2 commit `d7b2f07ce7308418da3bd750b92a6673999510d6`
-Resumed proxy: `7a6726c` plus the exact newly authorized client-marker addition in this change
-Status: **BLOCKED on the resumed Claude Code trial without the experimental-beta setting.**
-Both official SDKs passed. The initial client-marker blocker was resolved by Claude's exact
-allow-list decision below. Removing the precautionary setting then exposed four other unreviewed
-beta values; testing stopped again at the first message refusal. The setting is retained as
-needed. No other header, field, endpoint, query or model was admitted. This is a P3 evidence
-report, not release approval.
+First resumed proxy: `7a6726c` plus the exact client-marker addition subsequently committed as `b1934c6`
+Latest exact-setup proxy: `b1934c6ad5de4fbda339e61437f9bdf5e9889714`
+Status: **BLOCKED on a new unsupported-option refusal with the exact recommended environment.**
+Both official SDKs passed. The initial client marker is now admitted and the experimental-beta
+setting is retained. The latest run sent only the three approved beta values, but still received
+400 before upstream dispatch. Testing stopped again as instructed. The exact nested request
+key/value causing this refusal was not captured and is not asserted here. No further header,
+field, endpoint, query or model was admitted. This is a P3 evidence report, not release approval.
 
 ## Versions and isolation
 
@@ -306,3 +307,91 @@ Final resumption regression verification: database 87 passed; browser 83 passed 
 conditional skips; browser against `site` 81 passed with 5 existing conditional skips; server
 447 passed, including the ten new beta-policy checks. All four required suites have zero
 failures. These regression results do not turn the incomplete real-client matrix into a pass.
+
+## Exact setup-page environment, setting included (2026-10-18)
+
+Claude authorized another matrix attempt with the experimental-beta setting retained and the
+four other beta values still refused. The proxy was exactly `b1934c6`; there was no production
+code, setup-page, contract, or allow-list change for this attempt. A new scratch HOME, working
+directory and synthetic database were created. The same sandbox profile and guarded loopback
+transport/fake were reused. A synthetic file was prepared in the working folder for the later
+tool scenario, but the client never reached that scenario.
+
+The installed Claude Code was `2.1.302`. The child environment was again empty except for basic
+PATH, scratch HOME/TMPDIR and these exact setup-page exports:
+
+```sh
+export ANTHROPIC_BASE_URL="<local-proxy>/proxy"
+export ANTHROPIC_API_KEY="<fresh-synthetic-course-token>"
+export ANTHROPIC_MODEL="claude-sonnet-5-5"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="claude-sonnet-5-5"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-sonnet-5-5"
+export CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000
+export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1
+claude -p "<synthetic plain-message prompt>" --model claude-sonnet-5-5 --no-session-persistence
+```
+
+Every client request from this invocation, in order:
+
+| # | Method | Path | Query | Requested model | max_tokens | stream | Status |
+| --- | --- | --- | --- | --- | ---: | --- | ---: |
+| 1 | HEAD | `/proxy/api/hello` | none | none | not supplied | not supplied | 401 |
+| 2 | POST | `/proxy/v1/messages` | `?beta=true` | `claude-sonnet-5-5` | 32000 | true | 400 |
+
+The full beta header on the message request was:
+
+```text
+claude-code-20250219,interleaved-thinking-2025-05-14,effort-2025-11-24
+```
+
+The unchanged `betaHeader` validator separately accepted this exact recorded header and API
+version (`2023-06-01`) in an offline check. The four unreviewed values were absent. There was no
+client request to count_tokens and no request for another model or a background/small model.
+The HEAD probe's beta header was not captured: its response finished before the capture's
+body-end callback populated header metadata. No absence/value is inferred for that probe.
+
+Captured top-level field names were `max_tokens`, `messages`, `metadata`, `model`, `output_config`,
+`stream`, `system`, `thinking`, and `tools`. The capture also showed `output_config` with only
+`effort`, `metadata` with only `user_id`, and thinking type `adaptive`. These field-name summaries
+are not the full request. The capture did not retain message-object key names, all thinking keys,
+or every nested value/type, so it cannot identify the precise unsupported nested option/value.
+No raw prompt, system prompt, tool definition or answer was saved to diagnose it.
+
+Claude Code exited 1, without timing out or requesting reauthentication, and displayed:
+
+```text
+This request uses an option that is not enabled for the course API.
+```
+
+This is a new refusal with an accepted beta header, not a recurrence of either header mismatch.
+The known hello probe again did not prevent the subsequent message call. No
+count preflight or generation reached the fake, and the ledger remained empty. The synthetic
+guard probes recorded one rejected real-looking key and two rejected non-fake destinations.
+No real API call occurred.
+
+| Requested latest Claude Code check | Result |
+| --- | --- |
+| Plain message | FAIL: fixed unsupported-option response, status 400 / exit 1 |
+| Explicit streaming-output run | NOT RUN after the new refusal; the rejected initial call itself requested upstream streaming |
+| Scratch-file tool round trip | NOT RUN after the new refusal |
+| count_tokens, if used | No client count call observed |
+| `--model claude-haiku-5-5` refused-model run | NOT RUN after the new refusal |
+| Background/small-model attempt | NOT RUN after the new refusal |
+| Sonnet-only operation at max output 32000 | Observed on the rejected main request only; successful operation and worker-model behavior remain unverified |
+
+The proxy and fake were shut down immediately after capturing the refusal. No later scenario,
+alternate settings, stripped field/header, policy expansion, or client retry was attempted.
+`CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` stays on the setup page, and the four unreviewed values
+stay refused. P3 remains incomplete. Identifying this option requires additional sanitized
+nested-key/type diagnostics in a separately authorized continuation; this report does not guess
+which option to admit or claim that the full Claude Code matrix ran.
+
+The independent report review matched this account to the launcher and sanitized captures and
+found no overclaim of successful operation. Both local ports were confirmed closed, the sandbox
+profile matched the earlier profile byte-for-byte, and the scratch stores/Claude state contained
+neither raw course tokens nor the synthetic prompt/answer/file markers.
+
+Latest regression verification: database 87 passed; browser 83 passed with 3 existing conditional
+skips; browser against `site` 81 passed with 5 existing conditional skips; server 447 passed.
+All four required suites have zero failures. These are regression results, not a completed
+Claude Code matrix. Only this report changes in the resulting commit.
