@@ -40,17 +40,25 @@ async function passStream(response, res, signal, settle, inspectUsage, invalidat
   const send = async frame => { if (!res.write(frame)) await once(res, 'drain', { signal }); };
   const dispatch = async () => {
     // An event field is authoritative even when its data is empty, invalid JSON, or absent.
-    if (eventName === 'error') throw new Error('Proxy stream failed');
+    if (eventName === 'error') {
+      if (stopped) invalidate();
+      throw new Error('Proxy stream failed');
+    }
     if (data.length) {
       let value;
       try { value = JSON.parse(data.join('\n')); } catch { invalid = true; }
-      if (value?.type === 'error') throw new Error('Proxy stream failed');
+      if (value?.type === 'error') {
+        if (stopped) invalidate();
+        throw new Error('Proxy stream failed');
+      }
       // Accounting on an unexpected event is still accounting. Never let event type
       // or a premature stop hide a malformed counter or an extra billed attempt.
       if (value && Object.hasOwn(value, 'usage') && value.type !== 'message_delta') { inspect(value.usage); invalidate(); }
       if (value?.message && Object.hasOwn(value.message, 'usage') && value.type !== 'message_start') { inspect(value.message.usage); invalidate(); }
-      if (stopped && value?.type !== 'ping') invalidate();
-      if (value?.type === 'message_start') {
+      // A stop is terminal: later events may invalidate the charge, never settle again.
+      if (stopped) {
+        if (value?.type !== 'ping') invalidate();
+      } else if (value?.type === 'message_start') {
         if (started) { invalid = true; invalidate(); }
         started = true;
         const next = value.message?.usage;

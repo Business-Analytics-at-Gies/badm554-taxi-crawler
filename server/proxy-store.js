@@ -136,11 +136,11 @@ class ProxyStore {
     this.store.transaction(() => {
       this.db.prepare("INSERT OR REPLACE INTO proxy_settings VALUES ('budget_hold','1')").run();
       if (id) {
-        // Late malformed accounting must undo even a settlement at message_stop.
-        this.db.prepare("UPDATE proxy_ledger SET amount=reserved,status='unknown' WHERE id=?").run(id);
+        // Invalid accounting cannot refund a charge already confirmed at message_stop.
+        this.db.prepare("UPDATE proxy_ledger SET amount=MAX(amount,reserved),status='unknown' WHERE id=?").run(id);
         this.db.prepare(`UPDATE proxy_request_log SET status='unknown',input_tokens=NULL,output_tokens=NULL,
           cache_creation_input_tokens=NULL,cache_read_input_tokens=NULL,cache_write_hour_tokens=NULL,
-          cost_usd=(SELECT reserved/1000000000.0 FROM proxy_ledger WHERE id=?) WHERE id=?`).run(id, id);
+          cost_usd=(SELECT amount/1000000000.0 FROM proxy_ledger WHERE id=?) WHERE id=?`).run(id, id);
       }
     });
   }

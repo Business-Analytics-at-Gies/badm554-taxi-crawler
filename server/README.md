@@ -171,6 +171,8 @@ is written to these stores or process logs.
   negative or inconsistent usage keeps the reservation and persists a budget hold, including
   bad intermediate updates that a later update replaces. Streaming parses SSE events,
   suppresses complete/incomplete provider errors, and settles only complete final usage.
+  Invalidating a confirmed charge retains the greater of that charge and the reservation in
+  both spending records, including after restart. Events after message_stop cannot settle again.
   Successful JSON answers and streamed events have no artificial byte limit; buffers remain
   transient memory, with no answer content written to disk.
 

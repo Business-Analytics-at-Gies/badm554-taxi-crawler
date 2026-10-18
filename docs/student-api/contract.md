@@ -224,6 +224,8 @@ has already arrived, settle it even if the client then closes. Never retry autom
 restart, recover outstanding `reserved` rows as `unknown`, preserving spend. If actual cost
 exceeds the reserve, record it in full and set a persistent proxy-only hold; refuse further calls
 until operator review. A failed settlement must leave the original reservation recoverable.
+After confirmation, invalidation retains at least the greater of that charge and the original
+reservation in both spending records; it never resets a higher charge downward (R3 below).
 
 Persistent acceptance surface (internal names, not public HTTP):
 
@@ -650,7 +652,8 @@ when it is attached to an unexpected event; that unsupported placement itself re
 including well-formed counters that the normal message accounting would otherwise ignore.
 An additional non-ping event after message_stop or
 a repeated message_start makes the accounting inconsistent. If invalid accounting arrives after
-an earlier message_stop settlement, atomically restore the full reservation as unknown, clear
+an earlier message_stop settlement, atomically retain the greater of the reservation and the
+confirmed charge as unknown (R3 clarification below), clear
 the formerly settled token counters, and persist the hold. Transport failures/incompleteness
 without invalid accounting retain the reservation under the existing rules. No invalid usage
 object, prompt, answer or provider error text is written to a table or log.
@@ -667,3 +670,34 @@ browser against `site` 81 passed/5 existing conditional skips; server 275 passed
 configuration change was performed; those remain P3.
 The final independent review found no remaining actionable accounting defect and reran all
 41 R2 checks successfully.
+
+## Claude's P2 review round 3 decision (2026-10-18)
+
+A confirmed charge never decreases. On accounting invalidation, atomically set the ledger's
+unknown amount to `max(original reservation, current recorded amount)` and derive the request
+log's cost from that same retained ledger amount. Clear untrusted token details, persist the
+budget hold, and preserve the retained amount across restart and repeated invalidations. An
+initial valid settlement may release unused reservation; once a charge is confirmed, no later
+event may reduce it. This is Claude's review decision and supersedes any earlier wording that
+implied an invalidation could reset a higher confirmed charge to the reservation.
+
+message_stop is terminal for settlement. Later events are ignored or invalidate accounting;
+they cannot enter the start/delta/stop settlement handlers again. Ordinary pings may pass, and
+unexpected usage still triggers the existing hold rules. A late malformed update, duplicate
+start, extra ordinary event, or smaller update followed by another stop therefore cannot
+refund any previously established charge.
+
+The R3 tests reproduce the $0.026736 reservation / $0.040200 confirmed-charge failure for each
+late-event case, verify both spending records and the hold after restart, and cover the opposite
+case where the reservation exceeds the confirmed charge. A general test exhausts all 155
+ordered sequences of one to three events from five late-event variants, observing every real
+accounting write after confirmation and requiring both records never to decrease. The failures
+were observed before the fix. `.p2-review-r3.md` remains an uncommitted review input.
+The final independent R3 review found no remaining accounting-invariant gap or meaningful
+test-coverage weakness.
+
+Final R3 local verification: database 87 passed; browser 83 passed/3 existing conditional skips;
+browser against `site` 81 passed/5 existing conditional skips; server 437 passed, including the
+late-event reproductions and 155 sequence subtests. Zero failures remain. Tests used only
+synthetic identities, temporary databases and the local fake upstream. Actual-client testing,
+real API calls, hosting changes and deployment remain P3.
