@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test';
 
 const PORT = Number(process.env.PORT || 4183);
 export default defineConfig({
@@ -13,7 +13,8 @@ export default defineConfig({
     command: 'node server.js', port: PORT, reuseExistingServer: false, env: { PORT: String(PORT), DB_SITE: process.env.DB_SITE || '' },
   },
   projects: [
-    { name: 'desktop-1280', use: { browserName: 'chromium', viewport: { width: 1280, height: 800 } } },
-    { name: 'mobile-375', use: { browserName: 'chromium', viewport: { width: 375, height: 740 }, isMobile: false, hasTouch: false } },
+    { name: 'desktop-1280', testIgnore: /stage2-touch\.spec\.js$/, use: { browserName: 'chromium', viewport: { width: 1280, height: 800 } } },
+    { name: 'mobile-375', testIgnore: /stage2-touch\.spec\.js$/, use: { browserName: 'chromium', viewport: { width: 375, height: 740 }, isMobile: false, hasTouch: false } },
+    { name: 'webkit-iphone', testMatch: /stage2-(touch|layout)\.spec\.js$/, use: { ...devices['iPhone 13'], browserName: 'webkit', viewport: { width: 375, height: 740 }, hasTouch: true } },
   ],
 });

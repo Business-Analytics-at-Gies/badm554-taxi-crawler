@@ -128,12 +128,16 @@ body.tutor-collapsed .tutor { display: none; }
 
 /* Narrow: one column with tabs; the tutor tab is the default */
 @media (max-width: 56.25em) {
+  .js body { height: auto; min-height: 100vh; min-height: 100dvh; display: block; overflow: visible; }
   .js .tabs { display: flex; }
   .top-btn { display: none; }
-  .js .layout { display: flex; }
+  .js .layout { display: block; }
+  .js .panel, .js .gamepane, .js .tutor { overflow: visible; }
   .js .layout > .panel { display: none; flex: 1 1 auto; width: 100%; border-left: 0; }
   .js .layout > .panel.active { display: flex; flex-direction: column; }
   .js .layout > .guide.active { display: block; }
+  .game-slot { display: block; flex: none; }
+  .game-slot iframe { flex: none; }
   body.tutor-collapsed .tutor.active { display: flex; }
   .guide { padding: 0 .9rem 1rem; }
   .hero-art { aspect-ratio: 16 / 7; max-height: 170px; }

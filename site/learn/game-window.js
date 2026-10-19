@@ -7,6 +7,17 @@ export function createGameWindow({ onEvent = () => {}, onToggle = () => {} } = {
   let open = false;
   let floor = null;
   let loaded = null;
+  const narrow = matchMedia('(max-width: 56.25em)');
+
+  // On phones the frame grows with its contents so the outer page owns the scroll.
+  // Reading the body's size avoids a feedback loop through the frame's viewport height.
+  function fitFrame() {
+    if (!iframe) return;
+    if (!narrow.matches) { iframe.style.removeProperty('height'); return; }
+    const height = iframe.contentDocument?.body?.getBoundingClientRect().height;
+    if (height > 0) iframe.style.height = `${Math.ceil(height)}px`;
+  }
+  narrow.addEventListener('change', fitFrame);
 
   const api = () => iframe?.contentWindow?.taxiGame || null;
 
@@ -15,6 +26,11 @@ export function createGameWindow({ onEvent = () => {}, onToggle = () => {} } = {
     iframe.src = `/game/?floor=${n}`;
     iframe.title = `Game window: floor ${n}`;
     iframe.id = 'game-frame';
+    iframe.addEventListener('load', () => {
+      const body = iframe.contentDocument?.body;
+      if (body) new ResizeObserver(fitFrame).observe(body);
+      fitFrame();
+    });
     floor = n;
     loaded = new Promise((resolve, reject) => {
       const t0 = Date.now();
