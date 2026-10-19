@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Rerun · BADM 554</title><link rel="stylesheet" href="/learn/learn.css"><link rel="stylesheet" href="/rerun/rerun.css">
+<script>document.documentElement.classList.add('js');</script><script type="module" src="/rerun/app.js"></script></head>
+<body><a class="skip" href="#guide-body">Skip to the guide</a>
+<header class="top"><p class="brand"><span class="brand-name">The Rerun</span><span class="brand-sub">BADM 554 · build a pipeline you can run again</span></p><a class="pilot-link" href="/learn/" aria-label="Taxi Crawler pilot">Pilot game</a></header>
+<noscript><p class="noscript">The game and tutor need JavaScript. All three floor guides are readable below.</p></noscript>
+<nav class="tabs js-only" aria-label="Panels"><button type="button" role="tab" id="tab-guide" aria-selected="true" aria-controls="guide">Guide</button><button type="button" role="tab" id="tab-game" aria-selected="false" aria-controls="gamepane" tabindex="-1">Game</button><button type="button" role="tab" id="tab-tutor" aria-selected="false" aria-controls="tutor" tabindex="-1">Tutor</button></nav>
+<main class="layout">
+<section id="guide" class="panel guide active" aria-label="Guide"><div class="guide-bar"><nav aria-label="Floors"><ul class="rooms"><li><a href="#floor1">Floor 1</a></li><li><a href="#floor2">Floor 2</a></li><li><a href="#floor3">Floor 3</a></li></ul></nav></div>
+<div id="guide-body" class="guide-body" tabindex="-1">
+<p><strong>A pipeline is right when you can run it again, on any day, and get the right answer.</strong></p>
+
+<article id="floor1" class="floor-guide" aria-labelledby="floor1-h">
+<h2 id="floor1-h">Floor 1: Run it twice</h2>
+<p class="task"><strong>Your task:</strong> Build <code>trips_clean</code> from day 1 of <code>raw_trips</code>. Run the same pipeline twice with nothing new. Both runs must produce the same 2,400 trips and $68,624.30 in revenue.</p>
+<p><strong>Trip key:</strong> <code>trip_id</code> names the trip; <code>row_id</code> and <code>loaded_at</code> name the load. A re-send or correction keeps the same trip_id.</p>
+<p><strong>Repeatable table tip:</strong> <code>CREATE OR REPLACE TABLE trips_clean AS …</code> can replace an earlier result each time. Write the SQL in Pipeline; Scratch queries are for exploring and never run in a check.</p>
+<h3>What counts as a pass</h3>
+<p>Keep exactly the 14 raw columns, in any order, with one row per trip_id. Keep each output row as an unchanged, complete row from raw_trips. Add no output columns and leave raw_trips unchanged. Helper tables are allowed. Rows and values are compared, independently of their order; correct counts alone do not pass. Money compares to cents. Keys, timestamps and every other value compare exactly, with NULLs treated as equal.</p>
+<p>On days 1 and 2, either unchanged copy of an identical trip is accepted; only row_id and loaded_at are ignored when comparing trip content. The full output row must still come from one real raw row. After day 3 arrives, the latest whole row must match, including its load metadata.</p>
+<p>An append can double the output. A plain <code>CREATE TABLE</code> can fail because yesterday’s table exists. Predict the second run before pressing it.</p>
+<h3>The full check sequence</h3><p class="sequence">day1-first → day1-repeat</p>
+<p>Each floor starts fresh with day 1. Floor 1 runs every condition above, including earlier floors’ conditions. Check floor uses isolated copies and never changes your workspace. Scratch tables and queries cannot help it pass. Every run must pass; the first failure names the condition, without giving the fix.</p>
+<details><summary>All 14 input columns</summary><p><code>trip_id, row_id, vendor_id, pickup_at, dropoff_at, passenger_count, trip_distance, pu_location_id, do_location_id, payment_type, fare_amount, tip_amount, total_amount, loaded_at</code></p></details><h3>Counts to reconcile</h3>
+<ul><li>Day 1: 2,400 raw rows; 2,400 output rows and trips; $68,624.30 output revenue.</li></ul>
+<p><strong>Try it:</strong> explore raw_trips in Scratch, write your pipeline, predict the result, run it, then run it again. Use Next day for the later conditions. Press Check floor when ready.</p>
+</article><article id="floor2" class="floor-guide" aria-labelledby="floor2-h">
+<h2 id="floor2-h">Floor 2: A new day</h2>
+<p class="task"><strong>Your task:</strong> Build <code>trips_clean</code> with one unchanged row per trip across days 1 and 2. Day 2 delivers 2,400 new trips and 120 re-sends of day-1 trips. Those re-sends have new load metadata, but the same trip content.</p>
+<p><strong>Trip key:</strong> <code>trip_id</code> names the trip; <code>row_id</code> and <code>loaded_at</code> name the load. A re-send or correction keeps the same trip_id.</p>
+<p><strong>Repeatable table tip:</strong> <code>CREATE OR REPLACE TABLE trips_clean AS …</code> can replace an earlier result each time. Write the SQL in Pipeline; Scratch queries are for exploring and never run in a check.</p>
+<h3>What counts as a pass</h3>
+<p>Keep exactly the 14 raw columns, in any order, with one row per trip_id. Keep each output row as an unchanged, complete row from raw_trips. Add no output columns and leave raw_trips unchanged. Helper tables are allowed. Rows and values are compared, independently of their order; correct counts alone do not pass. Money compares to cents. Keys, timestamps and every other value compare exactly, with NULLs treated as equal.</p>
+<p>On days 1 and 2, either unchanged copy of an identical trip is accepted; only row_id and loaded_at are ignored when comparing trip content. The full output row must still come from one real raw row. After day 3 arrives, the latest whole row must match, including its load metadata.</p>
+<p>After day 2: 4,920 raw rows represent 4,800 trips. Your output must have 4,800 rows, 4,800 distinct trip_id and $131,391.83 revenue. A new delivery is not always a new trip.</p>
+<h3>The full check sequence</h3><p class="sequence">day1-first → day1-repeat → day2-first → day2-repeat</p>
+<p>Each floor starts fresh with day 1. Floor 2 runs every condition above, including earlier floors’ conditions. Check floor uses isolated copies and never changes your workspace. Scratch tables and queries cannot help it pass. Every run must pass; the first failure names the condition, without giving the fix.</p>
+<details><summary>All 14 input columns</summary><p><code>trip_id, row_id, vendor_id, pickup_at, dropoff_at, passenger_count, trip_distance, pu_location_id, do_location_id, payment_type, fare_amount, tip_amount, total_amount, loaded_at</code></p></details><h3>Counts to reconcile</h3>
+<ul><li>Day 1: 2,400 raw rows; 2,400 output rows and trips; $68,624.30 output revenue.</li><li>Day 2 accumulated: 4,920 raw rows; 4,800 output rows and trips; $131,391.83 output revenue.</li></ul>
+<p><strong>Try it:</strong> explore raw_trips in Scratch, write your pipeline, predict the result, run it, then run it again. Use Next day for the later conditions. Press Check floor when ready.</p>
+</article><article id="floor3" class="floor-guide" aria-labelledby="floor3-h">
+<h2 id="floor3-h">Floor 3: Late corrections and rebuild</h2>
+<p class="task"><strong>Your task:</strong> Build <code>trips_clean</code> with the latest complete version of each trip. Day 3 delivers 2,371 new trips and 60 corrected earlier fares. Keep raw history. Your script must also rebuild the result from accumulated raw alone, after every derived table, helper, temporary table and session setting is gone.</p>
+<p><strong>Trip key:</strong> <code>trip_id</code> names the trip; <code>row_id</code> and <code>loaded_at</code> name the load. A re-send or correction keeps the same trip_id.</p>
+<p><strong>Repeatable table tip:</strong> <code>CREATE OR REPLACE TABLE trips_clean AS …</code> can replace an earlier result each time. Write the SQL in Pipeline; Scratch queries are for exploring and never run in a check.</p>
+<h3>What counts as a pass</h3>
+<p>Keep exactly the 14 raw columns, in any order, with one row per trip_id. Keep each output row as an unchanged, complete row from raw_trips. Add no output columns and leave raw_trips unchanged. Helper tables are allowed. Rows and values are compared, independently of their order; correct counts alone do not pass. Money compares to cents. Keys, timestamps and every other value compare exactly, with NULLs treated as equal.</p>
+<p>On days 1 and 2, either unchanged copy of an identical trip is accepted; only row_id and loaded_at are ignored when comparing trip content. The full output row must still come from one real raw row. After day 3 arrives, the latest whole row must match, including its load metadata.</p>
+<p>The latest <code>loaded_at</code> wins, breaking a tie by the greatest <code>row_id</code>. After day 3 and the rebuild: 7,171 rows, 7,171 distinct trip_id and $193,853.10 revenue. Keeping the first version leaves 60 stale fares.</p>
+<h3>The full check sequence</h3><p class="sequence">day1-first → day1-repeat → day2-first → day2-repeat → day3-first → day3-repeat → day3-rebuild</p>
+<p>Each floor starts fresh with day 1. Floor 3 runs every condition above, including earlier floors’ conditions. Check floor uses isolated copies and never changes your workspace. Scratch tables and queries cannot help it pass. Every run must pass; the first failure names the condition, without giving the fix.</p>
+<details><summary>All 14 input columns</summary><p><code>trip_id, row_id, vendor_id, pickup_at, dropoff_at, passenger_count, trip_distance, pu_location_id, do_location_id, payment_type, fare_amount, tip_amount, total_amount, loaded_at</code></p></details><h3>Counts to reconcile</h3>
+<ul><li>Day 1: 2,400 raw rows; 2,400 output rows and trips; $68,624.30 output revenue.</li><li>Day 2 accumulated: 4,920 raw rows; 4,800 output rows and trips; $131,391.83 output revenue.</li><li>Day 3 accumulated: 7,351 raw rows; 7,171 output rows and trips; $193,853.10 output revenue. Rebuild must give the same answer.</li></ul>
+<p><strong>Try it:</strong> explore raw_trips in Scratch, write your pipeline, predict the result, run it, then run it again. Use Next day for the later conditions. Press Check floor when ready.</p>
+</article><div class="credit"><h2>Extra credit</h2><p>Earn <strong>1% extra credit for all three floors plus one improvement issue</strong>. Paste your three codes and your issue link into the Canvas assignment. <strong>Codes due Mon 10-26, 11:59 PM CDT</strong> (2026). The tutor and completion codes close at that time.</p><p><a href="https://github.com/Business-Analytics-at-Gies/badm554-taxi-crawler/issues/new?template=rerun-improvement.yml" target="_blank" rel="noopener">File one Rerun improvement issue</a>. The repository is public: leave out personal information.</p></div>
+</div></section>
+<section id="gamepane" class="panel rerun-game" aria-labelledby="game-h"><div class="game-bar"><h2 id="game-h">Pipeline workshop</h2><label>Floor <select id="floor-picker"><option value="1">1: Run it twice</option><option value="2">2: A new day</option><option value="3">3: Corrections and rebuild</option></select></label></div>
+<div class="workshop"><p id="engine-status" role="status">Loading SQL…</p><p id="day-status">Day 1 · no pipeline runs yet</p>
+<label for="pipeline">Pipeline</label><p id="pipeline-help" class="help">The check runs only this box. Saved in this browser for each floor; tables restart when you reload.</p><textarea id="pipeline" spellcheck="false" rows="9" aria-describedby="pipeline-help" maxlength="100000" placeholder="-- Build trips_clean from raw_trips"></textarea>
+<div class="actions"><button id="run-button" type="button" disabled>Run pipeline once</button><button id="next-day" type="button" disabled>Next day</button><button id="check-button" type="button" disabled>Check floor</button><button id="restart" type="button" disabled>Restart</button></div>
+<p id="game-message" role="status"></p><div id="tables-list" class="table-chips" aria-label="Tables"></div><div id="columns" aria-live="polite"></div>
+<label for="scratch">Scratch console</label><textarea id="scratch" spellcheck="false" rows="4" placeholder="SELECT count(*) FROM raw_trips;"></textarea><button id="scratch-run" type="button" disabled>Run scratch</button><div id="scratch-result" class="result-scroll" role="region" aria-label="SQL result" tabindex="0"></div>
+<h3>Floor check results</h3><p>The full sequence runs in fresh isolated state. Your tables stay as they are.</p><div id="result-table" class="result-scroll" role="region" aria-label="Per-run results" tabindex="0"><p>No check yet.</p></div><p id="condition-hint" role="status"></p>
+<div id="receipt" aria-live="polite"></div><button id="retry-code" type="button" hidden>Get completion code</button>
+<section class="saved-codes" aria-labelledby="codes-h"><h3 id="codes-h">Saved Rerun codes</h3><p class="help">Codes saved in this browser may belong to a previous sign-in. Keep your own copies.</p><ul id="codes-list"></ul><button id="copy-codes" type="button">Copy all codes</button><p id="copy-status" role="status"></p></section>
+</div></section>
+<aside id="tutor" class="panel tutor" aria-labelledby="tutor-h">
+  <div class="tutor-head">
+    <img class="tutor-avatar" src="/learn/img/tutor.svg" alt="" aria-hidden="true" width="32" height="32" decoding="async">
+    <h2 id="tutor-h">Tutor</h2>
+    <p id="tutor-status" class="tutor-status" role="status"></p>
+  </div>
+  <div id="tutor-log" class="tutor-log" role="log" aria-live="polite" aria-label="Conversation with the tutor" tabindex="0">
+    <div class="msg msg-tutor greeting">
+      <p class="who">Tutor</p>
+      <div class="body">
+        <p>Hi. I’m the tutor for The Rerun. I can read the guide and your pipeline, and run read-only queries on my own copy of the raw data.</p>
+        <p>Before a second run, what do you predict will happen to the row count?</p>
+        <p class="notice"><strong>Your messages to the tutor go to Anthropic's API. Do not type personal information.</strong></p>
+        <p>Which run would you like to reason through?</p>
+      </div>
+    </div>
+  </div>
+  <p id="tutor-thinking" class="thinking" hidden>The tutor is thinking…</p>
+  <form id="join-form" class="join-form" hidden>
+    <p>Sign in to use the tutor and get completion codes.</p>
+    <label for="join-code">Class code</label>
+    <div class="form-row"><input id="join-code" name="code" autocomplete="off" required><button type="submit">Join</button></div>
+    <p id="join-error" class="error" role="alert"></p>
+  </form>
+  <form id="tutor-form" class="tutor-form js-only">
+    <label for="tutor-input">Ask the tutor</label>
+    <textarea id="tutor-input" rows="3" maxlength="1500" aria-describedby="tutor-help"></textarea>
+    <div class="form-row">
+      <span id="tutor-help" class="help"><span id="tutor-count">0 / 1500</span>. Enter sends; Shift+Enter adds a line.</span>
+      <button type="submit" id="tutor-send">Send</button>
+    </div>
+  </form>
+  <div class="tutor-foot js-only">
+    <button type="button" id="forget" class="link-btn">Forget me</button>
+  </div>
+</aside></main></body></html>

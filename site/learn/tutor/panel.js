@@ -1,14 +1,18 @@
 // The tutor panel: static greeting (in the HTML), then /api/tutor/history; asks and runs the
 // tool loop. The server owns the conversation; the browser only sends a question or tool results.
-import { get, post, ApiError } from './api.js';
+import { get as apiGet, post as apiPost, ApiError } from './api.js';
 import { renderMarkdown } from './markdown.js';
 import { clearSelection } from './page.js';
 import { clearCodes } from '../codes.js';
 
-const PENDING = 'tc.pendingTurn';
+const DEFAULT_PENDING = 'tc.pendingTurn';
 const MAX_ROUNDS = 10;
 
-export function createPanel() {
+export function createPanel(options = {}) {
+  const PENDING = options.pendingKey || DEFAULT_PENDING;
+  const apiPath = path => `${options.apiBase || '/api'}${path.slice(4)}`;
+  const get = path => apiGet(apiPath(path));
+  const post = (path, body) => apiPost(apiPath(path), body);
   const log = document.getElementById('tutor-log');
   const form = document.getElementById('tutor-form');
   const input = document.getElementById('tutor-input');
@@ -174,8 +178,8 @@ export function createPanel() {
   document.getElementById('forget').addEventListener('click', async () => {
     if (!confirm('Forget me? This deletes your tutor chat and signs you out of this browser.')) return;
     try { await post('/api/forget', {}); } catch (e) { error(e.message); return; }
-    clearCodes();
-    try { localStorage.removeItem('tc.tutorOpen'); } catch { /* unavailable storage */ }
+    (options.clearCodes || clearCodes)();
+    try { localStorage.removeItem(options.openKey || 'tc.tutorOpen'); } catch { /* unavailable storage */ }
     sessionStorage.removeItem(PENDING);
     location.reload();
   });

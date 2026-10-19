@@ -1,8 +1,8 @@
-// The game's SQL engine: one DuckDB-WASM worker (pinned, single-threaded "eh" bundle, files from
-// /vendor/duckdb/), the floors' tables, the tutor's copy, plants and floor checks.
+// Independent learner and tutor DuckDB-WASM workers (pinned single-threaded eh bundle).
+// Only trusted floor assets and plant instructions enter the tutor worker; learner SQL never does.
 // Contract: docs/interfaces.md part 3. No function throws for SQL errors; they return { error }.
 import * as duckdb from '../../vendor/duckdb/duckdb-browser.mjs';
-import { changesState, cleanError, forbiddenReference, isReadOnly, splitStatements } from './sql.js';
+import { cleanError, nativeReadPolicy, nativeStatements } from './sql.js';
 import {
   BASE, FLOORS, HIDDEN_SCHEMAS, PLANT_ID_START, PLANT_KINDS, TUTOR,
   checkFloor, floorSetupSql, learner, plantSelectSql, qs, referenceBuildSql,
@@ -19,7 +19,8 @@ const FATAL = /RuntimeError|out of memory|memory access out of bounds|unreachabl
 const HUNG = Symbol('hung');
 const STOPPED = Symbol('stopped');
 
-let eng = null; // { adb, sys, lc (learner), tc (tutor), version, broken }
+let eng = null; // learner worker: { adb, sys, lc, parser, version, broken }
+let tutor = null; // lazily loaded independent worker: { adb, sys, tc, parser, broken }
 let assets = null; // { parquet, csv, refSql, dataset }
 let initPromise = null;
 let current = null;
@@ -30,8 +31,10 @@ let nextPlantId = PLANT_ID_START;
 let plantSeq = 0;
 let tables = [];
 let lastCheck = null;
-let running = null; // { stop(reason) } while a query runs
+let running = null; // learner query control; tutor work never owns this slot
+let tutorRunning = null;
 let queue = Promise.resolve();
+let tutorQueue = Promise.resolve(), tutorEpoch = 0, activeTutor = null;
 const events = new EventTarget();
 
 // ---------------------------------------------------------------------------------------------
@@ -45,6 +48,19 @@ function serial(fn) {
   const p = queue.then(fn);
   queue = p.then(() => {}, () => {});
   return p;
+}
+
+// The tutor waits for earlier learner setup, but learners never wait on tutor SQL.
+function tutorSerial(fn) {
+  const epoch = tutorEpoch;
+  const p = tutorQueue.then(async () => { await queue; return fn(epoch); });
+  tutorQueue = p.then(() => {}, () => {});
+  return p;
+}
+function interruptTutor() {
+  tutorEpoch++;
+  activeTutor?.abort();
+  discardTutor();
 }
 
 const msg = (e) => cleanError(e?.message ?? e);
@@ -74,38 +90,82 @@ async function loadAssets() {
 }
 
 async function runAll(conn, statements) {
-  for (const s of statements) for (const one of splitStatements(s)) await conn.query(one);
+  for (const s of statements) for (const one of await nativeStatements(conn, s)) await conn.query(one);
 }
 
-async function startEngine() {
+async function startEngine(tutorFloor = null, created = () => {}) {
   const worker = new Worker(new URL('duckdb-browser-eh.worker.js', VENDOR));
   const adb = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
-  const e = { adb, broken: false };
+  const e = { adb, broken: false, closed: false,
+    close() { if (!e.closed) { e.closed=true; e.broken=true; worker.terminate(); } },
+  };
+  created(e);
   worker.addEventListener('error', () => { e.broken = true; });
-  await adb.instantiate(new URL('duckdb-eh.wasm', VENDOR).href);
-  // queryPollingInterval: the worker yields every 50 ms so cancel can get in between. A query whose
-  // single step runs long (a big cross join) cannot be cancelled; the hard kill restarts the worker.
-  await adb.open({ query: { castDecimalToDouble: true, queryPollingInterval: 50 } });
-  e.sys = await adb.connect();
-  await adb.registerFileBuffer('trips_raw.parquet', assets.parquet.slice());
-  await adb.registerFileBuffer('taxi_zones.csv', assets.csv.slice());
-  await runAll(e.sys, [
-    `SET custom_extension_repository = ${qs(new URL('extensions', VENDOR).href)}`,
-    'LOAD parquet',
-    'SET autoinstall_known_extensions = false',
-    'SET autoload_known_extensions = false',
-    `CREATE SCHEMA ${BASE}`,
-    `CREATE TABLE ${BASE}.trips_raw AS FROM read_parquet('trips_raw.parquet')`,
-    `CREATE TABLE ${BASE}.zones AS FROM read_csv('taxi_zones.csv')`,
-    ...referenceBuildSql(assets.refSql),
-  ]);
-  await adb.dropFile('trips_raw.parquet');
-  await adb.dropFile('taxi_zones.csv');
-  await runAll(e.sys, ['SET enable_external_access = false', 'SET lock_configuration = true']);
-  e.lc = await adb.connect();
-  e.tc = await adb.connect();
-  e.version = await adb.getVersion();
-  return e;
+  try {
+    await adb.instantiate(new URL('duckdb-eh.wasm', VENDOR).href);
+    if (e.closed) throw new Error('Tutor query stopped.');
+    // queryPollingInterval: the worker yields every 50 ms so cancel can get in between. A query whose
+    // single step runs long (a big cross join) cannot be cancelled; the hard kill restarts the worker.
+    await adb.open({ query: { castDecimalToDouble: true, queryPollingInterval: 50 } });
+    e.sys = await adb.connect();
+    await adb.registerFileBuffer('trips_raw.parquet', assets.parquet.slice());
+    await adb.registerFileBuffer('taxi_zones.csv', assets.csv.slice());
+    await runAll(e.sys, [
+      `SET custom_extension_repository = ${qs(new URL('extensions', VENDOR).href)}`,
+      'LOAD parquet',
+      'LOAD json',
+      'SET autoinstall_known_extensions = false',
+      'SET autoload_known_extensions = false',
+      `CREATE SCHEMA ${BASE}`,
+      `CREATE TABLE ${BASE}.trips_raw AS FROM read_parquet('trips_raw.parquet')`,
+      `CREATE TABLE ${BASE}.zones AS FROM read_csv('taxi_zones.csv')`,
+      ...referenceBuildSql(assets.refSql),
+    ]);
+    if (tutorFloor) {
+      await runAll(e.sys, [
+        ...floorSetupSql(tutorFloor, TUTOR),
+        ...['_base', '_ref1', '_ref2', '_ref3'].map(s => `DROP SCHEMA ${s} CASCADE`),
+        `SET schema = ${qs(TUTOR)}`,
+      ]);
+    }
+    await adb.dropFile('trips_raw.parquet');
+    await adb.dropFile('taxi_zones.csv');
+    await runAll(e.sys, ['SET enable_external_access = false', 'SET lock_configuration = true']);
+    if (tutorFloor) {
+      e.tc = await adb.connect();
+      await e.tc.query(`SET schema = ${qs(TUTOR)}`);
+    } else e.lc = await adb.connect();
+    e.parser = await adb.connect();
+    e.version = await adb.getVersion();
+    return e;
+  } catch (error) { e.close(); throw error; }
+}
+
+function discardTutor(copy = tutor) {
+  if (copy === tutor) tutor = null;
+  // Native Worker.terminate is synchronous: no SQL, rollback, binding RPC or
+  // promise from an unresponsive worker is awaited during learner cleanup.
+  try { copy?.close(); } catch { /* already gone */ }
+}
+
+async function ensureTutor(signal) {
+  if (tutor?.broken) discardTutor();
+  if (!tutor) {
+    const n = current;
+    const copy = await startEngine(n, e => { tutor=e; });
+    signal.throwIfAborted();
+    // Restore only trusted generation instructions and currently active plant IDs.
+    const batches = new Map(plants.map(p => [p.firstId, p]));
+    for (const p of batches.values()) {
+      signal.throwIfAborted();
+      const ids = plants.filter(row => row.firstId === p.firstId).map(row => row.row_id);
+      const select = plantSelectSql(n, p.kind, p.count, p.firstId, p.seed, `${TUTOR}.${FLOORS[n].input}`);
+      await copy.sys.query(`INSERT INTO ${TUTOR}.${FLOORS[n].input} BY NAME SELECT * FROM (${select}) WHERE row_id IN (${ids.join(',')})`);
+    }
+    signal.throwIfAborted();
+    return copy;
+  }
+  return tutor;
 }
 
 async function ensure() {
@@ -115,16 +175,16 @@ async function ensure() {
 }
 
 async function enterFloor(n) {
-  await runAll(eng.sys, floorSetupSql(n, TUTOR));
+  activeTutor?.abort();discardTutor();
   await eng.lc.query(`SET schema = ${qs(learner(n))}`);
-  await eng.tc.query(`SET schema = ${qs(TUTOR)}`);
   current = n;
 }
 
 async function restartEngine(reason) {
+  activeTutor?.abort();discardTutor();
   const old = eng;
   eng = null;
-  try { await old?.adb.terminate(); } catch { /* already gone */ }
+  try { old?.close(); } catch { /* already gone */ }
   eng = await startEngine();
   const replay = [1, 2, 3].filter((n) => floors[n]);
   for (const n of replay) await runAll(eng.sys, floorSetupSql(n, learner(n)));
@@ -207,7 +267,7 @@ const empty = (extra) => ({ columns: [], rows: [], rowCount: 0, truncated: false
  * Run statements in order on one connection; the last one's result is returned. A soft timer
  * cancels the query; if it does not stop within killGraceMs the result says { hung: true }.
  */
-async function execStatements(conn, stmts, { maxRows, timeoutMs }) {
+async function execStatements(conn, stmts, { maxRows, timeoutMs, tutorRole = false, signal }) {
   const t0 = performance.now();
   const ctl = { reason: null };
   let executed = 0;
@@ -221,7 +281,11 @@ async function execStatements(conn, stmts, { maxRows, timeoutMs }) {
     killTimer = setTimeout(() => wake(HUNG), LIMITS.killGraceMs);
   };
   const soft = setTimeout(() => stop('timeout'), timeoutMs);
-  running = { stop };
+  const control = { stop };
+  if (tutorRole) tutorRunning = control; else running = control;
+  const abort = () => { ctl.reason='cancel'; wake(STOPPED); };
+  signal?.addEventListener('abort', abort, {once:true});
+  if (signal?.aborted) abort();
   const work = (async () => {
     let last = empty();
     for (const s of stmts) {
@@ -234,9 +298,12 @@ async function execStatements(conn, stmts, { maxRows, timeoutMs }) {
   const out = await Promise.race([work, hung]);
   clearTimeout(soft);
   clearTimeout(killTimer);
-  running = null;
+  signal?.removeEventListener('abort', abort);
+  if (tutorRole) { if (tutorRunning === control) tutorRunning=null; }
+  else if (running === control) running=null;
   const ms = Math.round(performance.now() - t0);
   const stoppedText = ctl.reason === 'cancel' ? 'Query stopped.' : `Query stopped: it ran longer than ${Math.round(timeoutMs / 1000)} s.`;
+  if (out === STOPPED) return empty({ ms, executed, stopped: 'cancel', error: stoppedText });
   if (out === HUNG) return empty({ ms, executed, hung: true, error: stoppedText });
   if (ctl.reason) return empty({ ms, executed, stopped: ctl.reason, error: stoppedText });
   if (out.e) {
@@ -299,12 +366,11 @@ async function refreshTables() {
 // Plants
 
 async function removePlants(ids) {
+  discardTutor();
   if (!current || !ids.length) return [];
   const T = FLOORS[current].input;
   const list = ids.join(', ');
-  for (const S of [learner(current), TUTOR]) {
-    try { await eng.sys.query(`DELETE FROM ${S}.${T} WHERE row_id IN (${list})`); } catch { /* the learner changed the table */ }
-  }
+  try { await eng.sys.query(`DELETE FROM memory.${learner(current)}.${T} WHERE row_id IN (${list})`); } catch { /* the learner changed the table */ }
   const gone = new Set(ids);
   plants = plants.filter((p) => !gone.has(p.row_id));
   return ids;
@@ -332,6 +398,7 @@ export function init() {
 
 /** Set up floor n (the learner's schema floorN once, the tutor's copy every time) and make it current. */
 export function loadFloor(n) {
+  if ([1,2,3].includes(n)) interruptTutor();
   return serial(async () => {
     if (![1, 2, 3].includes(n)) return { ok: false, error: 'Floor must be 1, 2 or 3.' };
     try {
@@ -353,6 +420,7 @@ export function loadFloor(n) {
 
 /** Rebuild floor n's tables from the start; the learner's work on that floor is gone. */
 export function restartFloor(n) {
+  if ([1,2,3].includes(n)) interruptTutor();
   return serial(async () => {
     if (![1, 2, 3].includes(n)) return { ok: false, error: 'Floor must be 1, 2 or 3.' };
     try {
@@ -381,10 +449,14 @@ export function query(sql, { timeoutMs = LIMITS.timeoutMs } = {}) {
     try { await ensure(); } catch (e) { return empty({ ms: 0, error: msg(e) }); }
     if (!current) return empty({ ms: 0, error: 'No floor is loaded yet.' });
     const n = current;
-    const stmts = splitStatements(sql);
-    if (!stmts.length) return empty({ ms: 0, error: 'Nothing to run.' });
-    const r = await execStatements(eng.lc, stmts, { maxRows: LIMITS.learnerRows, timeoutMs });
-    floors[n].log.push(...stmts.slice(0, r.executed).filter(changesState));
+    let stmts = [], parseError;
+    try { stmts = await nativeStatements(eng.parser, sql); } catch(e) { parseError = msg(e); }
+    if (!stmts.length && !parseError) return empty({ ms: 0, error: 'Nothing to run.' });
+    const r = parseError ? { columns: [], rows: [], rowCount: 0, truncated: false, executed: 0, ms: 0, error: parseError }
+      : await execStatements(eng.lc, stmts, { maxRows: LIMITS.learnerRows, timeoutMs });
+    // Record every successfully executed native statement. Replaying reads as well
+    // also preserves effects such as SELECT nextval(), without guessing from SQL text.
+    floors[n].log.push(...stmts.slice(0, r.executed));
     let error = r.error;
     if (r.hung || r.fatal) {
       try {
@@ -396,7 +468,7 @@ export function query(sql, { timeoutMs = LIMITS.timeoutMs } = {}) {
     }
     const result = { columns: r.columns, rows: r.rows, rowCount: r.rowCount, truncated: r.truncated, ms: r.ms };
     if (error) result.error = error;
-    if (stmts.slice(0, r.executed).some(changesState) || r.hung || r.fatal) await refreshTables();
+    if (r.executed > 0 || r.hung || r.fatal) await refreshTables();
     const entry = { sql: String(sql).slice(0, LIMITS.querySqlChars), rowCount: error ? null : r.rowCount, error: error ?? null };
     floors[n].lastQueries = [...floors[n].lastQueries, entry].slice(-LIMITS.lastQueries);
     floors[n].history = [...floors[n].history, { ...entry, sql: String(sql), ms: r.ms, at: new Date().toISOString() }].slice(-LIMITS.history);
@@ -452,31 +524,49 @@ export function inspect(name, { rows = 0 } = {}) {
   });
 }
 
-async function tutorExec(sql, maxRows, wrap) {
-  await ensure();
-  if (!current) return { error: 'No floor is loaded yet.' };
-  const stmts = splitStatements(sql);
-  if (stmts.length !== 1) return { error: stmts.length ? 'Run one statement at a time.' : 'Nothing to run.' };
-  if (!isReadOnly(stmts[0])) return { error: 'Read-only: use SELECT, WITH, FROM, SHOW, DESCRIBE, SUMMARIZE or EXPLAIN.' };
-  const bad = forbiddenReference(stmts[0], HIDDEN_SCHEMAS);
-  if (bad) return { error: `Only your own copy of this floor's tables is available; "${bad}" is not.` };
-  await eng.tc.query(`SET schema = ${qs(TUTOR)}`);
-  await eng.tc.query('BEGIN TRANSACTION');
-  let r;
-  try {
-    r = await execStatements(eng.tc, [wrap ? wrap(stmts[0]) : stmts[0]], { maxRows, timeoutMs: LIMITS.timeoutMs });
-  } finally {
-    try { await eng.tc.query('ROLLBACK'); } catch { /* the engine restarted or no transaction */ }
+async function tutorExec(sql, maxRows, wrap, epoch) {
+  const initialized = await init();
+  if (!initialized.ok) return {error: initialized.error};
+  if (epoch !== tutorEpoch) return {error: 'Tutor query stopped.'};
+  if (!current) return {error: 'No floor is loaded yet.'};
+  const controller = new AbortController(); activeTutor = controller;
+  const signal = controller.signal;
+  let cancel;
+  const interrupted = new Promise(resolve => {
+    cancel = () => resolve({error: 'Tutor query stopped.', stopped: 'cancel'});
+    signal.addEventListener('abort', cancel, {once:true});
+  });
+  const work = (async () => {
+    const copy = await ensureTutor(signal); signal.throwIfAborted();
+    const stmts = await nativeStatements(copy.parser, sql); signal.throwIfAborted();
+    if (stmts.length !== 1) return {error: stmts.length ? 'Run one statement at a time.' : 'Nothing to run.'};
+    const policy = await nativeReadPolicy(copy.parser, stmts[0], HIDDEN_SCHEMAS); signal.throwIfAborted();
+    if (!policy.readOnly) return {error: 'Read-only: use SELECT, WITH, FROM, SHOW, DESCRIBE, SUMMARIZE or EXPLAIN.'};
+    if (policy.blockedReference) return {error: `Only your own copy of this floor's tables is available; "${policy.blockedReference}" is not.`};
+    await copy.tc.query('BEGIN TRANSACTION'); signal.throwIfAborted();
+    let r;
+    try {
+      r = await execStatements(copy.tc, [wrap ? wrap(stmts[0]) : stmts[0]], {
+        maxRows, timeoutMs: LIMITS.timeoutMs, tutorRole: true, signal,
+      });
+    } finally {
+      if (r?.hung || r?.fatal) discardTutor(copy);
+      else if (!signal.aborted) try { await copy.tc.query('ROLLBACK'); } catch { /* failed tutor only */ }
+    }
+    return r;
+  })();
+  try { return await Promise.race([work, interrupted]); }
+  finally {
+    signal.removeEventListener('abort', cancel);
+    if (activeTutor === controller) activeTutor=null;
   }
-  if (r.hung || r.fatal) await restartEngine(r.hung ? 'tutor query did not stop' : 'engine crashed');
-  return r;
 }
 
 /** The tutor's run_sql: one read-only statement on schema tutor, at most 50 rows. */
 export function tutorQuery(sql) {
-  return serial(async () => {
+  return tutorSerial(async (epoch) => {
     try {
-      const r = await tutorExec(sql, LIMITS.tutorRows);
+      const r = await tutorExec(sql, LIMITS.tutorRows, null, epoch);
       const out = { columns: r.columns ?? [], rows: r.rows ?? [], rowCount: r.rowCount ?? 0, truncated: !!r.truncated, ms: r.ms ?? 0 };
       if (r.error) out.error = r.error;
       return out;
@@ -488,7 +578,7 @@ export function tutorQuery(sql) {
 
 /** The tutor's lens: rows of the floor's trips whose row_id the query returns (max 500). */
 export function lensRows(sql) {
-  return serial(async () => {
+  return tutorSerial(async (epoch) => {
     try {
       if (!current) return { rows: [], total: 0, error: 'No floor is loaded yet.' };
       const T = FLOORS[current].input;
@@ -496,7 +586,7 @@ export function lensRows(sql) {
 FROM ${TUTOR}.${T} t WHERE t.row_id IN (SELECT q.row_id FROM (
 ${s}
 ) q) ORDER BY t.row_id LIMIT ${LIMITS.lensRows}`;
-      const r = await tutorExec(sql, LIMITS.lensRows, wrap);
+      const r = await tutorExec(sql, LIMITS.lensRows, wrap, epoch);
       if (r.error) {
         const noRowId = !r.stopped && !r.hung && /row_id/i.test(r.error) && !/Read-only|one statement|not available/.test(r.error);
         return { rows: [], total: 0, error: noRowId ? `The lens query must return a row_id column. ${r.error}` : r.error };
@@ -511,6 +601,7 @@ ${s}
 
 /** Add `count` (1-5) dirty rows of one kind to the current floor's input table (and the tutor's copy). */
 export function plant(kind, count) {
+  interruptTutor();
   return serial(async () => {
     if (!PLANT_KINDS.includes(kind)) return { row_ids: [], error: `kind must be one of ${PLANT_KINDS.join(', ')}` };
     if (!Number.isInteger(count) || count < 1 || count > 5) return { row_ids: [], error: 'count must be a whole number from 1 to 5' };
@@ -519,7 +610,8 @@ export function plant(kind, count) {
       if (!current) return { row_ids: [], error: 'No floor is loaded yet.' };
       const n = current;
       const T = FLOORS[n].input;
-      const sel = plantSelectSql(n, kind, count, nextPlantId, ++plantSeq);
+      const firstId = nextPlantId, seed = ++plantSeq;
+      const sel = plantSelectSql(n, kind, count, firstId, seed);
       const ids = (await sysRows(`SELECT row_id FROM (${sel}) ORDER BY row_id`)).map((r) => r.row_id);
       if (!ids.length) return { row_ids: [], error: 'No rows to copy for that kind.' };
       try {
@@ -527,9 +619,8 @@ export function plant(kind, count) {
       } catch (e) {
         return { row_ids: [], error: `Could not add rows to ${T}; it was changed on this floor (${msg(e)}).` };
       }
-      try { await eng.sys.query(`INSERT INTO ${TUTOR}.${T} BY NAME ${sel}`); } catch { /* lens will not see them */ }
       nextPlantId = Math.max(...ids) + 1;
-      for (const id of ids) { plants.push({ row_id: id, kind }); plantedEver[n].add(id); }
+      for (const id of ids) { plants.push({ row_id: id, kind, firstId, seed, count }); plantedEver[n].add(id); }
       await refreshTables();
       emit('plant', { kind, row_ids: ids, plants: plants.map((p) => p.row_id) });
       return { row_ids: ids };
@@ -541,6 +632,7 @@ export function plant(kind, count) {
 
 /** Remove planted rows. Ids that are not current plants are ignored and listed. */
 export function unplant(rowIds) {
+  interruptTutor();
   return serial(async () => {
     if (!Array.isArray(rowIds) || !rowIds.every(Number.isInteger)) return { row_ids: [], error: 'row_ids must be a list of whole numbers' };
     try {
@@ -560,6 +652,7 @@ export function unplant(rowIds) {
 
 /** Remove every plant. Never touches the learner's own tables. (Lenses live in the UI.) */
 export function undoExperiments() {
+  interruptTutor();
   return serial(async () => {
     try {
       await ensure();
@@ -575,6 +668,7 @@ export function undoExperiments() {
 
 /** Check floor n's output tables against the reference. Removes plants first. */
 export function check(n) {
+  if ([1,2,3].includes(n)) interruptTutor();
   return serial(async () => {
     if (![1, 2, 3].includes(n)) return { pass: false, rules: [], error: 'Floor must be 1, 2 or 3.' };
     try {
@@ -600,8 +694,9 @@ export function check(n) {
 
 /** Stop the learner's or tutor's running query. */
 export async function cancel() {
-  if (!running) return { ok: false };
-  running.stop('cancel');
+  const control = running ?? tutorRunning;
+  if (!control) { if (activeTutor) { interruptTutor(); return {ok:true}; } return {ok:false}; }
+  control.stop('cancel');
   return { ok: true };
 }
 

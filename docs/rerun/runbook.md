@@ -47,3 +47,5 @@ Model casting: Codex at high reasoning effort.
 ## Run log
 
 - 2026-10-18: branch `rerun` from main. R1 dispatched.
+- 2026-10-18: R1 to R3 and the open-time gate reviewed to SHIP; merged `d6fd686`; four suites green (db 271, UI 111 and 109, server 69); deployed with Vishal's yes; 9 live files match by checksum; /healthz 200; /rerun/ 401 without login. RERUN_EARLY_ACCESS set as an app setting. Label rerun-feedback created.
+- 2026-10-18: RERUN_EARLY_ACCESS widened to vishal and shivsnis (Vishal: always allow both). Early access covers the open time only; the close time applies to everyone.

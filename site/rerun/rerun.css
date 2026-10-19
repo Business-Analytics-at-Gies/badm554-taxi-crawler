@@ -1,0 +1,43 @@
+/* Reuse the pilot palette and controls; a full scrolling guide replaces slides. */
+.top a { color:#fff; font-size:.85rem; }
+.js .guide { flex: 1 1 28%; }
+.js .rerun-game { flex: 1.65 1 44%; border-left:1px solid var(--line); }
+.js .tutor { flex: 1 1 28%; min-width:0; }
+.rerun-game { min-width:0; }
+.workshop { padding:.75rem 1rem 1.5rem; }
+.workshop h3 { font-size:1rem; margin:1.25rem 0 .4rem; color:var(--navy); }
+.workshop p { margin:.4rem 0 .75rem; }
+.workshop label { display:block; font-weight:650; }
+textarea { width:100%; max-width:100%; padding:.55rem; border:1px solid #6b7280; border-radius:6px; font: .85rem/1.5 var(--mono); resize:vertical; tab-size:2; }
+select { font:inherit; max-width:100%; padding:.2rem; }
+.game-bar { align-items:flex-start; flex-wrap:wrap; }
+.game-bar label { font-size:.85rem; }
+.actions { display:flex; flex-wrap:wrap; gap:.4rem; margin:.5rem 0; }
+.workshop button { border:1px solid var(--navy); border-radius:5px; color:var(--navy); background:#fff; padding:.35rem .55rem; font-size:.9rem; }
+.workshop #run-button,.workshop #check-button { color:#fff; background:var(--navy); }
+button:disabled { opacity:.5; cursor:default; }
+.table-chips { display:flex; flex-wrap:wrap; gap:.3rem; margin:.75rem 0; }
+.table-chips button { overflow-wrap:anywhere; max-width:100%; }
+#columns { font-size:.85rem; overflow-wrap:anywhere; }
+#columns ul { padding-left:1.25rem; columns:2; }
+.result-scroll { max-width:100%; overflow:auto; margin:.6rem 0; max-height:24rem; }
+table { border-collapse:collapse; font-size:.8rem; width:100%; }
+th,td { border-bottom:1px solid var(--line); text-align:left; padding:.35rem .3rem; vertical-align:top; }
+th { background:var(--soft); }
+.check-pass { color:var(--ok); font-weight:600; }.check-fail,#condition-hint { color:var(--bad); }
+.floor-guide { border-top:1px solid var(--line); padding:.5rem 0 1.5rem; }
+.floor-guide h2 { color:var(--navy); font-size:1.3rem; }.floor-guide h3 { font-size:1.05rem; }
+.sequence { overflow-wrap:anywhere; }.credit { margin:0 0 1rem; border-top:0; }
+.js .floor-guide[hidden] { display:none; }
+#codes-list { padding-left:1.2rem; overflow-wrap:anywhere; }
+@media(max-width:56.25em) {
+ .js .layout>.rerun-game.active { display:block; }
+ .js .layout>.tutor.active { display:flex; }
+ .workshop { padding:.7rem .9rem; }
+ .brand-sub { font-size:.8rem; }
+}
+html:not(.js) .rerun-game,html:not(.js) .tutor { display:none; }
+
+.floor-guide { scroll-margin-top:4rem; }
+
+.top .pilot-link { flex:0 0 auto; white-space:nowrap; }

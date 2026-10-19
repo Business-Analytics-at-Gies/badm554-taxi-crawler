@@ -24,4 +24,7 @@ async function fixture(t, overrides = {}) {
   t.after(async () => { await app.close(); rmSync(dir, { recursive: true, force: true }); });
   return { app, env, base, request, advance: ms => { now += ms; } };
 }
-module.exports = { fixture };
+// Cross-game tests keep the pilot's synthetic clock and explicitly open Rerun then.
+// Opening-policy tests use fixture directly, preserving the real default.
+const rerunFixture = (t, overrides = {}) => fixture(t, { ...overrides, env: { RERUN_OPENS_AT: '2026-10-16T00:00:00Z', ...overrides.env } });
+module.exports = { fixture, rerunFixture };
