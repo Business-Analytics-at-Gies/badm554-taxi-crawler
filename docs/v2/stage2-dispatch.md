@@ -54,3 +54,38 @@ commit, so a learner never meets a control or a rule the guide has not explained
   reference such as "floor 1" inside floor 2 or 3 sections, or "in class".
 
 After item 2 (floor packs), stop and report so Claude can review the move before features build on it.
+
+## Review links (Vishal, 2026-10-18: "link to some resource for students to review the material")
+
+Each floor's refresher ends with "Review in the textbook" links, and the guide has one "About the
+data" section. The links live in the floor pack (2.0) as data, so a new floor lists its own. Claude
+checked every URL and anchor below on the live sites on 2026-10-18 (all 200; anchors present).
+Links open in a new tab, and the link text names the lesson (no "click here").
+
+Textbook base: `https://vishalsachdev.github.io/badm554-textbook/modules/`
+
+| Floor | Lesson | Path |
+|---|---|---|
+| 1 duplicates, trip key | M4I3 Grain: two ways grain goes wrong | `M4/I3/#two-ways-grain-goes-wrong` |
+| 1 | M5I3 What a functional dependency is | `M5/I3/#what-a-functional-dependency-is` |
+| 1 | M6I4 Run It Again (rebuildable `CREATE OR REPLACE`) | `M6/I4/` |
+| 2 joins, unmatched zones | M2I2 LEFT JOIN: keep every member | `M2/I2/#left-join-keep-every-member` |
+| 2 | M2I2 Always check the row count | `M2/I2/#always-check-the-row-count` |
+| 3 range checks, quarantine | M7I3 The Cheap Checks | `M7/I3/` |
+| 3 | M2I5 WHERE vs. HAVING | `M2/I5/` |
+| all | M1I4 Anatomy of a Query; M2I4 GROUP BY + Aggregate Functions | `M1/I4/`, `M2/I4/` |
+
+"About the data" section in the guide:
+
+- The column list for `trips_raw` and `zones` from `docs/floors.md` ("Columns of `trips_raw`"), with
+  one plain line per column, generated from the floor pack's table definitions so it cannot drift.
+  Say that `row_id` and `loaded_at` describe the load, not the trip, and what locations 264 and 265 mean.
+- Source: NYC Taxi and Limousine Commission trip records,
+  `https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page`, and the yellow taxi data dictionary
+  `https://www.nyc.gov/assets/tlc/downloads/pdf/data_dictionary_trip_records_yellow.pdf` (PDF). Note
+  that the game renames columns (for example `tpep_pickup_datetime` is `pickup_at`) and adds
+  `row_id` and `loaded_at`, so the game's list is the one to use.
+- The task panel (2.1) links to "About the data" and to that floor's refresher.
+
+Tests: every floor pack has at least one review link; every link is absolute https; the textbook
+links match the table above. Do not fetch the live URLs in tests.
