@@ -82,6 +82,7 @@ requires every column. Dropping `total_amount` gives 7,170.
 |---|---|---|---|
 | 3.1 One page per floor | #5, #6, #12, #17 | Each floor room in the guide is one scrolling page with a section per former slide; Previous and Next go. The tutor's `navigate` scrolls to the section and moves focus to its heading below the sticky controls (today it changes state without scrolling, `site/learn/tutor/tools.js:114`). The page block's "current slide" is the section whose heading is nearest the top of the guide after a scroll. | Tests: every pilot slide id resolves; navigate to a section below the fold and it is visible below the sticky controls; scroll by hand and the page block names the right section; at each level and at 375 px. The pilot test that requires other sections hidden (`tests/ui/tools.spec.js:13`) is rewritten to the new behavior. |
 | 3.2 Help controls | #9, #24, #29, #30 | The Help setting from `docs/design-note-help-setting.md`: the picker beside the Detail level, the choice at "Start floor", the `help:` line in the page block, and the `help-picker` target added to both the browser and the server tool schemas (`site/learn/tutor/tools.js:25`, `server/tools.json:140`). No prompt change in this stage. | Tests: hash round trip (0.1); invalid hash value falls back to "Nudge me"; the page block line follows a change mid-conversation; `highlight` with `help-picker` passes both validators and, run before the game opens, visibly highlights the real Help picker in the guide (today only `level-picker` is routed to the guide; other targets go to the game, `site/learn/tutor/tools.js:122`). At 375 px it offers "Show the guide". |
+| 3.3 iPhone Safari game window (added 2026-10-18) | #32 | On narrow screens the SQL box inside the game iframe does not take a tap in iOS Safari; the standalone `/game/` page works. Drop the iframe on phones or remove the height lock (`site/learn/learn.css:9`) at narrow widths. Add a Playwright project for WebKit with touch on (iPhone profile). | Tests: the WebKit touch project taps the SQL box and the tutor box and types into each, at 375 px. Manual: Vishal taps both boxes on a real iPhone before release (emulated WebKit passed while the real phone failed). |
 
 ### Stage 4: the Help setting changes the tutor (gate before release)
 
@@ -176,6 +177,7 @@ items stay here in case that changes.
 
 ## Release checklist (before any learner sees v2)
 
+- One tap test on a real iPhone in Safari: the SQL box and the tutor box take focus and text (#32).
 - New dates and limits as app settings: `TUTOR_CLOSES_AT`, `RECEIPTS_CLOSE_AT`, the budget and the
   daily caps. The code defaults are the pilot's (`server/config.js:21`).
 - A new run identifier (`pilot` in the config). Receipts are keyed by it, so v2 issues new codes;
