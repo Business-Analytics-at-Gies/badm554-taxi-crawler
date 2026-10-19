@@ -45,6 +45,7 @@ Model casting: Codex at high reasoning effort for building and for reviews.
 
 ## Run log
 
+- 2026-10-19: stage 2 items 3.3 (#32) and 2.0 (floor packs) reviewed: FIX (4), FIX (3, one class: value representation, fixed with one shared comparison rule and a generated matrix), FIX (1, timestamp text, now parsed by DuckDB), SHIP at `8ecd8b2`. Floor 3 gained an unchanged-values rule (Claude). Reviews in `docs/v2/stage2-review-r1.md` to `-r4.md`. Items 2.1 to 2.5 go to a fresh crew-codex-v2 session.
 - 2026-10-18: stage 2 dispatched to a fresh crew-codex-v2 session (Vishal: build the Taxi Crawler fixes now; merge still waits for 10-26). Item 3.3 (#32, iPhone Safari game window) pulled forward. A WebKit touch test cannot prove the real-iPhone fix (emulation passed while the phone failed); Vishal's phone check is the acceptance for that part.
 
 - 2026-10-18: worktree `../badm554-taxi-crawler-v2` on `v2/stage0` from `06bbfe1`. Stage 0 dispatched.
