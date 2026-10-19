@@ -16,7 +16,8 @@
       "columns",
       "no_overlap",
       "partition",
-      "reasons"
+      "reasons",
+      "unchanged"
     ],
     "sql": "CREATE OR REPLACE TABLE trips_clean AS SELECT * FROM trips;\n            DELETE FROM trips_clean WHERE fare_amount < 0 OR dropoff_at < pickup_at\n              OR pickup_at < TIMESTAMP '2024-01-01' OR pickup_at >= TIMESTAMP '2024-02-01' OR (trip_distance = 0 AND fare_amount >= 50);"
   },
@@ -24,7 +25,8 @@
     "name": "wrong (b): UNION ALL of the four rules with no exclusion (217 rows)",
     "fails": [
       "partition",
-      "reasons"
+      "reasons",
+      "unchanged"
     ],
     "sql": "CREATE OR REPLACE TABLE quarantine AS\n            SELECT *, 'negative_fare' AS reason FROM trips WHERE fare_amount < 0\n            UNION ALL SELECT *, 'time_travel' FROM trips WHERE dropoff_at < pickup_at\n            UNION ALL SELECT *, 'outside_january' FROM trips WHERE pickup_at < TIMESTAMP '2024-01-01' OR pickup_at >= TIMESTAMP '2024-02-01'\n            UNION ALL SELECT *, 'zero_distance_high_fare' FROM trips WHERE trip_distance = 0 AND fare_amount >= 50;\n            CREATE OR REPLACE TABLE trips_clean AS SELECT t.* FROM trips t ANTI JOIN quarantine q ON q.row_id = t.row_id;"
   },

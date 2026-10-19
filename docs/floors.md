@@ -87,7 +87,8 @@ zone "N/A". Location 265 is zone "Outside of NYC" (a real place, outside the zon
   47, time_travel 20, outside_january 17). One row fails two rules; it appears once.
 - **Pass:** the two tables share no `row_id`; together they hold exactly the 7,171 `row_id` values of
   `trips`; the multiset of `(row_id, reason)` in `quarantine` equals the reference
-  `data/reference/floor3.sql`; columns as above.
+  `data/reference/floor3.sql`; columns as above. Every original value of `trips` is unchanged in both
+  output tables: non-money values and timestamps exactly, and money to cents.
 - **Valid solutions (tests):** (a) the reference; (b) `quarantine` built with `UNION ALL` of four
   `SELECT`s, each excluding rows caught by an earlier rule, and `trips_clean` as an anti-join on `row_id`.
 - **Wrong solutions (tests):** (a) `DELETE` the failing rows and no `quarantine` table;
@@ -104,6 +105,8 @@ returns, per pass rule: ok or not, expected, got, and a one-line hint that names
 the fix. A learner can cheat by reading the served reference SQL; accepted for the pilot.
 
 ## Change log
+
+- 2026-10-18: v2 rule tightening by Claude, stage 2 review round 1: floor 3 now requires every original column of `trips` to remain unchanged in both `trips_clean` and `quarantine`. Non-money values and timestamps compare exactly; money compares to cents. The partition rules, reasons, reference solutions and counts are unchanged. Existing wrong-solution tests now also expect the new rule to fail when an output is missing or repeats a row.
 
 - 2026-10-18: v2 stage 2.0, approved known pilot defect in `docs/v2/plan-as-approved.md`: unchanged-row checks no longer round non-money values to cents or lose exact numeric values through type conversion. Adding 0.001 to `trip_distance` now fails floor 1. Only `fare_amount`, `tip_amount` and `total_amount` compare to cents. The existing pass rules and reference counts are unchanged; this corrects enforcement of the unchanged-row rule. Floor definitions, reference SQL, checks, solution cases and guide content now live in floor packs.
 - 2026-10-16 16:45 CDT: frozen (Claude, from the counts above).

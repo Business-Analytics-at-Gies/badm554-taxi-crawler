@@ -47,5 +47,5 @@
   47, time_travel 20, outside_january 17). One row fails two rules; it appears once.
 - **Pass:** the two tables share no `row_id`; together they hold exactly the 7,171 `row_id` values of
   `trips`; the multiset of `(row_id, reason)` in `quarantine` equals the reference
-  `data/reference/floor3.sql`; columns as above.
+  `data/reference/floor3.sql`; columns as above. Every original value of `trips` is unchanged in both output tables: non-money values and timestamps exactly, and money to cents.
 - **Aha line:** do not delete what you cannot explain. Clean plus quarantine equals raw: 6,955 + 216 = 7,171.

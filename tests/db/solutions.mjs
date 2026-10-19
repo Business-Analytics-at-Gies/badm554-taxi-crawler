@@ -106,13 +106,13 @@ export const SOLUTIONS = {
     },
     {
       name: 'wrong (a): DELETE the failing rows, no quarantine table',
-      fails: ['quarantine_exists', 'columns', 'no_overlap', 'partition', 'reasons'],
+      fails: ['quarantine_exists', 'columns', 'no_overlap', 'partition', 'reasons', 'unchanged'],
       sql: `CREATE OR REPLACE TABLE trips_clean AS SELECT * FROM trips;
             DELETE FROM trips_clean WHERE fare_amount < 0 OR dropoff_at < pickup_at
               OR pickup_at < TIMESTAMP '2024-01-01' OR pickup_at >= TIMESTAMP '2024-02-01' OR (trip_distance = 0 AND fare_amount >= 50);`,
     },
     {
-      name: 'wrong (b): UNION ALL of the four rules with no exclusion (217 rows)', fails: ['partition', 'reasons'],
+      name: 'wrong (b): UNION ALL of the four rules with no exclusion (217 rows)', fails: ['partition', 'reasons', 'unchanged'],
       sql: `CREATE OR REPLACE TABLE quarantine AS
             SELECT *, 'negative_fare' AS reason FROM trips WHERE fare_amount < 0
             UNION ALL SELECT *, 'time_travel' FROM trips WHERE dropoff_at < pickup_at

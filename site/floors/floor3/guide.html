@@ -5,6 +5,7 @@
       <h3 id="h-f3-task">Impossible rides</h3>
       {{context}}
       {{refresher}}
+      <p>Keep every original value of <code>trips</code> unchanged in both <code>trips_clean</code> and <code>quarantine</code>: non-money values and timestamps exactly, and money to cents.</p>
       <div class="lv" data-lv="1">
         <p>Some rides in the feed cannot have happened: a negative fare, a drop-off before the pick-up, a pick-up outside January, or a trip of zero miles with a big fare. These are real rows, as TLC published them.</p>
         {{task}}
