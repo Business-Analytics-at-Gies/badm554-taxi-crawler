@@ -227,3 +227,68 @@ test('planted-row feedback uses exact id values instead of rounding them to inte
   });
   assert.equal(note, '');
 });
+
+for (const floor of [1, 2, 3, 4]) {
+  test(`floor ${floor}: DuckDB end-of-day timestamp parsing and invalid clocks`, async t => {
+    await call('loadFloor', floor);
+    const col = { name: 'loaded_at', type: 'TIMESTAMP' };
+    for (const [text, source, same] of [
+      ['2024-01-31T24:00:00', '2024-02-01 00:00:00', true],
+      ['2024-01-31 24:00:00.000000000000', '2024-02-01 00:00:00', true],
+      ['2024-01-31T24:00:00-06:00', '2024-02-01 06:00:00', true],
+      ['2024-01-31T24:00:00+01:00', '2024-01-31 23:00:00', true],
+      ['2024-01-31T24:00:01', '2024-02-01 00:00:00', false],
+      ['2024-01-31T24:01:00', '2024-02-01 00:00:00', false],
+      ['2024-01-31T24:00:00.000000001', '2024-02-01 00:00:00', false],
+      ['2024-01-31T24:00:00.000000000001', '2024-02-01 00:00:00', false],
+      ['2024-02-01 07:00:00.000000001+01:00', '2024-02-01 06:00:00', false],
+      ['2024-02-01 07:00:00.000000000001+01:00', '2024-02-01 06:00:00', false],
+    ]) await t.test(`${text}: ${same ? 'unchanged' : 'changed'}`, async () => {
+      await run(`CREATE OR REPLACE TABLE matrix_source AS SELECT TIMESTAMP '${source}' AS loaded_at`);
+      await run(`CREATE OR REPLACE TABLE matrix_actual AS SELECT '${text}' AS loaded_at`);
+      const diff = await compareColumn(col);
+      assert.equal(diff.onlyA === 0 && diff.onlyB === 0, same);
+    });
+    // An invalid non-NULL string must also differ from a NULL source.
+    await run('CREATE OR REPLACE TABLE matrix_source AS SELECT NULL::TIMESTAMP AS loaded_at');
+    await run("CREATE OR REPLACE TABLE matrix_actual AS SELECT '2024-01-31T24:00:01' AS loaded_at");
+    assert.ok((await compareColumn(col)).onlyA > 0);
+  });
+
+  test(`floor ${floor}: pack accepts end-of-day timestamps and rejects invalid 24-hour values`, async t => {
+    await call('loadFloor', floor);
+    await call('restartFloor', floor);
+    const pack = packs.find(p => p.id === floor);
+    await run(pack.solutions[0].sql);
+    for (const output of pack.outputs) {
+      const saved = `matrix_day_end_${output}`;
+      await run(`CREATE OR REPLACE TABLE ${saved} AS FROM ${qi(output)}`);
+      for (const [text, same] of [
+        ['2024-01-31T24:00:00-06:00', true],
+        ['2024-01-31T24:00:00.000000000000-06:00', true],
+        ['2024-01-31T24:00:01-06:00', false],
+        ['2024-01-31T24:01:00-06:00', false],
+        ['2024-01-31T24:00:00.000000001-06:00', false],
+        ['2024-01-31T24:00:00.000000000001-06:00', false],
+      ]) await t.test(`${output}: ${text}`, async () => {
+        await run(`CREATE OR REPLACE TABLE ${qi(output)} AS FROM ${saved}`);
+        await run(`ALTER TABLE ${qi(output)} ALTER loaded_at TYPE VARCHAR`);
+        const changed = await run(`UPDATE ${qi(output)} SET loaded_at = '${text}' WHERE loaded_at = '2024-02-01 06:00:00' RETURNING row_id`);
+        assert.ok(changed.rowCount > 0, 'exercise a real reference timestamp');
+        const result = await call('check', floor);
+        assert.equal(result.error, undefined);
+        assert.equal(result.pass, same, JSON.stringify(result.rules.filter(r => !r.ok)));
+      });
+      await run(`CREATE OR REPLACE TABLE ${qi(output)} AS FROM ${saved}`);
+    }
+  });
+}
+
+test('review reproduction: floor 1 row 1588 accepts the previous day at 24:00', async () => {
+  await call('loadFloor', 1);
+  await call('restartFloor', 1);
+  await run(packs.find(p => p.id === 1).solutions[0].sql);
+  assert.equal(await one('SELECT CAST(dropoff_at AS VARCHAR) FROM trips_clean WHERE row_id = 1588'), '2024-01-23 00:00:00');
+  await run("ALTER TABLE trips_clean ALTER dropoff_at TYPE VARCHAR; UPDATE trips_clean SET dropoff_at = '2024-01-22T24:00:00' WHERE row_id = 1588");
+  assert.equal((await call('check', 1)).pass, true);
+});

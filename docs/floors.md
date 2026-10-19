@@ -106,6 +106,8 @@ the fix. A learner can cheat by reading the served reference SQL; accepted for t
 
 ## Change log
 
+- 2026-10-18: v2 stage 2 review round 3: DuckDB now parses timestamp representations in the shared comparison, including valid end-of-day `24:00` spellings. Invalid clocks and precision-losing fractions remain changes. The learner guide places the short formatting explanation in each floor’s How the check works detail. Pass rules, reference SQL and counts are unchanged.
+
 - 2026-10-18: v2 stage 2 review round 2, approved equality contract: all packs use one comparison rule for original values, keys and partitions. Non-money numbers compare as exact decimals (DOUBLE by its shortest round-trip decimal); money rounds once to cents, with exact halves away from zero; timestamps compare as parsed values without losing fractional precision. Equivalent numeric/timestamp text passes and unparseable text is a change. This corrects storage-dependent grades, including native DOUBLE half cents. Reference SQL, expected counts and the floor 3 partition/reason rules are unchanged. The full equality contract is in `docs/v2/floor-packs.md`.
 
 - 2026-10-18: v2 rule tightening by Claude, stage 2 review round 1: floor 3 now requires every original column of `trips` to remain unchanged in both `trips_clean` and `quarantine`. Non-money values and timestamps compare exactly; money compares to cents. The partition rules, reasons, reference solutions and counts are unchanged. Existing wrong-solution tests now also expect the new rule to fail when an output is missing or repeats a row.

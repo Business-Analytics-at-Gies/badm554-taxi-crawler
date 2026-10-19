@@ -56,29 +56,24 @@ function exactNumeric(text, cents = false) {
   return fraction(numerator, denominator);
 }
 
-// Parse the calendar and whole seconds independently from the fractional part. Date is
-// used only for integral seconds and calendar validation, never for fractional precision.
-function exactTimestamp(text) {
-  const m = String(text).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?)?(?:\s*(Z|([+-])(\d{2})(?::?(\d{2}))?))?$/i);
-  if (!m) return INVALID;
-  const [year, month, day, hour, minute, second] = [m[1], m[2], m[3], m[4] ?? 0, m[5] ?? 0, m[6] ?? 0].map(Number);
-  const date = new Date(0);
-  date.setUTCFullYear(year, month - 1, day);
-  date.setUTCHours(hour, minute, second, 0);
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day
-      || date.getUTCHours() !== hour || date.getUTCMinutes() !== minute || date.getUTCSeconds() !== second) return INVALID;
-  const offsetHour = Number(m[10] ?? 0), offsetMinute = Number(m[11] ?? 0);
-  if (offsetHour > 23 || offsetMinute > 59 || (m[7]?.length ?? 0) > 10000) return INVALID;
-  const offset = (offsetHour * 60 + offsetMinute) * 60 * (m[9] === '-' ? -1 : 1);
-  const whole = BigInt(date.getTime() / 1000 - offset);
-  const denominator = 10n ** BigInt(m[7]?.length ?? 0);
-  return `t:${fraction(whole * denominator + BigInt(m[7] || '0'), denominator)}`;
+// DuckDB owns timestamp syntax, calendar rollover, offsets and validation. Keep the
+// parsed nanoseconds as VARCHAR before Arrow can convert them to JS milliseconds.
+// TRY_CAST truncates finer fractions, so reject a nonzero tail beyond nanoseconds;
+// otherwise a real change (including an invalid 24:00 fraction) could disappear.
+function snapshotValue(column, id) {
+  const raw = `CAST(${id} AS VARCHAR)`;
+  if (!/^TIMESTAMP/i.test(column.type)) return raw;
+  const parsed = `TRY_CAST(${raw} AS TIMESTAMP_NS)`;
+  const losesPrecision = `system.main.regexp_matches(${raw}, ${qs('\\.[0-9]{9}[0-9]*[1-9]')})`;
+  return `CASE WHEN ${raw} IS NULL THEN NULL
+    WHEN ${parsed} IS NULL OR ${losesPrecision} THEN 'invalid timestamp'
+    ELSE CAST(system.main.epoch_ns(${parsed}) AS VARCHAR) END`;
 }
 
 function sourceValue(value, column) {
   if (value === null) return null;
   if (NUMERIC_TYPES.test(column.type)) return exactNumeric(value, MONEY_COLUMNS.has(column.name));
-  if (/^TIMESTAMP/i.test(column.type)) return exactTimestamp(value);
+  if (/^TIMESTAMP/i.test(column.type)) return value === 'invalid timestamp' ? INVALID : `t:${value}`;
   return `s:${value}`;
 }
 
@@ -93,7 +88,7 @@ export async function exactDiff(db, cols, have, from, reference) {
     const out = [];
     for (const source of list) {
       const { from: table, columns = defaultColumns } = typeof source === 'string' ? { from: source } : source;
-      const select = cols.map(c => `CAST(${qi(columns?.get(c.name)?.name ?? c.name)} AS VARCHAR) AS ${qi(c.name)}`).join(', ');
+      const select = cols.map(c => `${snapshotValue(c, qi(columns?.get(c.name)?.name ?? c.name))} AS ${qi(c.name)}`).join(', ');
       for (const row of await db.rows(`SELECT ${select} FROM ${table}`)) {
         const values = cols.map(c => sourceValue(row[c.name], c));
         // Invalid numeric/time text is always a change, even on both sides of a comparison.

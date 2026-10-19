@@ -54,17 +54,22 @@ The source column's kind determines equality, regardless of the learner column's
   every input type. Round once to cents, with an exact half cent rounded away from zero.
   `1.00499999999999999999` equals `1.00`; `1.005` and `1.00500000000000000001` equal `1.01`.
   The same rule applies to negative values. Never round native numeric columns in SQL first.
-- **Timestamps:** parse finite ISO calendar/date-time values, accepting a space or `T`, optional
-  fractional seconds and UTC/numeric offsets. An absent offset is UTC; an explicit offset is
-  normalized to the same instant. Validate the calendar and clock, and retain the entire
-  fractional part independently of the whole seconds. Trailing fractional zeros do not change
-  a timestamp. A microsecond, nanosecond, or additional nonzero fractional digit does.
+- **Timestamps:** DuckDB parses both native values and timestamp text with
+  `TRY_CAST(... AS TIMESTAMP_NS)`, including offsets and valid end-of-day `24:00` spellings.
+  Compare the parsed epoch nanoseconds, read as VARCHAR before display conversion. There is no
+  JavaScript calendar/clock parser. Text DuckDB cannot parse is a change, distinct from NULL.
+  `24:00:00` equals the following midnight; `24:00:01` is invalid. Trailing fractional zeros do
+  not change a value, while microsecond and nanosecond changes do. DuckDB truncates finer
+  fractions during the cast, so a separate precision-loss guard rejects any nonzero digit
+  beyond nine fractional places rather than silently erasing a real change. This also keeps
+  additional nonzero fractional digits from passing, even if DuckDB truncates them to zero.
 - **Text:** source text remains exact text. It is not interpreted as a number or timestamp.
   NULL equals NULL and differs from every non-NULL value. Numeric/time text is parsed only when
   the source column has that kind; unparseable text is always a change.
 
 `exactDiff(db, columns, learnerColumns, learnerSource, referenceSource)` takes source column
-names/types and native VARCHAR snapshots before display conversion. It returns multiset
+names/types and exact VARCHAR snapshots before display conversion (native numeric/text values,
+DuckDB-parsed epoch nanoseconds for timestamps). It returns multiset
 `onlyA`/`onlyB` differences, row and distinct counts, distinct overlap, and the count of learner
 rows with a matching reference value (`matchingA`, used for planted-row feedback). A source can be a table
 SQL expression, `{ from, columns }`, or an array of those descriptors. Snapshot separate tables
