@@ -1,5 +1,5 @@
-import { BASE, learner, ref, qi } from '/game/db/names.js';
-import { fmt, list, makeRule, wantColumns, columnsOf, columnReport, diff, exactDiff, selectNorm, breakdown } from '/game/db/check-helpers.js';
+import { learner, ref } from '/game/db/names.js';
+import { fmt, list, makeRule, wantColumns, columnsOf, columnReport, exactDiff, breakdown } from '/game/db/check-helpers.js';
 
 export async function check(db, { pack, plantedEver }) {
   const S = learner(pack.id);
@@ -31,7 +31,7 @@ export async function check(db, { pack, plantedEver }) {
   const flagCols = [{ name: 'row_id', type: 'BIGINT' }, ...extra];
   if (flagCols.some((c) => !have.has(c.name))) out.push(R.flags.skip(expFlags));
   else {
-    const d = await diff(db, selectNorm(flagCols, have, from), selectNorm(flagCols, null, refFrom));
+    const d = await exactDiff(db, flagCols, have, from, refFrom);
     const got = await breakdown(db, from, have.get('zone_flag').name);
     const bad = d.onlyA + d.onlyB;
     out.push(R.flags.of(bad === 0, expFlags, bad ? `${got} (${fmt(d.onlyA)} rows differ from the expected)` : got));

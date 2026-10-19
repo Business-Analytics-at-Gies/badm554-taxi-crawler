@@ -35,6 +35,51 @@ Each folder contains:
 - `guide.html`: the complete room, retaining its slide ids, detail levels and teaching text.
   `{{context}}`, `{{refresher}}` and `{{task}}` are required slots before the first task.
 
+## Value equality (stage 2 review round 2)
+
+Every pack, including `tests/floors/floor4`, uses `exactDiff` in
+`site/game/db/check-helpers.js` for learner/source value comparisons. This includes whole rows,
+trip keys, zone labels, row-id overlap, partitions and quarantine reasons. Packs may count rows
+and summarize labels in SQL; those summaries do not establish value equality. Do not add casts,
+SQL set operations, rounding, or a separate equality function to a pack.
+
+The source column's kind determines equality, regardless of the learner column's storage type:
+
+- **Non-money numbers:** compare exact finite decimal values. A native DOUBLE is read as its
+  shortest round-trip decimal, not its binary fraction. Parse that decimal without converting
+  through JavaScript Number or another SQL number type. Ignore trailing zeros and equivalent
+  signs/exponents; retain all significant digits. Thus DOUBLE `1.1`, DECIMAL `1.10` and numeric
+  text `1.1000` are equal, while `1.10000000000000000001` is changed.
+- **Money:** `fare_amount`, `tip_amount` and `total_amount` use that same exact decimal parser for
+  every input type. Round once to cents, with an exact half cent rounded away from zero.
+  `1.00499999999999999999` equals `1.00`; `1.005` and `1.00500000000000000001` equal `1.01`.
+  The same rule applies to negative values. Never round native numeric columns in SQL first.
+- **Timestamps:** parse finite ISO calendar/date-time values, accepting a space or `T`, optional
+  fractional seconds and UTC/numeric offsets. An absent offset is UTC; an explicit offset is
+  normalized to the same instant. Validate the calendar and clock, and retain the entire
+  fractional part independently of the whole seconds. Trailing fractional zeros do not change
+  a timestamp. A microsecond, nanosecond, or additional nonzero fractional digit does.
+- **Text:** source text remains exact text. It is not interpreted as a number or timestamp.
+  NULL equals NULL and differs from every non-NULL value. Numeric/time text is parsed only when
+  the source column has that kind; unparseable text is always a change.
+
+`exactDiff(db, columns, learnerColumns, learnerSource, referenceSource)` takes source column
+names/types and native VARCHAR snapshots before display conversion. It returns multiset
+`onlyA`/`onlyB` differences, row and distinct counts, distinct overlap, and the count of learner
+rows with a matching reference value (`matchingA`, used for planted-row feedback). A source can be a table
+SQL expression, `{ from, columns }`, or an array of those descriptors. Snapshot separate tables
+before combining rows: a SQL UNION could erase DECIMAL digits or timestamp fractions through
+implicit conversion. Column maps preserve aliases; `columns` always defines the source kinds.
+
+The generated matrix in `tests/db/stage2-equality.test.mjs` runs on floors 1–4. It covers every
+column of every given table, every output column (both outputs on floor 3), and native, DOUBLE,
+DECIMAL(18,2), DECIMAL(38,20), VARCHAR and VARCHAR with trailing zeros. Compatible unchanged
+representations pass; the smallest represented non-money change, timestamp nanoseconds and
+one-cent money changes fail. Numeric conversions cannot preserve timestamps or zone-name text;
+these incompatible combinations are tested as changes, not skipped. Money tests cover both
+signs, every money column/type and values below, at and above a half cent. DECIMAL(18,2) cannot
+store a half cent, so its storage conversion already rounds; equality compares the stored value.
+
 Run `node tools/build-floor-packs.mjs` after changing a pack. The builder discovers the floor
 folders and validates them before writing anything. A pack cannot load without context, at
 least one refresher with a two-to-five-line runnable example, and named absolute HTTPS review

@@ -1,7 +1,7 @@
-import { BASE, learner, ref, qi } from '/game/db/names.js';
-import { fmt, list, makeRule, wantColumns, columnsOf, columnReport, diff, exactDiff, selectNorm, plantedNote, breakdown } from '/game/db/check-helpers.js';
+import { learner, ref } from '/game/db/names.js';
+import { fmt, makeRule, wantColumns, columnsOf, columnReport, exactDiff, breakdown } from '/game/db/check-helpers.js';
 
-export async function check(db, { pack, plantedEver }) {
+export async function check(db, { pack }) {
   const S = learner(pack.id);
   const out = [];
   const R = {
@@ -32,18 +32,18 @@ export async function check(db, { pack, plantedEver }) {
   const C = `${S}.trips_clean`;
   const Q = `${S}.quarantine`;
   if (!hc.has('row_id') || !hq.has('row_id')) return [...out, R.overlap.skip('0'), R.all.skip(partText), R.reasons.skip(expReasons), R.unchanged.skip('0 changed or extra rows')];
-  const rid = (have, from) => `SELECT TRY_CAST(${qi(have.get('row_id').name)} AS BIGINT) AS row_id FROM ${from}`;
-  const both = Number(await db.one(`SELECT system.main.count(*) FROM (${rid(hc, C)} INTERSECT ${rid(hq, Q)})`));
+  const ids = want.filter(c => c.name === 'row_id');
+  const { overlap: both } = await exactDiff(db, ids, hc, C, { from: Q, columns: hq });
   out.push(R.overlap.of(both === 0, '0 row_ids in both', `${fmt(both)} row_ids in both`));
+  const d = await exactDiff(db, ids, null, [{ from: C, columns: hc }, { from: Q, columns: hq }], `${ref(pack.id)}.trips`);
   const nc = Number(await db.one(`SELECT system.main.count(*) FROM ${C}`));
   const nq = Number(await db.one(`SELECT system.main.count(*) FROM ${Q}`));
-  const d = await diff(db, `${rid(hc, C)} UNION ALL ${rid(hq, Q)}`, `SELECT row_id FROM ${ref(pack.id)}.trips`);
   out.push(R.all.of(d.onlyA === 0 && d.onlyB === 0, partText,
     `${fmt(nc)} + ${fmt(nq)} = ${fmt(nc + nq)}; ${fmt(d.onlyB)} trips missing, ${fmt(d.onlyA)} extra or repeated`));
   if (!hq.has('reason')) out.push(R.reasons.skip(expReasons));
   else {
     const rc = [{ name: 'row_id', type: 'BIGINT' }, { name: 'reason', type: 'VARCHAR' }];
-    const dr = await diff(db, selectNorm(rc, hq, Q), selectNorm(rc, null, `${ref(pack.id)}.quarantine`));
+    const dr = await exactDiff(db, rc, hq, Q, `${ref(pack.id)}.quarantine`);
     const got = await breakdown(db, Q, hq.get('reason').name);
     const bad = dr.onlyA + dr.onlyB;
     out.push(R.reasons.of(bad === 0, expReasons, bad ? `${got} (${fmt(dr.onlyA)} rows wrong or extra, ${fmt(dr.onlyB)} missing)` : got));

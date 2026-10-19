@@ -1,13 +1,12 @@
+import { wantColumns, columnsOf, columnReport, exactDiff } from '/game/db/check-helpers.js';
+
 export async function check(db, { learner, ref }) {
-  const found = Number(await db.one(`SELECT system.main.count(*) FROM system.main.duckdb_tables()
-    WHERE database_name = 'memory' AND schema_name = '${learner}' AND table_name = 'audit_sample'`));
+  const want = await wantColumns(db, ref, 'audit_sample');
+  const have = await columnsOf(db, learner, 'audit_sample');
   let ok = false;
-  if (found) {
-    const mismatch = await db.one(`SELECT system.main.count(*) FROM (
-      (SELECT * FROM ${learner}.audit_sample EXCEPT ALL SELECT * FROM ${ref}.audit_sample)
-      UNION ALL
-      (SELECT * FROM ${ref}.audit_sample EXCEPT ALL SELECT * FROM ${learner}.audit_sample))`);
-    ok = Number(mismatch) === 0;
+  if (have && columnReport(want, have, { allowExtra: false }).ok) {
+    const diff = await exactDiff(db, want, have, `${learner}.audit_sample`, `${ref}.audit_sample`);
+    ok = diff.onlyA === 0 && diff.onlyB === 0;
   }
   return [{ id: 'sample', rule: 'Two unchanged trips with the lowest row ids', ok,
     expected: 'the first two whole trips', got: ok ? 'the first two whole trips' : 'missing or different sample',

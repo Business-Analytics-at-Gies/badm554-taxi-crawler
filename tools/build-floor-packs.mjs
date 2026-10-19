@@ -15,7 +15,8 @@ function taskHtml(pack) {
   const text = `${pack.guideTask} ${RERUN_INSTRUCTION}`;
   const marked = text.split(/(CREATE OR REPLACE TABLE|\bDROP\b|\b[a-z][a-z_]*\b)/g).map(s =>
     identifiers.has(s) || s.includes('_') || s === 'CREATE OR REPLACE TABLE' || s === 'DROP' ? `<code>${html(s)}</code>` : html(s)).join('');
-  return `<p class="task"><strong>Your task:</strong> ${marked}</p>`;
+  return `<p class="task"><strong>Your task:</strong> ${marked}</p>
+<p class="value-equality">Checks compare values, so equivalent numbers and timestamps saved as text still count as unchanged. Money is rounded to cents; an exact half cent rounds away from zero. Every other number and timestamp keeps its full precision.</p>`;
 }
 
 function aboutData(packs) {

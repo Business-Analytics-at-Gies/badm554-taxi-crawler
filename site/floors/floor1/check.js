@@ -1,5 +1,5 @@
-import { BASE, learner, ref, qi } from '/game/db/names.js';
-import { fmt, list, makeRule, wantColumns, columnsOf, columnReport, exactDiff, selectNorm, plantedNote } from '/game/db/check-helpers.js';
+import { BASE, learner, ref } from '/game/db/names.js';
+import { fmt, list, makeRule, wantColumns, columnsOf, columnReport, exactDiff, plantedNote } from '/game/db/check-helpers.js';
 
 export async function check(db, { pack, plantedEver }) {
   const TRIP_KEY = pack.tripKey;
@@ -15,7 +15,8 @@ export async function check(db, { pack, plantedEver }) {
   const want = await wantColumns(db, BASE, 'trips_raw');
   const have = await columnsOf(db, S, 'trips_clean');
   const expRows = Number(await db.one(`SELECT system.main.count(*) FROM ${ref(pack.id)}.trips_clean`));
-  const expKeys = Number(await db.one(`SELECT system.main.count(*) FROM (SELECT DISTINCT ${list(TRIP_KEY)} FROM ${ref(pack.id)}.trips_clean)`));
+  const keyCols = want.filter(c => TRIP_KEY.includes(c.name));
+  const { distinctB: expKeys } = await exactDiff(db, keyCols, null, `${ref(pack.id)}.trips_clean`, `${ref(pack.id)}.trips_clean`);
   const colsText = `${want.length} columns: ${list(want.map((c) => c.name))}`;
   if (!have) {
     out.push(R.exists.fail('a table named trips_clean', 'not found'));
@@ -35,10 +36,9 @@ export async function check(db, { pack, plantedEver }) {
   const countRule = R.count.of(rc === expRows, fmt(expRows), fmt(rc));
   if (rc > 6997 && rc <= 7170) countRule.hint += ' You may have merged trips that are not rerun copies. Check whether their amounts differ.';
   out.push(countRule);
-  const keyCols = want.filter((c) => TRIP_KEY.includes(c.name));
   if (keyCols.some((c) => !have.has(c.name))) out.push(R.keys.skip(`${fmt(expKeys)} trip keys`));
   else {
-    const k = Number(await db.one(`SELECT system.main.count(*) FROM (SELECT DISTINCT * FROM (${selectNorm(keyCols, have, from)}))`));
+    const { distinctA: k } = await exactDiff(db, keyCols, have, from, `${ref(pack.id)}.trips_clean`);
     out.push(R.keys.of(k === expKeys && rc === k, `${fmt(expKeys)} trip keys, one row each`, `${fmt(k)} trip keys in ${fmt(rc)} rows`));
   }
   return out;

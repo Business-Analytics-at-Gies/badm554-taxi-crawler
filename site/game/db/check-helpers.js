@@ -3,15 +3,9 @@ import { qi, qs } from './names.js';
 export const fmt = n => typeof n === 'number' ? n.toLocaleString('en-US') : String(n);
 export const list = xs => xs.join(', ');
 
-const MONEY_TYPES = /^(DOUBLE|FLOAT|REAL|DECIMAL.*|NUMERIC.*)$/i;
 const MONEY_COLUMNS = new Set(['fare_amount', 'tip_amount', 'total_amount']);
 const NUMERIC_TYPES = /^(U?TINYINT|U?SMALLINT|U?INTEGER|U?BIGINT|U?HUGEINT|INT\d*|DOUBLE|FLOAT|REAL|DECIMAL.*|NUMERIC.*)$/i;
-
-export function norm(col, wantType, haveName) {
-  const id = qi(haveName ?? col);
-  if (MONEY_COLUMNS.has(col) && MONEY_TYPES.test(wantType)) return `system.main.round(TRY_CAST(${id} AS DOUBLE), 2) AS ${qi(col)}`;
-  return `TRY_CAST(${id} AS ${wantType}) AS ${qi(col)}`;
-}
+const INVALID = Symbol('unparseable source-kind value');
 
 export async function columnsOf(db, schema, table) {
   // Fully qualify the immutable built-ins: information_schema views themselves expand through
@@ -37,16 +31,6 @@ export async function wantColumns(db, schema, table) {
   return rows.map((r) => ({ name: r.column_name, type: r.data_type }));
 }
 
-export const selectNorm = (cols, have, from) =>
-  `SELECT ${cols.map((c) => norm(c.name, c.type, have ? have.get(c.name)?.name : c.name)).join(', ')} FROM ${from}`;
-
-// Multiset difference both ways. Each side is wrapped, so a UNION ALL inside one side stays whole.
-export async function diff(db, a, b) {
-  const minus = (x, y) => `SELECT system.main.count(*) FROM (SELECT * FROM (${x}) EXCEPT ALL SELECT * FROM (${y}))`;
-  const [r] = await db.rows(`SELECT (${minus(a, b)}) AS only_a, (${minus(b, a)}) AS only_b`);
-  return { onlyA: Number(r.only_a), onlyB: Number(r.only_b) };
-}
-
 function fraction(n, d = 1n) {
   let a = n < 0n ? -n : n, b = d;
   while (b) { const rest = a % b; a = b; b = rest; }
@@ -57,10 +41,10 @@ function exactNumeric(text, cents = false) {
   // Numeric text follows the same exact decimal path as native numeric strings. Never
   // pass it through Number/DOUBLE: that would erase extra digits before comparison.
   const match = String(text).trim().match(/^([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:e([+-]?\d+))?$/i);
-  if (!match) return `invalid:${text}`;
+  if (!match) return INVALID;
   const digits = match[3] ?? match[4] ?? '';
   const scale = digits.length - Number(match[5] ?? 0);
-  if (!Number.isSafeInteger(scale) || Math.abs(scale) > 10000) return `invalid:${text}`;
+  if (!Number.isSafeInteger(scale) || Math.abs(scale) > 10000) return INVALID;
   let numerator = BigInt(`${match[1]}${match[2] ?? '0'}${digits}`);
   const denominator = scale >= 0 ? 10n ** BigInt(scale) : 1n;
   if (scale < 0) numerator *= 10n ** BigInt(-scale);
@@ -72,39 +56,65 @@ function exactNumeric(text, cents = false) {
   return fraction(numerator, denominator);
 }
 
-// Native VARCHAR conversion preserves DECIMAL digits, integer precision and sub-millisecond
-// timestamps before Arrow's display conversions. Compare numbers as exact rational values:
-// Use each native numeric string so DOUBLE 1.1 equals DECIMAL 1.10, while extra decimal
-// digits remain visible. As in The Rerun, rational tokens and counted rows avoid coercion.
-// SQL EXCEPT alone can silently coerce a changed DECIMAL to an unchanged DOUBLE/integer.
+// Parse the calendar and whole seconds independently from the fractional part. Date is
+// used only for integral seconds and calendar validation, never for fractional precision.
+function exactTimestamp(text) {
+  const m = String(text).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?)?(?:\s*(Z|([+-])(\d{2})(?::?(\d{2}))?))?$/i);
+  if (!m) return INVALID;
+  const [year, month, day, hour, minute, second] = [m[1], m[2], m[3], m[4] ?? 0, m[5] ?? 0, m[6] ?? 0].map(Number);
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(hour, minute, second, 0);
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day
+      || date.getUTCHours() !== hour || date.getUTCMinutes() !== minute || date.getUTCSeconds() !== second) return INVALID;
+  const offsetHour = Number(m[10] ?? 0), offsetMinute = Number(m[11] ?? 0);
+  if (offsetHour > 23 || offsetMinute > 59 || (m[7]?.length ?? 0) > 10000) return INVALID;
+  const offset = (offsetHour * 60 + offsetMinute) * 60 * (m[9] === '-' ? -1 : 1);
+  const whole = BigInt(date.getTime() / 1000 - offset);
+  const denominator = 10n ** BigInt(m[7]?.length ?? 0);
+  return `t:${fraction(whole * denominator + BigInt(m[7] || '0'), denominator)}`;
+}
+
+function sourceValue(value, column) {
+  if (value === null) return null;
+  if (NUMERIC_TYPES.test(column.type)) return exactNumeric(value, MONEY_COLUMNS.has(column.name));
+  if (/^TIMESTAMP/i.test(column.type)) return exactTimestamp(value);
+  return `s:${value}`;
+}
+
+// The sole learner/source equality path for every pack, keys and partitions included.
+// Native VARCHAR snapshots retain all DECIMAL digits and timestamp fractions before Arrow
+// conversion. DOUBLE snapshots are their shortest round-trip decimals. Both sides then use
+// the SOURCE column kind, with one decimal parser and one cent-rounding rule for all types.
+// Sources may be separate tables: never UNION unlike types before taking exact snapshots.
 export async function exactDiff(db, cols, have, from, reference) {
-  const snapshot = async (table, actual) => {
-    const types = cols.map(c => actual?.get(c.name)?.type ?? c.type);
-    const money = cols.map(c => MONEY_COLUMNS.has(c.name));
-    const select = cols.map((c, i) => {
-      const id = qi(actual?.get(c.name)?.name ?? c.name);
-      const numeric = NUMERIC_TYPES.test(types[i]);
-      const value = money[i] && numeric ? `CAST(system.main.round(${id}, 2) AS DECIMAL(38,2))` : id;
-      return `CAST(${value} AS VARCHAR) AS ${qi(c.name)}`;
-    }).join(', ');
-    const rows = await db.rows(`SELECT ${select} FROM ${table}`);
-    return rows.map(row => JSON.stringify(cols.map((c, i) => {
-      const value = row[c.name];
-      if (value === null) return null;
-      if (NUMERIC_TYPES.test(c.type)) return exactNumeric(value, money[i]);
-      return `s:${value}`;
-    })));
+  const snapshot = async (sources, defaultColumns, side) => {
+    const list = Array.isArray(sources) ? sources : [sources];
+    const out = [];
+    for (const source of list) {
+      const { from: table, columns = defaultColumns } = typeof source === 'string' ? { from: source } : source;
+      const select = cols.map(c => `CAST(${qi(columns?.get(c.name)?.name ?? c.name)} AS VARCHAR) AS ${qi(c.name)}`).join(', ');
+      for (const row of await db.rows(`SELECT ${select} FROM ${table}`)) {
+        const values = cols.map(c => sourceValue(row[c.name], c));
+        // Invalid numeric/time text is always a change, even on both sides of a comparison.
+        out.push(values.includes(INVALID) ? `invalid:${side}:${out.length}` : JSON.stringify(values));
+      }
+    }
+    return out;
   };
-  const a = await snapshot(from, have), b = await snapshot(reference, null);
+  const a = await snapshot(from, have, 'learner'), b = await snapshot(reference, null, 'source');
   const counts = new Map();
   for (const row of b) counts.set(row, (counts.get(row) ?? 0) + 1);
+  const aSet = new Set(a), bSet = new Set(b);
   let onlyA = 0;
   for (const row of a) {
     const remaining = counts.get(row) ?? 0;
     if (remaining) counts.set(row, remaining - 1);
     else onlyA++;
   }
-  return { onlyA, onlyB: [...counts.values()].reduce((sum, n) => sum + n, 0) };
+  return { onlyA, onlyB: [...counts.values()].reduce((sum, n) => sum + n, 0),
+    countA: a.length, countB: b.length, distinctA: aSet.size, distinctB: bSet.size,
+    overlap: [...aSet].filter(row => bSet.has(row)).length, matchingA: a.filter(row => bSet.has(row)).length };
 }
 
 export async function breakdown(db, from, col) {
@@ -135,7 +145,8 @@ export function columnReport(want, have, { allowExtra }) {
 
 export async function plantedNote(db, from, plantedEver) {
   if (!plantedEver.length) return '';
-  const k = Number(await db.one(`SELECT system.main.count(*) FROM ${from} WHERE TRY_CAST(row_id AS BIGINT) IN (${plantedEver.join(', ')})`));
+  const ids = `(VALUES ${plantedEver.map(id => `(${Number(id)})`).join(', ')}) AS planted(row_id)`;
+  const { matchingA: k } = await exactDiff(db, [{ name: 'row_id', type: 'BIGINT' }], null, from, ids);
   return k ? ` (${fmt(k)} of them were planted by the tutor and are gone now; rebuild the table)` : '';
 }
 

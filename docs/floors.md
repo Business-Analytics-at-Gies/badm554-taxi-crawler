@@ -106,6 +106,8 @@ the fix. A learner can cheat by reading the served reference SQL; accepted for t
 
 ## Change log
 
+- 2026-10-18: v2 stage 2 review round 2, approved equality contract: all packs use one comparison rule for original values, keys and partitions. Non-money numbers compare as exact decimals (DOUBLE by its shortest round-trip decimal); money rounds once to cents, with exact halves away from zero; timestamps compare as parsed values without losing fractional precision. Equivalent numeric/timestamp text passes and unparseable text is a change. This corrects storage-dependent grades, including native DOUBLE half cents. Reference SQL, expected counts and the floor 3 partition/reason rules are unchanged. The full equality contract is in `docs/v2/floor-packs.md`.
+
 - 2026-10-18: v2 rule tightening by Claude, stage 2 review round 1: floor 3 now requires every original column of `trips` to remain unchanged in both `trips_clean` and `quarantine`. Non-money values and timestamps compare exactly; money compares to cents. The partition rules, reasons, reference solutions and counts are unchanged. Existing wrong-solution tests now also expect the new rule to fail when an output is missing or repeats a row.
 
 - 2026-10-18: v2 stage 2.0, approved known pilot defect in `docs/v2/plan-as-approved.md`: unchanged-row checks no longer round non-money values to cents or lose exact numeric values through type conversion. Adding 0.001 to `trip_distance` now fails floor 1. Only `fare_amount`, `tip_amount` and `total_amount` compare to cents. The existing pass rules and reference counts are unchanged; this corrects enforcement of the unchanged-row rule. Floor definitions, reference SQL, checks, solution cases and guide content now live in floor packs.

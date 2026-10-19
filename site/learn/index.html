@@ -97,6 +97,7 @@ QUALIFY row_number() OVER (PARTITION BY ride ORDER BY copy) = 1;</code></pre><h5
       <div class="lv" data-lv="1">
         <p>The load for trips picked up on 15 January ran twice. Every trip from that day is in the table two times. So revenue looks higher than it was.</p>
         <p class="task"><strong>Your task:</strong> Create <code>trips_clean</code> with exactly one row per trip key, and every column of <code>trips_raw</code>. A trip key is the set of columns that together identify one trip. Two trips that differ in any amount are different trips. <code>row_id</code> and <code>loaded_at</code> describe the load, not the trip. Use <code>CREATE OR REPLACE TABLE</code> to run your SQL again without a <code>DROP</code>.</p>
+<p class="value-equality">Checks compare values, so equivalent numbers and timestamps saved as text still count as unchanged. Money is rounded to cents; an exact half cent rounds away from zero. Every other number and timestamp keeps its full precision.</p>
       </div>
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
@@ -204,6 +205,7 @@ HAVING count(*) &gt; 0;</code></pre><h5>Review in the textbook</h5><ul class="re
       <div class="lv" data-lv="1">
         <p>Some trips start or end in a zone that is not a real place on the map. If you join to the zone lookup the wrong way, those trips vanish without an error.</p>
         <p class="task"><strong>Your task:</strong> create <code>trips_clean</code> with every row of <code>trips</code>, plus three columns: <code>pu_zone</code>, <code>do_zone</code> and <code>zone_flag</code>. Use <code>CREATE OR REPLACE TABLE</code> to run your SQL again without a <code>DROP</code>.</p>
+<p class="value-equality">Checks compare values, so equivalent numbers and timestamps saved as text still count as unchanged. Money is rounded to cents; an exact half cent rounds away from zero. Every other number and timestamp keeps its full precision.</p>
       </div>
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
@@ -323,6 +325,7 @@ GROUP BY reason HAVING count(*) &gt; 0;</code></pre><h5>Review in the textbook</
       <div class="lv" data-lv="1">
         <p>Some rides in the feed cannot have happened: a negative fare, a drop-off before the pick-up, a pick-up outside January, or a trip of zero miles with a big fare. These are real rows, as TLC published them.</p>
         <p class="task"><strong>Your task:</strong> move the failing rows to a table <code>quarantine</code>, with a <code>reason</code>, and keep the other rows in <code>trips_clean</code>. Use <code>CREATE OR REPLACE TABLE</code> to run your SQL again without a <code>DROP</code>.</p>
+<p class="value-equality">Checks compare values, so equivalent numbers and timestamps saved as text still count as unchanged. Money is rounded to cents; an exact half cent rounds away from zero. Every other number and timestamp keeps its full precision.</p>
       </div>
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
