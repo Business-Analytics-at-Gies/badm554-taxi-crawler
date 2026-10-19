@@ -17,7 +17,7 @@ requires context, short SQL refreshers, textbook links and an About the data sec
 Each folder contains:
 
 - `pack.json`: id, title, input, pristine `given` sources, required `outputs`, game `task`, guide
-  `guideTask`, context, refresher lessons, review links, tutor summary, learner-facing rules,
+  `guideTask`, context, `taskContext` (the short business reminder in the game), refresher lessons, review links, tutor summary, learner-facing rules,
   map query/style, required `ruleIds`, and plant options. `tables` defines the documented columns
   and types; the first pack supplies the shared taxi tables and their data-source explanation.
 - `reference.sql`: the reference solution used to build the hidden `_ref<N>` schema.
@@ -110,5 +110,10 @@ render and check that fourth floor with the unchanged engine and UI. The test pa
 included in the shipped catalog. Server-issued completion codes retain the existing pilot
 policy; the test pack exercises loading, checking and rendering, not issuing real codes.
 
-Items 2.1–2.5 are not part of this move. In particular, table chips, previews, the task panel and
-query-history controls retain their previous behavior until their own implementation steps.
+Item 2.1 adds the collapsible task panel and its required-output checklist. The game renders
+`task` and `outputs` directly; the guide also includes the full `task` wherever its short
+`guideTask` differs. Pack `controls` entries have an `id` and three non-empty `levels` passages;
+the builder adds each passage to the corresponding Detail level of the task slide. This keeps
+the control's explanation with its floor content and delivers it without JavaScript.
+
+Items 2.2–2.5 retain their previous behavior until their own implementation steps.

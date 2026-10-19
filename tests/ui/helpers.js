@@ -23,6 +23,13 @@ export async function openFloor(page, n) {
   await page.locator('#room-map').getByRole('button', { name: `Start floor ${n}` }).click();
   const frame = page.frameLocator('#game-frame');
   await expect(frame.locator('#engine-status')).toHaveText(`Floor ${n} is ready.`, { timeout: 30000 });
+  // Older task-text checks read the rules. Open the new panel as a learner would,
+  // while respecting tests that explicitly request a collapsed saved setting.
+  if (!new URLSearchParams(new URL(page.url()).hash.slice(1)).has('panel')
+      && await frame.locator('#task-panel').count()
+      && !await frame.locator('#task-panel').evaluate(el => el.open)) {
+    await frame.locator('#task-panel > summary').click();
+  }
   return frame;
 }
 

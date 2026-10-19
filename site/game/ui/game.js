@@ -4,6 +4,7 @@ import { createMap } from './map.js';
 import { friendlyError } from './errors.js';
 import { readCodes, writeCodes, validCode, CODES_KEY } from '/learn/codes.js';
 import { FLOORS, FLOOR_IDS, validFloor, RERUN_INSTRUCTION } from '/floors/catalog.js';
+import { readHash, writeHash, hasHashKey } from '/learn/hash.js';
 
 const TARGETS = { console: 'sql-input', 'run-button': 'run-btn', 'check-button': 'check-btn', 'result-table': 'result', map: 'map', 'tables-list': 'tables' };
 
@@ -21,6 +22,31 @@ let lastCheck = null;
 let running = false;
 let codes = readCodes();
 const clearedFloors = () => FLOOR_IDS.filter(n => validCode(n, codes[n]));
+
+let settingsWindow = window;
+try { if (window.parent !== window && window.parent.location.pathname.startsWith('/learn/')) settingsWindow = window.parent; } catch { /* standalone settings in another site's frame */ }
+const taskPanel = $('task-panel');
+let panelOpen;
+function restorePanel() {
+  panelOpen = hasHashKey('panel', settingsWindow) ? readHash(settingsWindow).panel === 'open' : !matchMedia('(max-width: 56.25em)').matches;
+  taskPanel.open = panelOpen;
+}
+restorePanel();
+settingsWindow.addEventListener('hashchange', restorePanel);
+taskPanel.addEventListener('toggle', () => {
+  if (panelOpen === taskPanel.open) return;
+  panelOpen = taskPanel.open;
+  writeHash({ panel: panelOpen ? 'open' : 'closed' }, settingsWindow);
+});
+
+function renderChecklist(tables) {
+  $('task-checklist').replaceChildren(...FLOORS[floor].outputs.map(name => {
+    const table = tables.find(t => t.name.toLowerCase() === name.toLowerCase());
+    const li = document.createElement('li');
+    li.textContent = `${name}: ${!table ? 'missing' : `exists · ${table.rows == null ? 'row count unavailable' : `${fmt(table.rows)} rows`}`}`;
+    return li;
+  }));
+}
 
 function renderCodeList() {
   const all = $('receipt-all');
@@ -61,6 +87,8 @@ function setEngine(state, text) {
 async function refreshTables() {
   if (!db || engine !== 'ready') return;
   const st = await db.state();
+  if (st.floor !== floor) return;
+  renderChecklist(st.tables);
   const ul = $('tables-ul');
   ul.replaceChildren();
   for (const t of st.tables) {
@@ -210,6 +238,9 @@ async function setFloor(n) {
   document.title = `Taxi Crawler · ${f.title}`;
   $('floor-title').textContent = f.title;
   $('floor-task').textContent = `${f.task}\n${RERUN_INSTRUCTION}`;
+  $('task-context').textContent = f.taskContext;
+  $('task-refresher').href = `/learn/#room=floor${n}&slide=f${n}-task&lv=1`;
+  $('task-checklist').replaceChildren();
   $('check-btn').textContent = `Check floor ${n}`;
   for (const b of document.querySelectorAll('.floor-pick button')) b.setAttribute('aria-pressed', String(Number(b.dataset.floor) === n));
   showSavedCodes(n);
@@ -288,7 +319,7 @@ const ready = (async () => {
     $('engine-version').textContent = `SQL engine: DuckDB ${version} in your browser. The data stays on this computer.`;
     (db.addEventListener || (() => {}))('db', e => {
       if (e.detail?.type === 'worker-restarted') { $('result-status').textContent = 'The SQL engine restarted and reloaded the floor.'; refreshTables(); }
-      if (e.detail?.type === 'plant' || e.detail?.type === 'restart') refreshTables();
+      if (['query', 'plant', 'restart'].includes(e.detail?.type)) refreshTables();
     });
     engine = 'ready';
     await setFloor(floor);

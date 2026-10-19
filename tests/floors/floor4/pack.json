@@ -1,22 +1,55 @@
 {
   "id": 4,
-  "ruleIds": ["sample"],
+  "ruleIds": [
+    "sample"
+  ],
   "title": "Floor 4: The sample desk",
   "card": "A supervisor needs two trips to audit.",
   "input": "trips",
-  "given": { "trips": "_base.trips_raw", "zones": "_base.zones" },
-  "outputs": ["audit_sample"],
+  "given": {
+    "trips": "_base.trips_raw",
+    "zones": "_base.zones"
+  },
+  "outputs": [
+    "audit_sample"
+  ],
   "task": "Create audit_sample with the two trips having the lowest row_id values, keeping every column.",
   "guideTask": "Create audit_sample with the two trips having the lowest row_id values, keeping every column.",
   "context": "The audit supervisor needs a small sample before reviewing the feed. trips holds the incoming trip rows and zones names their locations. Keeping two whole trips makes the sample useful for checking the original records.",
   "refresher": [
-    { "title": "Choose a small ordered sample", "text": "SELECT chooses columns, ORDER BY puts rows in a predictable order, and LIMIT keeps a small number. CREATE OR REPLACE TABLE saves that result and can be run again.", "sql": "WITH notes(id) AS (VALUES (3), (1), (2))\nSELECT * FROM notes ORDER BY id LIMIT 2;" }
+    {
+      "title": "Choose a small ordered sample",
+      "text": "SELECT chooses columns, ORDER BY puts rows in a predictable order, and LIMIT keeps a small number. CREATE OR REPLACE TABLE saves that result and can be run again.",
+      "sql": "WITH notes(id) AS (VALUES (3), (1), (2))\nSELECT * FROM notes ORDER BY id LIMIT 2;"
+    }
   ],
-  "reviewLinks": [{ "label": "M1I4 Anatomy of a Query", "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M1/I4/" }],
+  "reviewLinks": [
+    {
+      "label": "M1I4 Anatomy of a Query",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M1/I4/"
+    }
+  ],
   "summary": "4. The sample desk: keep the two incoming trips with the lowest physical row ids for an audit.",
   "dirt": "SELECT row_id, pu_location_id, do_location_id FROM trips ORDER BY row_id LIMIT 2",
-  "map": { "label": "audit sample trips", "color": "#13294b", "double": false },
-  "plant": { "zoneColumns": false },
+  "map": {
+    "label": "audit sample trips",
+    "color": "#13294b",
+    "double": false
+  },
+  "plant": {
+    "zoneColumns": false
+  },
   "tables": {},
-  "rulesText": "## Floor 4: The sample desk\n\nKeep the two whole trips with the lowest row_id values in audit_sample.\n"
+  "rulesText": "## Floor 4: The sample desk\n\nKeep the two whole trips with the lowest row_id values in audit_sample.\n",
+  "taskContext": "The audit supervisor needs two whole trips to check against the incoming feed.",
+  "controls": [
+    {
+      "id": "task-panel",
+      "levels": [
+        "The task panel above Your SQL holds the full rules and a checklist for audit_sample. Open it before writing your query; it starts collapsed on mobile. The checklist says whether each table exists and counts its rows. Exists does not mean correct. SQL refresher and About the data links beside it open the guide in a new tab.",
+        "Use the task panel checklist after each Run: an empty audit_sample table still exists with zero rows. Replacing or dropping a table updates the count or marks it missing. Use Check this floor to test its rules. The panel remembers your collapse choice in the page address.",
+        "After CREATE OR REPLACE TABLE, compare the task panel checklist counts with your own SELECT count(*) queries on audit_sample. The checklist reports presence and size only; the full rules in the task panel explain what Check this floor will test."
+      ]
+    }
+  ]
 }

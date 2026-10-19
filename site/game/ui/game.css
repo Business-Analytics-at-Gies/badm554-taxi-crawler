@@ -69,3 +69,8 @@ td.null { color: var(--muted); font-style: italic; }
 
 /* Floor task: keep the line breaks of the spec lists (issue #1). */
 #floor-task { white-space: pre-line; }
+.task-context { font-size: .85rem; color: var(--muted); }
+.task-context p { margin: .3rem 0; }
+.task-panel { margin: .4rem 0 .65rem; border: 1px solid var(--line); border-radius: 6px; padding: .4rem .6rem; }
+.task-panel summary { cursor: pointer; font-weight: 600; }
+#task-checklist { padding-left: 1.2rem; font-size: .85rem; overflow-wrap: anywhere; }

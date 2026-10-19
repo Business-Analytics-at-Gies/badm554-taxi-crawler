@@ -32,7 +32,16 @@
 
   <section class="g-console" aria-labelledby="console-h">
     <h2 id="console-h">SQL console</h2>
-    <p id="floor-task" class="task"></p>
+    <div class="task-context">
+      <p id="task-context"></p>
+      <p><a id="task-refresher" target="_blank" rel="noopener">SQL refresher</a> · <a href="/learn/#about-data" target="_blank" rel="noopener">About the data</a></p>
+    </div>
+    <details id="task-panel" class="task-panel">
+      <summary>Task panel · rules and checklist</summary>
+      <p id="floor-task" class="task"></p>
+      <p class="help">The checklist shows whether each required table exists and its row count. Use Check this floor to test correctness.</p>
+      <ul id="task-checklist" aria-live="polite"></ul>
+    </details>
     <div id="tables" class="tables-list" tabindex="-1">
       <h3>Tables</h3>
       <ul id="tables-ul"></ul>

@@ -17,13 +17,15 @@ function normalize(value) {
   };
 }
 
-const params = () => new URLSearchParams(location.hash.slice(1));
+const params = (target = window) => new URLSearchParams(target.location.hash.slice(1));
 const read = p => normalize(Object.fromEntries(Object.entries(KEYS).map(([prop, key]) => [prop, p.get(key)])));
 
-export function readHash() { return read(params()); }
+// An embedded game uses its same-origin guide's URL so there is one saved panel choice.
+export function readHash(target = window) { return read(params(target)); }
+export function hasHashKey(prop, target = window) { return Object.hasOwn(KEYS, prop) && params(target).has(KEYS[prop]); }
 
-export function writeHash(patch = {}) {
-  const p = params();
+export function writeHash(patch = {}, target = window) {
+  const p = params(target);
   const value = normalize({ ...read(p), ...Object.fromEntries(Object.keys(KEYS).filter(key => Object.hasOwn(patch, key)).map(key => [key, patch[key]])) });
   for (const [prop, key] of Object.entries(KEYS)) {
     if (!p.has(key) && !Object.hasOwn(patch, prop)) continue;
@@ -31,6 +33,7 @@ export function writeHash(patch = {}) {
     else p.set(key, String(value[prop]));
   }
   const hash = p.size ? `#${p}` : '';
+  const { location, history } = target;
   if (location.hash !== hash) history.replaceState(history.state, '', `${location.pathname}${location.search}${hash}`);
   return read(p);
 }

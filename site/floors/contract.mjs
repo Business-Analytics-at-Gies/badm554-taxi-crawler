@@ -4,7 +4,7 @@ export const RERUN_INSTRUCTION = 'Use CREATE OR REPLACE TABLE to run your SQL ag
 export function validatePack(pack) {
   const fail = field => { throw new Error(`Floor ${pack?.id ?? '?'}: invalid or missing ${field}`); };
   if (!Number.isSafeInteger(pack?.id) || pack.id < 1) fail('id');
-  for (const field of ['title', 'input', 'task', 'guideTask', 'context', 'summary', 'rulesText', 'dirt']) {
+  for (const field of ['title', 'input', 'task', 'guideTask', 'context', 'taskContext', 'summary', 'rulesText', 'dirt']) {
     if (typeof pack[field] !== 'string' || !pack[field].trim()) fail(field);
   }
   if (!Array.isArray(pack.ruleIds) || !pack.ruleIds.length
@@ -12,6 +12,10 @@ export function validatePack(pack) {
       || new Set(pack.ruleIds).size !== pack.ruleIds.length) fail('ruleIds');
   if (!pack.given || !Object.keys(pack.given).length || !pack.given[pack.input]) fail('given');
   if (!Array.isArray(pack.outputs) || !pack.outputs.length) fail('outputs');
+  for (const control of pack.controls ?? []) {
+    if (!/^[a-z][a-z-]*$/.test(control.id) || !Array.isArray(control.levels) || control.levels.length !== 3
+      || control.levels.some(text => typeof text !== 'string' || !text.trim())) fail('control guide text');
+  }
   if (!Array.isArray(pack.refresher) || !pack.refresher.length) fail('refresher');
   for (const lesson of pack.refresher) {
     if (!lesson.title?.trim() || !lesson.text?.trim() || !lesson.sql?.trim()) fail('refresher');

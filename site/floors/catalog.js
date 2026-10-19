@@ -205,6 +205,17 @@ const packs = [
       "row_count",
       "trip_keys"
     ],
+    "taskContext": "The depot needs one reliable record per trip before it can report rides and revenue.",
+    "controls": [
+      {
+        "id": "task-panel",
+        "levels": [
+          "The task panel above Your SQL holds the full rules and a checklist for trips_clean. Open it before writing your query; it starts collapsed on mobile. The checklist says whether each table exists and counts its rows. Exists does not mean correct. SQL refresher and About the data links beside it open the guide in a new tab.",
+          "Use the task panel checklist after each Run: an empty trips_clean table still exists with zero rows. Replacing or dropping a table updates the count or marks it missing. Use Check this floor to test its rules. The panel remembers your collapse choice in the page address.",
+          "After CREATE OR REPLACE TABLE, compare the task panel checklist counts with your own SELECT count(*) queries on trips_clean. The checklist reports presence and size only; the full rules in the task panel explain what Check this floor will test."
+        ]
+      }
+    ],
     "reference": "/floors/floor1/reference.sql",
     "check": "/floors/floor1/check.js"
   },
@@ -292,6 +303,17 @@ const packs = [
       "row_count",
       "zone_flags",
       "unchanged"
+    ],
+    "taskContext": "The depot needs location labels without losing trips whose zone ids do not match.",
+    "controls": [
+      {
+        "id": "task-panel",
+        "levels": [
+          "The task panel above Your SQL holds the full rules and a checklist for trips_clean. Open it before writing your query; it starts collapsed on mobile. The checklist says whether each table exists and counts its rows. Exists does not mean correct. SQL refresher and About the data links beside it open the guide in a new tab.",
+          "Use the task panel checklist after each Run: an empty trips_clean table still exists with zero rows. Replacing or dropping a table updates the count or marks it missing. Use Check this floor to test its rules. The panel remembers your collapse choice in the page address.",
+          "After CREATE OR REPLACE TABLE, compare the task panel checklist counts with your own SELECT count(*) queries on trips_clean. The checklist reports presence and size only; the full rules in the task panel explain what Check this floor will test."
+        ]
+      }
     ],
     "reference": "/floors/floor2/reference.sql",
     "check": "/floors/floor2/check.js"
@@ -390,6 +412,17 @@ const packs = [
       "partition",
       "reasons",
       "unchanged"
+    ],
+    "taskContext": "The depot must explain impossible rides before using the clean trips in a report.",
+    "controls": [
+      {
+        "id": "task-panel",
+        "levels": [
+          "The task panel above Your SQL holds the full rules and a checklist for trips_clean and quarantine. Open it before writing your query; it starts collapsed on mobile. The checklist says whether each table exists and counts its rows. Exists does not mean correct. SQL refresher and About the data links beside it open the guide in a new tab.",
+          "Use the task panel checklist after each Run: an empty trips_clean and quarantine table still exists with zero rows. Replacing or dropping a table updates the count or marks it missing. Use Check this floor to test its rules. The panel remembers your collapse choice in the page address.",
+          "After CREATE OR REPLACE TABLE, compare the task panel checklist counts with your own SELECT count(*) queries on trips_clean and quarantine. The checklist reports presence and size only; the full rules in the task panel explain what Check this floor will test."
+        ]
+      }
     ],
     "reference": "/floors/floor3/reference.sql",
     "check": "/floors/floor3/check.js"

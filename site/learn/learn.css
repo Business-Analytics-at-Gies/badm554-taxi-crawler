@@ -52,6 +52,7 @@ html:not(.js) .js-only { display: none !important; }
 .js .guide[data-level="1"] [data-lv="2"], .js .guide[data-level="1"] [data-lv="3"], .js .guide[data-level="2"] [data-lv="3"] { display: none; }
 .js .room:not(.current), .js .room .slide:not(.current) { display: none; }
 .task { background: var(--soft); border-left: 4px solid var(--navy); padding: .5rem .75rem; }
+.task-rules { white-space: pre-line; overflow-wrap: anywhere; }
 .habit { font-size: 1.05rem; }
 .floor-cards { list-style: none; padding: 0; margin: 1rem 0; display: grid; gap: .6rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); }
 .floor-card { border: 1px solid var(--line); border-radius: 8px; padding: .6rem .8rem; }
