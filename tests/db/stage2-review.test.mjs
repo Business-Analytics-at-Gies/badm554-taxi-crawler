@@ -41,3 +41,25 @@ describe('R1: floor 3 preserves all input values in both outputs', () => {
     });
   }
 });
+
+describe('R2: numeric representations compare by value without losing digits', () => {
+  for (const floor of [1, 2, 3]) {
+    test(`floor ${floor}: decimal distances equal the original doubles; extra digits fail`, async () => {
+      await fresh(floor);
+      await run('ALTER TABLE trips_clean ALTER trip_distance TYPE DECIMAL(18,2)');
+      assert.equal((await h.call('check', floor)).pass, true, 'unchanged DOUBLE-to-DECIMAL values');
+      await run('ALTER TABLE trips_clean ALTER trip_distance TYPE DECIMAL(38,20)');
+      assert.equal((await h.call('check', floor)).pass, true, 'trailing zeros do not change a number');
+      await run('UPDATE trips_clean SET trip_distance = trip_distance + 0.00000000000000000001 WHERE row_id = (SELECT min(row_id) FROM trips_clean)');
+      const changed = await h.call('check', floor);
+      assert.equal(changed.error, undefined);
+      assert.equal(changed.pass, false);
+      assert.equal(changed.rules.find(r => r.id === 'unchanged').ok, false);
+    });
+    test(`floor ${floor}: a real fractional distance change fails`, async () => {
+      await fresh(floor);
+      await run('UPDATE trips_clean SET trip_distance = trip_distance + 0.001');
+      assert.equal((await h.call('check', floor)).rules.find(r => r.id === 'unchanged').ok, false);
+    });
+  }
+});

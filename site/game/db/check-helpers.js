@@ -53,20 +53,7 @@ function fraction(n, d = 1n) {
   return `n:${n / a}/${d / a}`;
 }
 
-function exactNumeric(text, type) {
-  if (/^(DOUBLE|FLOAT|REAL)$/i.test(type)) {
-    const value = /^(FLOAT|REAL)$/i.test(type) ? Math.fround(Number(text)) : Number(text);
-    if (!Number.isFinite(value)) return `n:${value}`;
-    if (Number.isInteger(value)) return fraction(BigInt(value));
-    const bits = new DataView(new ArrayBuffer(8));
-    bits.setFloat64(0, value);
-    const word = bits.getBigUint64(0), exponent = Number((word >> 52n) & 2047n);
-    let numerator = word & ((1n << 52n) - 1n);
-    if (exponent) numerator += 1n << 52n;
-    if (word >> 63n) numerator = -numerator;
-    const power = exponent ? exponent - 1023 - 52 : -1074;
-    return power >= 0 ? fraction(numerator << BigInt(power)) : fraction(numerator, 1n << BigInt(-power));
-  }
+function exactNumeric(text) {
   const match = String(text).match(/^([+-]?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i);
   if (!match) return `invalid:${text}`;
   const numerator = BigInt(`${match[1]}${match[2]}${match[3] ?? ''}`);
@@ -76,6 +63,8 @@ function exactNumeric(text, type) {
 
 // Native VARCHAR conversion preserves DECIMAL digits, integer precision and sub-millisecond
 // timestamps before Arrow's display conversions. Compare numbers as exact rational values:
+// Use each native numeric string so DOUBLE 1.1 equals DECIMAL 1.10, while extra decimal
+// digits remain visible. As in The Rerun, rational tokens and counted rows avoid coercion.
 // SQL EXCEPT alone can silently coerce a changed DECIMAL to an unchanged DOUBLE/integer.
 export async function exactDiff(db, cols, have, from, reference) {
   const snapshot = async (table, actual) => {
@@ -91,7 +80,7 @@ export async function exactDiff(db, cols, have, from, reference) {
     return rows.map(row => JSON.stringify(cols.map((c, i) => {
       const value = row[c.name];
       if (value === null) return null;
-      if (NUMERIC_TYPES.test(types[i])) return exactNumeric(value, money[i] ? 'DECIMAL' : types[i]);
+      if (NUMERIC_TYPES.test(types[i])) return exactNumeric(value);
       return `s:${value}`;
     })));
   };
