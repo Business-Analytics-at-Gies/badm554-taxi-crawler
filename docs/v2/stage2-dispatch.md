@@ -40,8 +40,17 @@ commit, so a learner never meets a control or a rule the guide has not explained
 - Each floor's guide section opens with its context before the task: the business situation, what
   the starting tables hold, and why the clean result matters. In the floor packs (2.0) this is part of
   the pack's guide text, so a new floor cannot ship without it.
+- Assume the learner remembers little (Vishal, 2026-10-18: "Students don't remember much"). Each
+  floor's guide section has a short refresher of every SQL idea the floor needs (for example a key,
+  `GROUP BY` with `HAVING`, `CREATE TABLE ... AS`, a `LEFT JOIN` that keeps unmatched rows), each
+  with a two-to-five-line example on a tiny table, before the task. Never write "as on floor 1" or
+  "as you saw in class": restate it. A floor opened directly, without the earlier floors, still has
+  everything it needs.
+- The working context stays in view in the game too: the task panel (2.1) carries a one-line
+  reminder of the business situation and a link back to that floor's refresher in the guide.
 - The guide works with JavaScript off and at 375 px, as in stage 1.
-- Tests: for each new control, the guide names it; each floor pack has non-empty context text and the
-  test pack fails to load without it.
+- Tests: for each new control, the guide names it; each floor pack has non-empty context and
+  refresher text and the test pack fails to load without either; no guide text contains a back
+  reference such as "floor 1" inside floor 2 or 3 sections, or "in class".
 
 After item 2 (floor packs), stop and report so Claude can review the move before features build on it.
