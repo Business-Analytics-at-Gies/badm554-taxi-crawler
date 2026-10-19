@@ -29,8 +29,15 @@ code { font-family: var(--mono); font-size: .9em; overflow-wrap: anywhere; }
 .legend svg { width: 14px; height: 14px; }
 .map-table summary { cursor: pointer; font-size: .9rem; margin-top: .3rem; }
 .task { background: var(--soft); border-left: 4px solid var(--navy); padding: .4rem .6rem; margin: .25rem 0 .5rem; font-size: .9rem; }
-.tables-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .3rem; }
+.tables-list > ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .3rem; }
 .tables-list button { border: 1px solid var(--line); background: #f9fafb; border-radius: 4px; padding: .1rem .5rem; font-family: var(--mono); font-size: .85rem; }
+.table-chip { max-width: 100%; align-self: flex-start; }
+.table-chip details { border: 1px solid var(--line); border-radius: 4px; background: #f9fafb; font: .85rem var(--mono); }
+.table-chip summary { padding: .3rem .5rem; cursor: pointer; overflow-wrap: anywhere; }
+.columns-content { padding: 0 .5rem; max-height: 15rem; overflow: auto; }
+.columns-content:not(:empty) { padding-bottom: .4rem; }
+.columns-list { list-style: none; padding: 0; margin: 0; }
+.columns-list li { padding: .2rem 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
 .sql-label { display: block; font-weight: 600; margin-top: .5rem; font-size: .9rem; }
 #sql-input { width: 100%; font: 14px/1.4 var(--mono); padding: .45rem; border: 1px solid #6b7280; border-radius: 6px; resize: vertical; }
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin: .4rem 0; }

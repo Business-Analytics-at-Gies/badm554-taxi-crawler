@@ -116,4 +116,8 @@ Item 2.1 adds the collapsible task panel and its required-output checklist. The 
 the builder adds each passage to the corresponding Detail level of the task slide. This keeps
 the control's explanation with its floor content and delivers it without JavaScript.
 
-Items 2.2–2.5 retain their previous behavior until their own implementation steps.
+Item 2.2 makes each table chip a keyboard-operable column disclosure, using quiet inspection.
+Open column lists refresh when a learner replaces a table; floor switches close the previous
+floor's chips. The editor, Result and both query records are untouched by opening a chip.
+
+Items 2.3–2.5 retain their previous behavior until their own implementation steps.

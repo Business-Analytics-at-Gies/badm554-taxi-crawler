@@ -214,6 +214,14 @@ const packs = [
           "Use the task panel checklist after each Run: an empty trips_clean table still exists with zero rows. Replacing or dropping a table updates the count or marks it missing. Use Check this floor to test its rules. The panel remembers your collapse choice in the page address.",
           "After CREATE OR REPLACE TABLE, compare the task panel checklist counts with your own SELECT count(*) queries on trips_clean. The checklist reports presence and size only; the full rules in the task panel explain what Check this floor will test."
         ]
+      },
+      {
+        "id": "table-columns",
+        "levels": [
+          "Under Tables above Your SQL, open a table chip to see its columns and types. Start with trips_raw to find the available names before writing a query. Opening a chip leaves your SQL and Result alone; Enter or Space opens and closes it from the keyboard.",
+          "The columns and types describe the table on the active floor, including tables you create. When you replace a table, an open chip refreshes its column view. After switching floors, open the new floor’s chip to inspect that floor’s columns and types.",
+          "Use the table chip’s columns and types to choose names for SELECT, WHERE and joins. The column view reads the table quietly: it adds no query to your history or the tutor’s recent queries and never replaces unfinished SQL."
+        ]
       }
     ],
     "reference": "/floors/floor1/reference.sql",
@@ -312,6 +320,14 @@ const packs = [
           "The task panel above Your SQL holds the full rules and a checklist for trips_clean. Open it before writing your query; it starts collapsed on mobile. The checklist says whether each table exists and counts its rows. Exists does not mean correct. SQL refresher and About the data links beside it open the guide in a new tab.",
           "Use the task panel checklist after each Run: an empty trips_clean table still exists with zero rows. Replacing or dropping a table updates the count or marks it missing. Use Check this floor to test its rules. The panel remembers your collapse choice in the page address.",
           "After CREATE OR REPLACE TABLE, compare the task panel checklist counts with your own SELECT count(*) queries on trips_clean. The checklist reports presence and size only; the full rules in the task panel explain what Check this floor will test."
+        ]
+      },
+      {
+        "id": "table-columns",
+        "levels": [
+          "Under Tables above Your SQL, open a table chip to see its columns and types. Start with trips to find the available names before writing a query. Opening a chip leaves your SQL and Result alone; Enter or Space opens and closes it from the keyboard.",
+          "The columns and types describe the table on the active floor, including tables you create. When you replace a table, an open chip refreshes its column view. After switching floors, open the new floor’s chip to inspect that floor’s columns and types.",
+          "Use the table chip’s columns and types to choose names for SELECT, WHERE and joins. The column view reads the table quietly: it adds no query to your history or the tutor’s recent queries and never replaces unfinished SQL."
         ]
       }
     ],
@@ -421,6 +437,14 @@ const packs = [
           "The task panel above Your SQL holds the full rules and a checklist for trips_clean and quarantine. Open it before writing your query; it starts collapsed on mobile. The checklist says whether each table exists and counts its rows. Exists does not mean correct. SQL refresher and About the data links beside it open the guide in a new tab.",
           "Use the task panel checklist after each Run: an empty trips_clean and quarantine table still exists with zero rows. Replacing or dropping a table updates the count or marks it missing. Use Check this floor to test its rules. The panel remembers your collapse choice in the page address.",
           "After CREATE OR REPLACE TABLE, compare the task panel checklist counts with your own SELECT count(*) queries on trips_clean and quarantine. The checklist reports presence and size only; the full rules in the task panel explain what Check this floor will test."
+        ]
+      },
+      {
+        "id": "table-columns",
+        "levels": [
+          "Under Tables above Your SQL, open a table chip to see its columns and types. Start with trips to find the available names before writing a query. Opening a chip leaves your SQL and Result alone; Enter or Space opens and closes it from the keyboard.",
+          "The columns and types describe the table on the active floor, including tables you create. When you replace a table, an open chip refreshes its column view. After switching floors, open the new floor’s chip to inspect that floor’s columns and types.",
+          "Use the table chip’s columns and types to choose names for SELECT, WHERE and joins. The column view reads the table quietly: it adds no query to your history or the tutor’s recent queries and never replaces unfinished SQL."
         ]
       }
     ],

@@ -90,16 +90,45 @@ async function refreshTables() {
   if (st.floor !== floor) return;
   renderChecklist(st.tables);
   const ul = $('tables-ul');
+  const opened = new Set([...ul.querySelectorAll('details[open]')].map(el => el.dataset.table));
   ul.replaceChildren();
   for (const t of st.tables) {
     const li = document.createElement('li');
-    const b = document.createElement('button');
-    b.type = 'button';
+    li.className = 'table-chip';
+    const details = document.createElement('details');
+    details.dataset.table = t.name;
+    const summary = document.createElement('summary');
     const size = t.rows === null || t.rows === undefined ? 'view' : fmt(t.rows);
-    b.textContent = `${t.name} (${size})`;
-    b.setAttribute('aria-label', `${t.name}, ${size === 'view' ? 'a view' : `${size} rows`}. Put a preview query in the console.`);
-    b.addEventListener('click', () => { $('sql-input').value = `SELECT * FROM ${t.name} LIMIT 20;`; $('sql-input').focus(); });
-    li.append(b); ul.append(li);
+    summary.textContent = `${t.name} (${size})`;
+    summary.setAttribute('aria-label', `${t.name}, ${size === 'view' ? 'a view' : `${size} rows`}. Show columns and types.`);
+    const content = document.createElement('div');
+    content.className = 'columns-content';
+    content.setAttribute('aria-live', 'polite');
+    details.append(summary, content);
+    details.addEventListener('toggle', () => { if (details.open) showColumns(details, t.name, content); });
+    details.open = opened.has(t.name);
+    li.append(details); ul.append(li);
+  }
+}
+
+async function showColumns(details, name, content) {
+  if (!details.isConnected) return;
+  const n = floor;
+  content.textContent = 'Reading columns…';
+  try {
+    const result = await db.inspect(name);
+    if (!details.isConnected || !details.open || n !== floor) return;
+    if (!result.ok) { content.textContent = result.error; return; }
+    const list = document.createElement('ul');
+    list.className = 'columns-list';
+    for (const column of result.columns) {
+      const li = document.createElement('li');
+      li.textContent = `${column.name} · ${column.type}`;
+      list.append(li);
+    }
+    content.replaceChildren(list);
+  } catch {
+    if (details.isConnected && n === floor) content.textContent = 'The columns could not be read. Close and reopen the table to try again.';
   }
 }
 
@@ -241,6 +270,7 @@ async function setFloor(n) {
   $('task-context').textContent = f.taskContext;
   $('task-refresher').href = `/learn/#room=floor${n}&slide=f${n}-task&lv=1`;
   $('task-checklist').replaceChildren();
+  $('tables-ul').replaceChildren();
   $('check-btn').textContent = `Check floor ${n}`;
   for (const b of document.querySelectorAll('.floor-pick button')) b.setAttribute('aria-pressed', String(Number(b.dataset.floor) === n));
   showSavedCodes(n);
