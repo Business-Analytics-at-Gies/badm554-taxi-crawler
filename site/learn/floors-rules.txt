@@ -49,4 +49,3 @@
   `trips`; the multiset of `(row_id, reason)` in `quarantine` equals the reference
   `data/reference/floor3.sql`; columns as above.
 - **Aha line:** do not delete what you cannot explain. Clean plus quarantine equals raw: 6,955 + 216 = 7,171.
-

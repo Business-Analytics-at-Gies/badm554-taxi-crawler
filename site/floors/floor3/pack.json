@@ -1,0 +1,87 @@
+{
+  "id": 3,
+  "input": "trips",
+  "given": {
+    "trips": "_ref2.trips_clean",
+    "zones": "_base.zones"
+  },
+  "outputs": [
+    "trips_clean",
+    "quarantine"
+  ],
+  "title": "Floor 3: Impossible rides",
+  "task": "Create two tables from trips. Test the rules in this order; a row gets the first reason it fails:\n  1. 'negative_fare': fare_amount < 0\n  2. 'time_travel': dropoff_at < pickup_at\n  3. 'outside_january': pickup_at before 2024-01-01, or on or after 2024-02-01\n  4. 'zero_distance_high_fare': trip_distance = 0 and fare_amount >= 50\n- quarantine: the failing rows, every column of trips, plus reason\n- trips_clean: the other rows, with the columns of trips",
+  "dirt": "SELECT row_id, pu_location_id, do_location_id FROM trips\nWHERE fare_amount < 0 OR dropoff_at < pickup_at OR pickup_at < TIMESTAMP '2024-01-01' OR pickup_at >= TIMESTAMP '2024-02-01'\n   OR (trip_distance = 0 AND fare_amount >= 50)",
+  "guideTask": "move the failing rows to a table quarantine, with a reason, and keep the other rows in trips_clean.",
+  "card": "Some rides cannot have happened.",
+  "context": "The depot must explain rides with impossible measurements before using them in a report. trips holds 7,171 trips with zone names and zone_flag; zones is the location lookup. Separating questionable rows with a reason preserves the evidence and leaves a clean report that reconciles to the input.",
+  "refresher": [
+    {
+      "title": "Filter ranges and combine conditions",
+      "text": "WHERE keeps rows whose condition is true. Compare values with <, >= and =; use AND when both conditions must hold and OR when either may hold. A timestamp range with an inclusive start and exclusive end includes the whole final day.",
+      "sql": "WITH rides(started_at, fare) AS (VALUES (TIMESTAMP '2024-03-01', -2))\nSELECT * FROM rides WHERE fare < 0\nOR (started_at >= TIMESTAMP '2024-03-01' AND started_at < TIMESTAMP '2024-04-01');"
+    },
+    {
+      "title": "Choose the first reason",
+      "text": "CASE evaluates WHEN conditions from top to bottom. Only the first matching reason is returned, even when several rules fail. A CASE without ELSE returns NULL if no condition matches; IS NULL tests that result.",
+      "sql": "WITH rides(fare, miles) AS (VALUES (-2, 0), (10, 2))\nSELECT *, CASE WHEN fare < 0 THEN 'negative'\nWHEN miles = 0 THEN 'no_distance' END AS reason\nFROM rides;"
+    },
+    {
+      "title": "Save a partition without deleting evidence",
+      "text": "CREATE OR REPLACE TABLE ... AS saves a query. Put failing rows in one table and the others in another. A subquery with NOT IN can keep ids absent from a non-NULL id list. COUNT(*) checks that the two tables reconcile; GROUP BY and HAVING can reveal repeated ids.",
+      "sql": "WITH checked(id, reason) AS (VALUES (1, 'negative'), (2, NULL))\nSELECT * FROM checked WHERE id NOT IN\n(SELECT id FROM checked WHERE reason IS NOT NULL);"
+    },
+    {
+      "title": "Check counts by reason",
+      "text": "COUNT(*) counts every row in each group. GROUP BY reason separates the labels; HAVING filters groups after counting. The clean count plus the quarantined count must equal the input count.",
+      "sql": "WITH checked(reason) AS (VALUES ('negative'), ('negative'), (NULL))\nSELECT reason, count(*) FROM checked\nGROUP BY reason HAVING count(*) > 0;"
+    }
+  ],
+  "reviewLinks": [
+    {
+      "label": "M7I3 The Cheap Checks",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M7/I3/"
+    },
+    {
+      "label": "M2I5 WHERE vs. HAVING",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M2/I5/"
+    },
+    {
+      "label": "M1I4 Anatomy of a Query",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M1/I4/"
+    },
+    {
+      "label": "M2I4 GROUP BY + Aggregate Functions",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M2/I4/"
+    }
+  ],
+  "summary": "3. Impossible rides: negative fares, drop-off before pick-up, pick-ups outside January, zero distance with a fare of $50 or more. Move failing rows to a quarantine table with the first reason they fail; do not delete. 6,955 clean + 216 quarantined = 7,171.",
+  "map": {
+    "label": "impossible rides (red dot)",
+    "color": "#b91c1c",
+    "double": false
+  },
+  "plant": {
+    "ordinary": "fare_amount > 0 AND dropoff_at > pickup_at AND trip_distance > 0\n  AND pickup_at >= TIMESTAMP '2024-01-01' AND pickup_at < TIMESTAMP '2024-02-01'\n  AND pu_location_id BETWEEN 1 AND 263 AND do_location_id BETWEEN 1 AND 263\n  AND loaded_at = TIMESTAMP '2024-02-01 06:00:00'\n  AND NOT (pickup_at >= TIMESTAMP '2024-01-15' AND pickup_at < TIMESTAMP '2024-01-16') AND zone_flag = 'ok'",
+    "replacements": {
+      "duplicate": [
+        "TIMESTAMP '2024-02-01 07:20:00' AS loaded_at"
+      ],
+      "unmatched_zone": [
+        "0 AS do_location_id",
+        "NULL::VARCHAR AS do_zone",
+        "'unmatched' AS zone_flag"
+      ],
+      "negative_fare": [
+        "-fare_amount AS fare_amount",
+        "-total_amount AS total_amount"
+      ],
+      "time_travel": [
+        "pickup_at - INTERVAL '7 minutes' AS dropoff_at"
+      ]
+    }
+  },
+  "tables": {},
+  "rulesText": "## Floor 3: Impossible rides (range checks and quarantine)\n\n- **Tables given:** `trips` (floor 2's reference output, 7,171 rows, with `zone_flag`), `zones`.\n- **The dirt (all real):** negative fares, drop-off before pick-up, pick-ups outside January,\n  zero distance with a fare of $50 or more.\n- **Rules, in this order; a row gets the first `reason` it fails:**\n  1. `'negative_fare'`: `fare_amount < 0`\n  2. `'time_travel'`: `dropoff_at < pickup_at`\n  3. `'outside_january'`: `pickup_at < TIMESTAMP '2024-01-01'` or `pickup_at >= TIMESTAMP '2024-02-01'`\n  4. `'zero_distance_high_fare'`: `trip_distance = 0 AND fare_amount >= 50`\n  None of these four columns has a NULL in the data (checked); a NULL fails no rule.\n  `zone_flag` is not a quarantine reason.\n- **Task:** create `quarantine` (the failing rows, every column of `trips`, plus `reason`) and\n  `trips_clean` (the other rows, the columns of `trips`).\n- **Expected:** 7,171 in; 6,955 clean; 216 quarantined (negative_fare 132, zero_distance_high_fare\n  47, time_travel 20, outside_january 17). One row fails two rules; it appears once.\n- **Pass:** the two tables share no `row_id`; together they hold exactly the 7,171 `row_id` values of\n  `trips`; the multiset of `(row_id, reason)` in `quarantine` equals the reference\n  `data/reference/floor3.sql`; columns as above.\n- **Aha line:** do not delete what you cannot explain. Clean plus quarantine equals raw: 6,955 + 216 = 7,171.\n\n",
+  "emblem": "/learn/img/floor3.svg"
+}

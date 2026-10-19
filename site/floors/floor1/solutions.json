@@ -1,0 +1,69 @@
+[
+  {
+    "name": "valid (a): the reference (first load survives)",
+    "fails": [],
+    "sql": "-- Floor 1 reference: one row per trip key; the first load (lowest row_id) survives.\nCREATE OR REPLACE TABLE trips_clean AS\nSELECT * FROM trips_raw\nQUALIFY row_number() OVER (PARTITION BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount\n                           ORDER BY row_id) = 1;\n"
+  },
+  {
+    "name": "valid (b): the reference with ORDER BY row_id DESC (second copy survives)",
+    "fails": [],
+    "sql": "-- Floor 1 reference: one row per trip key; the first load (lowest row_id) survives.\nCREATE OR REPLACE TABLE trips_clean AS\nSELECT * FROM trips_raw\nQUALIFY row_number() OVER (PARTITION BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount\n                           ORDER BY row_id DESC) = 1;\n"
+  },
+  {
+    "name": "valid (c): keep the first load by loaded_at",
+    "fails": [],
+    "sql": "CREATE TABLE trips_clean AS SELECT * FROM trips_raw WHERE loaded_at = TIMESTAMP '2024-02-01 06:00:00'"
+  },
+  {
+    "name": "valid (extra): same rows, different physical order and column order",
+    "fails": [],
+    "sql": "CREATE TABLE trips_clean AS SELECT loaded_at, total_amount, * EXCLUDE (loaded_at, total_amount) FROM trips_raw\n            QUALIFY row_number() OVER (PARTITION BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount ORDER BY row_id) = 1 ORDER BY pickup_at DESC, row_id DESC"
+  },
+  {
+    "name": "wrong (a): SELECT DISTINCT * keeps all 7,345 rows",
+    "fails": [
+      "row_count",
+      "trip_keys"
+    ],
+    "sql": "CREATE TABLE trips_clean AS SELECT DISTINCT * FROM trips_raw"
+  },
+  {
+    "name": "wrong (b): DISTINCT on the key columns only (columns missing)",
+    "fails": [
+      "columns",
+      "unchanged"
+    ],
+    "sql": "CREATE TABLE trips_clean AS SELECT DISTINCT vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount FROM trips_raw"
+  },
+  {
+    "name": "wrong (c): keep only keys that occur once (drops both copies: 6,997 rows)",
+    "fails": [
+      "row_count",
+      "trip_keys"
+    ],
+    "sql": "CREATE TABLE trips_clean AS SELECT * FROM trips_raw QUALIFY count(*) OVER (PARTITION BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount) = 1"
+  },
+  {
+    "name": "wrong (d): GROUP BY the key with sum(total_amount) (revenue column, others missing)",
+    "fails": [
+      "columns",
+      "unchanged"
+    ],
+    "sql": "CREATE TABLE trips_clean AS SELECT vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, sum(total_amount) AS total_amount FROM trips_raw GROUP BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, trips_raw.total_amount"
+  },
+  {
+    "name": "wrong (d, all columns kept): GROUP BY the key with sums: 7,171 rows and keys, but 174 rows changed",
+    "fails": [
+      "unchanged"
+    ],
+    "sql": "CREATE TABLE trips_clean AS\n            SELECT min(row_id) AS row_id, vendor_id, pickup_at, dropoff_at, any_value(passenger_count) AS passenger_count,\n                   any_value(trip_distance) AS trip_distance, pu_location_id, do_location_id, any_value(payment_type) AS payment_type,\n                   sum(fare_amount) AS fare_amount, sum(tip_amount) AS tip_amount, sum(trips_raw.total_amount) AS total_amount,\n                   min(loaded_at) AS loaded_at\n            FROM trips_raw GROUP BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, trips_raw.total_amount"
+  },
+  {
+    "name": "wrong (review focus): drop one row and repeat another, so the row count is right",
+    "fails": [
+      "unchanged",
+      "trip_keys"
+    ],
+    "sql": "CREATE TABLE trips_clean AS\n            WITH r AS (FROM trips_raw QUALIFY row_number() OVER (PARTITION BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount ORDER BY row_id) = 1)\n            SELECT * FROM r WHERE row_id <> (SELECT min(row_id) FROM r)\n            UNION ALL SELECT * FROM r WHERE row_id = (SELECT max(row_id) FROM r)"
+  }
+]

@@ -1,6 +1,7 @@
 // Independent learner and tutor DuckDB-WASM workers (pinned single-threaded eh bundle).
 // Only trusted floor assets and plant instructions enter the tutor worker; learner SQL never does.
 // Contract: docs/interfaces.md part 3. No function throws for SQL errors; they return { error }.
+import { FLOOR_IDS, validFloor, floorError } from '../../floors/catalog.js';
 import * as duckdb from '../../vendor/duckdb/duckdb-browser.mjs';
 import { cleanError, nativeReadPolicy, nativeStatements } from './sql.js';
 import {
@@ -24,8 +25,8 @@ let tutor = null; // lazily loaded independent worker: { adb, sys, tc, parser, b
 let assets = null; // { parquet, csv, refSql, dataset }
 let initPromise = null;
 let current = null;
-const floors = { 1: null, 2: null, 3: null }; // per floor: { log: [sql], lastQueries: [], history: [] }
-const plantedEver = { 1: new Set(), 2: new Set(), 3: new Set() };
+const floors = Object.fromEntries(FLOOR_IDS.map(n => [n, null])); // per floor: { log: [sql], lastQueries: [], history: [] }
+const plantedEver = Object.fromEntries(FLOOR_IDS.map(n => [n, new Set()]));
 let plants = []; // [{ row_id, kind }] on the current floor
 let nextPlantId = PLANT_ID_START;
 let plantSeq = 0;
@@ -76,17 +77,16 @@ async function fetchBytes(url) {
 }
 
 async function loadAssets() {
-  const text = async (name) => new TextDecoder().decode(await fetchBytes(new URL(`reference/${name}`, DATA)));
-  const [parquet, csv, r1, r2, r3] = await Promise.all([
+  const [parquet, csv, references] = await Promise.all([
     fetchBytes(new URL('trips_raw.parquet', DATA)), fetchBytes(new URL('taxi_zones.csv', DATA)),
-    text('floor1.sql'), text('floor2.sql'), text('floor3.sql'),
+    Promise.all(FLOOR_IDS.map(async n => [n, new TextDecoder().decode(await fetchBytes(new URL(FLOORS[n].reference, location.origin)))])),
   ]);
   let dataset = `trips_raw.parquet ${parquet.length} bytes`;
   try {
     const h = new Uint8Array(await crypto.subtle.digest('SHA-256', parquet));
     dataset = `sha256:${[...h].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16)}`;
   } catch { /* no SubtleCrypto outside a secure context */ }
-  return { parquet, csv, refSql: { 1: r1, 2: r2, 3: r3 }, dataset };
+  return { parquet, csv, refSql: Object.fromEntries(references), dataset };
 }
 
 async function runAll(conn, statements) {
@@ -124,7 +124,7 @@ async function startEngine(tutorFloor = null, created = () => {}) {
     if (tutorFloor) {
       await runAll(e.sys, [
         ...floorSetupSql(tutorFloor, TUTOR),
-        ...['_base', '_ref1', '_ref2', '_ref3'].map(s => `DROP SCHEMA ${s} CASCADE`),
+        ...[BASE, ...FLOOR_IDS.map(n => `_ref${n}`)].map(s => `DROP SCHEMA ${s} CASCADE`),
         `SET schema = ${qs(TUTOR)}`,
       ]);
     }
@@ -186,7 +186,7 @@ async function restartEngine(reason) {
   eng = null;
   try { old?.close(); } catch { /* already gone */ }
   eng = await startEngine();
-  const replay = [1, 2, 3].filter((n) => floors[n]);
+  const replay = FLOOR_IDS.filter((n) => floors[n]);
   for (const n of replay) await runAll(eng.sys, floorSetupSql(n, learner(n)));
   for (const n of replay) {
     await eng.lc.query(`SET schema = ${qs(learner(n))}`);
@@ -398,9 +398,9 @@ export function init() {
 
 /** Set up floor n (the learner's schema floorN once, the tutor's copy every time) and make it current. */
 export function loadFloor(n) {
-  if ([1,2,3].includes(n)) interruptTutor();
+  if (validFloor(n)) interruptTutor();
   return serial(async () => {
-    if (![1, 2, 3].includes(n)) return { ok: false, error: 'Floor must be 1, 2 or 3.' };
+    if (!validFloor(n)) return { ok: false, error: floorError() };
     try {
       await ensure();
       if (current !== n && plants.length) await removePlants(plants.map((p) => p.row_id));
@@ -420,9 +420,9 @@ export function loadFloor(n) {
 
 /** Rebuild floor n's tables from the start; the learner's work on that floor is gone. */
 export function restartFloor(n) {
-  if ([1,2,3].includes(n)) interruptTutor();
+  if (validFloor(n)) interruptTutor();
   return serial(async () => {
-    if (![1, 2, 3].includes(n)) return { ok: false, error: 'Floor must be 1, 2 or 3.' };
+    if (!validFloor(n)) return { ok: false, error: floorError() };
     try {
       await ensure();
       if (current === n) await removePlants(plants.map((p) => p.row_id));
@@ -479,7 +479,7 @@ export function query(sql, { timeoutMs = LIMITS.timeoutMs } = {}) {
 
 /** Full learner runs, oldest first; separate from the tutor's short three-query record. */
 export async function history(n = current) {
-  return [1, 2, 3].includes(n) ? (floors[n]?.history ?? []).map((entry) => ({ ...entry })) : [];
+  return validFloor(n) ? (floors[n]?.history ?? []).map((entry) => ({ ...entry })) : [];
 }
 
 /** Read only an active-floor table's columns and up to ten rows, without recording a run. */
@@ -668,9 +668,9 @@ export function undoExperiments() {
 
 /** Check floor n's output tables against the reference. Removes plants first. */
 export function check(n) {
-  if ([1,2,3].includes(n)) interruptTutor();
+  if (validFloor(n)) interruptTutor();
   return serial(async () => {
-    if (![1, 2, 3].includes(n)) return { pass: false, rules: [], error: 'Floor must be 1, 2 or 3.' };
+    if (!validFloor(n)) return { pass: false, rules: [], error: floorError() };
     try {
       await ensure();
       if (!floors[n]) return { pass: false, rules: [], error: `Floor ${n} is not loaded yet.` };

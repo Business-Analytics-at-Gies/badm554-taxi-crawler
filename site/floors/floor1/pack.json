@@ -1,0 +1,197 @@
+{
+  "id": 1,
+  "input": "trips_raw",
+  "given": {
+    "trips_raw": "_base.trips_raw",
+    "zones": "_base.zones"
+  },
+  "outputs": [
+    "trips_clean"
+  ],
+  "title": "Floor 1: The double shift",
+  "task": "Create trips_clean with exactly one row per trip key, and every column of trips_raw. A trip key is the set of columns that together identify one trip. Two trips that differ in any amount are different trips. row_id and loaded_at describe the load, not the trip.",
+  "dirt": "SELECT row_id, pu_location_id, do_location_id FROM trips_raw\nQUALIFY count(*) OVER (PARTITION BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount) > 1",
+  "guideTask": "Create trips_clean with exactly one row per trip key, and every column of trips_raw. A trip key is the set of columns that together identify one trip. Two trips that differ in any amount are different trips. row_id and loaded_at describe the load, not the trip.",
+  "card": "One day's load ran twice.",
+  "context": "The depot dashboard is overstating revenue because one delivery arrived twice. trips_raw holds every physical row in the incoming feed, including both copies, and zones names the locations. Keep one whole row per trip so the morning report counts each ride once.",
+  "refresher": [
+    {
+      "title": "Read, count and save a result",
+      "text": "SELECT chooses columns and FROM names a table. COUNT(*) counts rows. CREATE OR REPLACE TABLE ... AS saves a query result; rerunning it replaces the previous saved table.",
+      "sql": "CREATE OR REPLACE TABLE tiny AS\nSELECT * FROM (VALUES (1, 12), (2, 18)) AS rides(id, fare);\nSELECT count(*) FROM tiny;"
+    },
+    {
+      "title": "A key, grain and repeated groups",
+      "text": "Grain means what one row represents. A key is the set of columns that identifies one item at that grain. GROUP BY collects rows with the same key; HAVING filters the groups after counting. DISTINCT compares only the columns you select.",
+      "sql": "WITH deliveries(ride, fare) AS (VALUES (1, 12), (1, 12), (2, 18))\nSELECT ride, fare, count(*) FROM deliveries\nGROUP BY ride, fare HAVING count(*) > 1;"
+    },
+    {
+      "title": "Keep a whole row from each group",
+      "text": "ROW_NUMBER numbers rows inside each PARTITION BY group. ORDER BY chooses which copy comes first. QUALIFY filters the window result, so keeping number 1 preserves a whole row instead of adding its amounts.",
+      "sql": "WITH deliveries(ride, copy) AS (VALUES (1, 1), (1, 2), (2, 1))\nSELECT * FROM deliveries\nQUALIFY row_number() OVER (PARTITION BY ride ORDER BY copy) = 1;"
+    }
+  ],
+  "reviewLinks": [
+    {
+      "label": "M4I3 Grain: two ways grain goes wrong",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M4/I3/#two-ways-grain-goes-wrong"
+    },
+    {
+      "label": "M5I3 What a functional dependency is",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M5/I3/#what-a-functional-dependency-is"
+    },
+    {
+      "label": "M6I4 Run It Again",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M6/I4/"
+    },
+    {
+      "label": "M1I4 Anatomy of a Query",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M1/I4/"
+    },
+    {
+      "label": "M2I4 GROUP BY + Aggregate Functions",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M2/I4/"
+    }
+  ],
+  "summary": "1. The double shift: one day's load ran twice. 174 rows are second copies with a new row_id and a later loaded_at, so SELECT DISTINCT * does not remove them. A duplicate is defined by a trip key the analyst chooses. 7,345 rows in, 7,171 out.",
+  "map": {
+    "label": "rows in a duplicate group (doubled dot)",
+    "color": "#1e3a8a",
+    "double": true
+  },
+  "plant": {
+    "ordinary": "fare_amount > 0 AND dropoff_at > pickup_at AND trip_distance > 0\n  AND pickup_at >= TIMESTAMP '2024-01-01' AND pickup_at < TIMESTAMP '2024-02-01'\n  AND pu_location_id BETWEEN 1 AND 263 AND do_location_id BETWEEN 1 AND 263\n  AND loaded_at = TIMESTAMP '2024-02-01 06:00:00'\n  AND NOT (pickup_at >= TIMESTAMP '2024-01-15' AND pickup_at < TIMESTAMP '2024-01-16')",
+    "replacements": {
+      "duplicate": [
+        "TIMESTAMP '2024-02-01 07:20:00' AS loaded_at"
+      ],
+      "unmatched_zone": [
+        "0 AS do_location_id"
+      ],
+      "negative_fare": [
+        "-fare_amount AS fare_amount",
+        "-total_amount AS total_amount"
+      ],
+      "time_travel": [
+        "pickup_at - INTERVAL '7 minutes' AS dropoff_at"
+      ]
+    }
+  },
+  "tables": {
+    "trips_raw": [
+      {
+        "name": "row_id",
+        "type": "BIGINT",
+        "description": "Unique identifier for a physical row in the feed; load metadata, not a trip key."
+      },
+      {
+        "name": "vendor_id",
+        "type": "INTEGER",
+        "description": "Provider that recorded the trip."
+      },
+      {
+        "name": "pickup_at",
+        "type": "TIMESTAMP",
+        "description": "Pick-up date and time in local time, without a time zone."
+      },
+      {
+        "name": "dropoff_at",
+        "type": "TIMESTAMP",
+        "description": "Drop-off date and time in local time, without a time zone."
+      },
+      {
+        "name": "passenger_count",
+        "type": "BIGINT",
+        "description": "Reported number of passengers."
+      },
+      {
+        "name": "trip_distance",
+        "type": "DOUBLE",
+        "description": "Reported trip distance in miles."
+      },
+      {
+        "name": "pu_location_id",
+        "type": "INTEGER",
+        "description": "Pick-up location id, matched to zones.location_id."
+      },
+      {
+        "name": "do_location_id",
+        "type": "INTEGER",
+        "description": "Drop-off location id, matched to zones.location_id."
+      },
+      {
+        "name": "payment_type",
+        "type": "BIGINT",
+        "description": "Code for the reported payment method."
+      },
+      {
+        "name": "fare_amount",
+        "type": "DOUBLE",
+        "description": "Metered fare amount in dollars."
+      },
+      {
+        "name": "tip_amount",
+        "type": "DOUBLE",
+        "description": "Recorded tip amount in dollars."
+      },
+      {
+        "name": "total_amount",
+        "type": "DOUBLE",
+        "description": "Reported total trip amount in dollars."
+      },
+      {
+        "name": "loaded_at",
+        "type": "TIMESTAMP",
+        "description": "When the physical row was loaded; load metadata, not a trip key."
+      }
+    ],
+    "zones": [
+      {
+        "name": "location_id",
+        "type": "BIGINT",
+        "description": "Location id used to match a trip location."
+      },
+      {
+        "name": "borough",
+        "type": "VARCHAR",
+        "description": "Borough reported for the location."
+      },
+      {
+        "name": "zone",
+        "type": "VARCHAR",
+        "description": "Name of the location."
+      },
+      {
+        "name": "service_zone",
+        "type": "VARCHAR",
+        "description": "Service area reported for the location."
+      }
+    ]
+  },
+  "rulesText": "## Floor 1: The double shift (duplicates)\n\n- **Tables given:** `trips_raw`, `zones`.\n- **The dirt (planted):** the load for pickups on 2024-01-15 ran twice. The 174 second copies have\n  new `row_id` values and `loaded_at = 2024-02-01 06:40`. So `SELECT DISTINCT *` removes nothing.\n- **Trip key:** `(vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount)`.\n  In the full January file this key has no duplicates (checked: 0 duplicate groups in 2,964,624 rows).\n- **Task:** create `trips_clean` with exactly one row per trip key, every column of `trips_raw`.\n- **Expected:** 7,345 rows in, 7,171 out. Revenue (`sum(total_amount)`) 197,977.97 in, 193,403.10 out.\n- **Pass:** `trips_clean` has the columns of `trips_raw` (any order, extra columns not allowed);\n  every row in it is an unchanged row of `trips_raw` (multiset check on all columns);\n  7,171 rows; 7,171 distinct trip keys. Which copy survives does not matter.\n- **Aha line:** a duplicate is defined by a key you choose, not by \"every column equal\". Count before, count after, and explain the difference (174 = the rerun).\n\n",
+  "emblem": "/learn/img/floor1.svg",
+  "tripKey": [
+    "vendor_id",
+    "pickup_at",
+    "dropoff_at",
+    "pu_location_id",
+    "do_location_id",
+    "total_amount"
+  ],
+  "aboutData": {
+    "description": "These are NYC Taxi and Limousine Commission yellow taxi trip records for January 2024, with a location lookup and the game's teaching changes.",
+    "loadMetadata": "row_id and loaded_at describe the load, not the trip.",
+    "locations": "Location 264 means Unknown (zone N/A); 265 means Outside of NYC.",
+    "renames": "The game renames columns, for example tpep_pickup_datetime becomes pickup_at, and adds row_id and loaded_at. Use the game's column list above when writing your SQL.",
+    "sources": [
+      {
+        "label": "NYC TLC trip records",
+        "url": "https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page"
+      },
+      {
+        "label": "Yellow taxi data dictionary (PDF)",
+        "url": "https://www.nyc.gov/assets/tlc/downloads/pdf/data_dictionary_trip_records_yellow.pdf"
+      }
+    ]
+  }
+}

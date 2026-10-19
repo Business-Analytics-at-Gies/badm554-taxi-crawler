@@ -1,0 +1,108 @@
+  <section class="room" id="room-floor3" data-room="floor3" data-title="Floor 3: Impossible rides" aria-labelledby="h-floor3">
+    <h2 id="h-floor3">Floor 3: Impossible rides</h2>
+    <p class="cleared" data-cleared-floor="3" hidden>Cleared</p>
+    <article class="slide" id="f3-task" data-title="Impossible rides" aria-labelledby="h-f3-task">
+      <h3 id="h-f3-task">Impossible rides</h3>
+      {{context}}
+      {{refresher}}
+      <div class="lv" data-lv="1">
+        <p>Some rides in the feed cannot have happened: a negative fare, a drop-off before the pick-up, a pick-up outside January, or a trip of zero miles with a big fare. These are real rows, as TLC published them.</p>
+        {{task}}
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>You get <code>trips</code> (zone labels already added, 7,171 rows, with <code>zone_flag</code>) and <code>zones</code>. <code>quarantine</code> has every column of <code>trips</code> plus <code>reason</code>. <code>trips_clean</code> has the columns of <code>trips</code>.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT min(pickup_at), max(pickup_at), min(fare_amount)
+FROM trips;</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f3-rules" data-title="Four range rules" aria-labelledby="h-f3-rules">
+      <h3 id="h-f3-rules">Four range rules</h3>
+      <div class="lv" data-lv="1">
+        <p>Write one rule per problem. Count each rule on its own before you combine them.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>The rules, in this order:</p>
+        <ol>
+          <li><code>negative_fare</code>: <code>fare_amount &lt; 0</code></li>
+          <li><code>time_travel</code>: <code>dropoff_at &lt; pickup_at</code></li>
+          <li><code>outside_january</code>: the pick-up is before 1 January 2024, or on or after 1 February 2024</li>
+          <li><code>zero_distance_high_fare</code>: <code>trip_distance = 0</code> and <code>fare_amount &gt;= 50</code></li>
+        </ol>
+        <p>These four columns have no NULLs. <code>zone_flag</code> is not a quarantine reason.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT
+  count(*) FILTER (WHERE fare_amount &lt; 0) AS negative_fare,
+  count(*) FILTER (WHERE dropoff_at &lt; pickup_at) AS time_travel,
+  count(*) FILTER (WHERE pickup_at &lt; TIMESTAMP '2024-01-01'
+                      OR pickup_at &gt;= TIMESTAMP '2024-02-01') AS outside_january,
+  count(*) FILTER (WHERE trip_distance = 0
+                     AND fare_amount &gt;= 50) AS zero_distance_high_fare
+FROM trips;</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f3-first" data-title="The first rule wins" aria-labelledby="h-f3-first">
+      <h3 id="h-f3-first">The first rule wins</h3>
+      <div class="lv" data-lv="1">
+        <p>One row fails two rules. It goes to quarantine once, with the first reason it fails.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>If you stack the four rules with <code>UNION ALL</code> and do not exclude earlier rules, that row appears twice: 217 rows instead of 216. A <code>CASE</code> tests the rules in order and stops at the first match.</p>
+        <p>Watch the January bound: <code>pickup_at &lt;= '2024-01-31'</code> loses every trip on 31 January after midnight.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>CASE WHEN fare_amount &lt; 0 THEN 'negative_fare'
+     WHEN dropoff_at &lt; pickup_at THEN 'time_travel'
+     WHEN /* outside January */ THEN 'outside_january'
+     WHEN /* zero miles, fare of 50 or more */ THEN 'zero_distance_high_fare'
+END AS reason  -- NULL: the row passes every rule</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f3-quarantine" data-title="Quarantine, do not delete" aria-labelledby="h-f3-quarantine">
+      <h3 id="h-f3-quarantine">Quarantine, do not delete</h3>
+      <div class="lv" data-lv="1">
+        <p>Do not delete what you cannot explain. A quarantine table keeps the failing rows and the reason, so someone can check them later.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>A <code>DELETE</code> leaves no record of what was removed or why. With a quarantine table, every row is in exactly one place: <code>trips_clean</code> or <code>quarantine</code>.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>CREATE OR REPLACE TABLE quarantine AS
+SELECT *, /* your CASE */ AS reason
+FROM trips
+WHERE /* the row fails a rule */;
+
+CREATE OR REPLACE TABLE trips_clean AS
+SELECT * FROM trips
+WHERE row_id NOT IN (SELECT row_id FROM quarantine);</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f3-reconcile" data-title="Clean plus quarantine equals raw" aria-labelledby="h-f3-reconcile">
+      <h3 id="h-f3-reconcile">Clean plus quarantine equals raw</h3>
+      <div class="lv" data-lv="1">
+        <p>6,955 clean rows plus 216 quarantined rows make 7,171. If your two counts do not add up to the count you started with, a row is lost or counted twice.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>By reason: negative_fare 132, zero_distance_high_fare 47, time_travel 20, outside_january 17.</p>
+        <p>The check passes when the two tables share no <code>row_id</code>, together hold all 7,171 <code>row_id</code> values of <code>trips</code>, and <code>quarantine</code> has the expected <code>(row_id, reason)</code> pairs.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT (SELECT count(*) FROM trips_clean) AS clean,
+       (SELECT count(*) FROM quarantine)  AS quarantined,
+       (SELECT count(*) FROM trips)       AS raw;</code></pre>
+      </div>
+    </article>
+    <p class="room-play js-only"><button type="button" class="play" data-floor="3">Play this floor</button></p>
+  </section>

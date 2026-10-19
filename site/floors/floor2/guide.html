@@ -1,0 +1,108 @@
+  <section class="room" id="room-floor2" data-room="floor2" data-title="Floor 2: Nowhere zones" aria-labelledby="h-floor2">
+    <h2 id="h-floor2">Floor 2: Nowhere zones</h2>
+    <p class="cleared" data-cleared-floor="2" hidden>Cleared</p>
+    <article class="slide" id="f2-task" data-title="Trips to nowhere" aria-labelledby="h-f2-task">
+      <h3 id="h-f2-task">Trips to nowhere</h3>
+      {{context}}
+      {{refresher}}
+      <div class="lv" data-lv="1">
+        <p>Some trips start or end in a zone that is not a real place on the map. If you join to the zone lookup the wrong way, those trips vanish without an error.</p>
+        {{task}}
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>You get <code>trips</code> (rerun copies already removed, 7,171 rows) and <code>zones</code> (265 rows). <code>pu_zone</code> and <code>do_zone</code> are the zone names from <code>zones</code>, or NULL when there is no match.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT * FROM zones WHERE location_id IN (264, 265);</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f2-kinds" data-title="Three kinds of nowhere" aria-labelledby="h-f2-kinds">
+      <h3 id="h-f2-kinds">Three kinds of nowhere</h3>
+      <div class="lv" data-lv="1">
+        <ul>
+          <li>Zone 264 is "Unknown". The lookup has it, but it names no place.</li>
+          <li>Zone 265 is "Outside of NYC". It is a real place, outside the zone map.</li>
+          <li>Some drop-off ids are 0 or NULL. They match nothing in the lookup.</li>
+        </ul>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>110 trips touch zone 264, and 74 touch zone 265. These are real TLC rows. 25 trips have a drop-off id that matches nothing: 15 are 0 and 10 are NULL. These are planted for the game.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT do_location_id, count(*) AS trips
+FROM trips
+WHERE do_location_id IS NULL
+   OR do_location_id NOT IN (SELECT location_id FROM zones)
+GROUP BY do_location_id;</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f2-join" data-title="A join can drop rows" aria-labelledby="h-f2-join">
+      <h3 id="h-f2-join">A join can drop rows</h3>
+      <div class="lv" data-lv="1">
+        <p>An inner join keeps only rows that match on both sides. The trips with no matching drop-off zone disappear, and nothing warns you.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>With an inner join on both ids, 7,171 trips become 7,146. A <code>LEFT JOIN</code> keeps every trip and puts NULL where there is no match.</p>
+        <p>An anti-join (a <code>LEFT JOIN</code> where the lookup side IS NULL) lists the rows that match nothing. It cannot find zone 264, because 264 is in the lookup.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT count(*) FROM trips t
+JOIN zones pz ON pz.location_id = t.pu_location_id
+JOIN zones dz ON dz.location_id = t.do_location_id;  -- 7,146
+
+SELECT t.row_id, t.do_location_id
+FROM trips t
+LEFT JOIN zones dz ON dz.location_id = t.do_location_id
+WHERE dz.location_id IS NULL;  -- the 25 that match nothing</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f2-flag" data-title="Flag, do not delete" aria-labelledby="h-f2-flag">
+      <h3 id="h-f2-flag">Flag, do not delete</h3>
+      <div class="lv" data-lv="1">
+        <p>Keep every row, and add a flag that says what is wrong. Someone later can choose what to do with it. A deleted row cannot be explained later.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p><code>zone_flag</code> takes the first rule that applies, in this order:</p>
+        <ol>
+          <li><code>'unmatched'</code>: either id is NULL or not in <code>zones</code>;</li>
+          <li><code>'unknown'</code>: either id is 264;</li>
+          <li><code>'outside_nyc'</code>: either id is 265;</li>
+          <li><code>'ok'</code>.</li>
+        </ol>
+        <p>The order matters: test <code>'unmatched'</code> first.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>CASE WHEN /* a pickup or drop-off with no match */ THEN 'unmatched'
+     WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'
+     WHEN /* ... 265 ... */ THEN 'outside_nyc'
+     ELSE 'ok' END AS zone_flag</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f2-reconcile" data-title="Count before and after" aria-labelledby="h-f2-reconcile">
+      <h3 id="h-f2-reconcile">Count before and after</h3>
+      <div class="lv" data-lv="1">
+        <p>7,171 rows in, 7,171 rows out. No row is lost, and each one carries a flag.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>Flags: ok 6,962, unknown 110, outside_nyc 74, unmatched 25. Together they make 7,171.</p>
+        <p>The check passes when <code>trips_clean</code> has 7,171 rows, keeps every column of <code>trips</code> unchanged, and has the expected <code>(row_id, pu_zone, do_zone, zone_flag)</code> values.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT zone_flag, count(*) AS trips
+FROM trips_clean
+GROUP BY zone_flag
+ORDER BY trips DESC;</code></pre>
+      </div>
+    </article>
+    <p class="room-play js-only"><button type="button" class="play" data-floor="2">Play this floor</button></p>
+  </section>

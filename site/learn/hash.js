@@ -1,6 +1,7 @@
 // The one owner of the current URL hash. Patch known settings while preserving future keys.
 // Contract: docs/v2/stage0-contract.md, 0.1. No controls or layout behavior live here.
-export const ROOMS = Object.freeze(['map', 'floor1', 'floor2', 'floor3']);
+import { ROOMS } from '/floors/catalog.js';
+export { ROOMS };
 const KEYS = { room: 'room', slide: 'slide', level: 'lv', help: 'help', panel: 'panel', width: 'width' };
 const choice = (value, values, fallback) => values.includes(value) ? value : fallback;
 

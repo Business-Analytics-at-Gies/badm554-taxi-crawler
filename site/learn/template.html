@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Taxi Crawler · BADM 554</title>
+<link rel="stylesheet" href="/learn/learn.css">
+<script>document.documentElement.classList.add('js');</script>
+<script type="module" src="/learn/app.js"></script>
+</head>
+<body>
+<a class="skip" href="#guide-body">Skip to the guide</a>
+<header class="top">
+  <p class="brand"><span class="brand-name">Taxi Crawler</span> <span class="brand-sub">BADM 554 · a data quality game</span></p>
+  <button type="button" id="tutor-toggle" class="top-btn js-only" aria-controls="tutor" aria-expanded="true">Hide tutor</button>
+</header>
+<noscript><p class="noscript">The game and the tutor need JavaScript. You can still read the guide below.</p></noscript>
+<div class="tabs js-only" role="tablist" aria-label="Panels">
+  <button type="button" role="tab" id="tab-guide" aria-controls="guide" aria-selected="false" tabindex="-1">Guide<span class="badge" hidden> (changed)</span></button>
+  <button type="button" role="tab" id="tab-game" aria-controls="gamepane" aria-selected="false" tabindex="-1">Game<span class="badge" hidden> (changed)</span></button>
+  <button type="button" role="tab" id="tab-tutor" aria-controls="tutor" aria-selected="true" tabindex="0">Tutor</button>
+</div>
+<main class="layout" id="layout">
+
+<section id="guide" class="panel guide" data-level="1" aria-label="Guide">
+  <div class="guide-bar js-only">
+    <nav aria-label="Rooms">
+      <ul class="rooms">
+        <li><a href="#room=map" data-room="map">Depot</a></li>
+{{floorNav}}
+      </ul>
+    </nav>
+    <fieldset id="level-picker" class="level-picker" aria-describedby="level-help">
+      <legend>Detail level</legend>
+      <label><input type="radio" name="lv" value="1" checked> Lv 1 <span class="lv-name">Big idea</span></label>
+      <label><input type="radio" name="lv" value="2"> Lv 2 <span class="lv-name">How the check works</span></label>
+      <label><input type="radio" name="lv" value="3"> Lv 3 <span class="lv-name">The real SQL</span></label>
+    </fieldset>
+    <p id="level-help" class="level-help">Pick how deep the guide and the tutor go. You can change it any time.</p>
+  </div>
+
+  <div id="guide-body" class="guide-body" tabindex="-1">
+
+  <section class="room" id="room-map" data-room="map" data-title="The depot" aria-labelledby="h-map">
+    <h2 id="h-map">The depot</h2>
+    <picture class="hero-pic"><source srcset="/learn/img/depot-hero-still.svg" media="(prefers-reduced-motion: reduce)"><img class="hero-art" src="/learn/img/depot-hero.svg" alt="" aria-hidden="true" width="1200" height="340" decoding="async"></picture>
+    <article class="slide" id="overview" data-title="Three shifts, three problems" aria-labelledby="h-overview">
+      <h3 id="h-overview">Three shifts, three problems</h3>
+      <div class="lv" data-lv="1">
+        <p>You are the night analyst at a taxi depot. The trip feed for January 2024 has come in, and the dashboard says revenue is up.</p>
+        <p>Before the morning report, you check the feed. There are three shifts and three problems. Each floor is one problem.</p>
+        <p class="habit">Every floor ends on one habit: <strong>say the row count before and after, and make them reconcile.</strong></p>
+      </div>
+      <p>Each floor has slides at three levels. Lv 1 gives the big idea, Lv 2 shows how the check works, Lv 3 shows the real SQL. Start at Lv 1, and switch to Lv 3 when you want to see the code. The tutor follows the level you pick. Use the <a href="#level-picker">Detail level</a> picker above to change levels.</p>
+      <p><strong>To play:</strong> press <strong>Start floor</strong> on a card. It opens that floor's slides here and the game next to them. The Floor 1, Floor 2 and Floor 3 tabs above only show the slides.</p>
+      <p>On a phone, use the Guide, Game and Tutor tabs to choose a view. Scroll the page to reach the SQL box and results in the Game view, or the question box in the Tutor view.</p>
+{{floorCards}}
+{{aboutData}}
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>Each floor gives you tables in an SQL console. The console runs DuckDB inside your browser. You write SQL that creates the tables the floor asks for. Then you press <strong>Check</strong>.</p>
+        <p>The check compares your tables with the expected result, row by row, not only the counts. Floor 2 starts from a correct floor 1 result, and floor 3 from a correct floor 2 result. So you always start a floor clean.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <p>The data is 7,345 yellow taxi trips from January 2024, published by the NYC TLC, and the zone lookup with 265 zones. Some dirt is real, as TLC published it. Some is planted for the game: the duplicate load, and 25 drop-off ids that are 0 or empty. Ask the tutor which is which.</p>
+        <pre><code>SELECT count(*) FROM trips_raw;
+SELECT * FROM zones LIMIT 5;</code></pre>
+      </div>
+      <div class="credit">
+        <h4>Extra credit</h4>
+        <p>1% extra credit for clearing all three floors <strong>and</strong> filing one improvement. Each floor you clear gives you a code. Then <a href="https://github.com/Business-Analytics-at-Gies/badm554-taxi-crawler/issues/new?template=improvement.yml" target="_blank" rel="noopener">suggest one improvement as a GitHub issue</a> (the repository is public, so leave out anything personal). Paste your three codes and the link to your issue into the Canvas assignment by 7:00 PM CDT Saturday.</p>
+        <p>The tutor on the side sees the guide and the game. It can light up rows on the map and run queries on its own copy of the data. Your messages to the tutor go to Anthropic's API. Do not type personal information.</p>
+      </div>
+    </article>
+  </section>
+
+{{floorRooms}}
+
+
+
+
+
+  </div>
+</section>
+
+<section id="gamepane" class="panel gamepane" aria-labelledby="game-h">
+  <div class="game-bar">
+    <h2 id="game-h">Game window</h2>
+    <button type="button" id="game-close" class="small-btn">Close game</button>
+  </div>
+  <div id="game-slot" class="game-slot">
+    <div class="game-empty" id="game-empty">
+      <p>The game is not open.</p>
+      <p><button type="button" class="play" data-floor="1">Start floor 1</button></p>
+    </div>
+  </div>
+</section>
+
+<aside id="tutor" class="panel tutor" aria-labelledby="tutor-h">
+  <div class="tutor-head">
+    <img class="tutor-avatar" src="/learn/img/tutor.svg" alt="" aria-hidden="true" width="32" height="32" decoding="async">
+    <h2 id="tutor-h">Tutor</h2>
+    <p id="tutor-status" class="tutor-status" role="status"></p>
+  </div>
+  <div id="tutor-log" class="tutor-log" role="log" aria-live="polite" aria-label="Conversation with the tutor" tabindex="0">
+    <div class="msg msg-tutor greeting">
+      <p class="who">Tutor</p>
+      <div class="body">
+        <p>Hi. I am the tutor for Taxi Crawler. I can see the guide and the game. I can light up rows on the map and run queries on my own copy of the data.</p>
+        <p>Use the Detail level picker (Lv 1 to 3) to choose how deep I go.</p>
+        <p class="notice"><strong>Your messages to the tutor go to Anthropic's API. Do not type personal information.</strong></p>
+        <p>Where would you like to start: the story of the depot, or floor 1?</p>
+      </div>
+    </div>
+  </div>
+  <p id="tutor-thinking" class="thinking" hidden>The tutor is thinking…</p>
+  <form id="join-form" class="join-form" hidden>
+    <p>Sign in to use the tutor and get completion codes.</p>
+    <label for="join-code">Class code</label>
+    <div class="form-row"><input id="join-code" name="code" autocomplete="off" required><button type="submit">Join</button></div>
+    <p id="join-error" class="error" role="alert"></p>
+  </form>
+  <form id="tutor-form" class="tutor-form js-only">
+    <label for="tutor-input">Ask the tutor</label>
+    <textarea id="tutor-input" rows="3" maxlength="1500" aria-describedby="tutor-help"></textarea>
+    <div class="form-row">
+      <span id="tutor-help" class="help"><span id="tutor-count">0 / 1500</span>. Enter sends; Shift+Enter adds a line.</span>
+      <button type="submit" id="tutor-send">Send</button>
+    </div>
+  </form>
+  <div class="tutor-foot js-only">
+    <button type="button" id="forget" class="link-btn">Forget me</button>
+  </div>
+</aside>
+
+</main>
+</body>
+</html>

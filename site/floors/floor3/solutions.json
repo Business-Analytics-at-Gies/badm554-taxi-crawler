@@ -1,0 +1,45 @@
+[
+  {
+    "name": "valid (a): the reference",
+    "fails": [],
+    "sql": "-- Floor 3 reference. Input: trips (floor 2's reference output). Rules in order; a row gets the first reason it fails.\nCREATE OR REPLACE TABLE checked AS\nSELECT *, CASE WHEN fare_amount < 0 THEN 'negative_fare'\n               WHEN dropoff_at < pickup_at THEN 'time_travel'\n               WHEN pickup_at < TIMESTAMP '2024-01-01' OR pickup_at >= TIMESTAMP '2024-02-01' THEN 'outside_january'\n               WHEN trip_distance = 0 AND fare_amount >= 50 THEN 'zero_distance_high_fare'\n          END AS reason\nFROM trips;\nCREATE OR REPLACE TABLE quarantine AS SELECT * FROM checked WHERE reason IS NOT NULL;\nCREATE OR REPLACE TABLE trips_clean AS SELECT * EXCLUDE (reason) FROM checked WHERE reason IS NULL;\nDROP TABLE checked;\n"
+  },
+  {
+    "name": "valid (b): UNION ALL of four SELECTs, each excluding earlier rules; trips_clean as an anti-join",
+    "fails": [],
+    "sql": "CREATE OR REPLACE TABLE quarantine AS\n            SELECT *, 'negative_fare' AS reason FROM trips WHERE fare_amount < 0\n            UNION ALL SELECT *, 'time_travel' FROM trips WHERE dropoff_at < pickup_at AND NOT fare_amount < 0\n            UNION ALL SELECT *, 'outside_january' FROM trips\n              WHERE (pickup_at < TIMESTAMP '2024-01-01' OR pickup_at >= TIMESTAMP '2024-02-01') AND NOT fare_amount < 0 AND NOT dropoff_at < pickup_at\n            UNION ALL SELECT *, 'zero_distance_high_fare' FROM trips\n              WHERE trip_distance = 0 AND fare_amount >= 50 AND NOT fare_amount < 0 AND NOT dropoff_at < pickup_at\n                AND NOT (pickup_at < TIMESTAMP '2024-01-01' OR pickup_at >= TIMESTAMP '2024-02-01');\n            CREATE OR REPLACE TABLE trips_clean AS SELECT t.* FROM trips t ANTI JOIN quarantine q ON q.row_id = t.row_id;"
+  },
+  {
+    "name": "wrong (a): DELETE the failing rows, no quarantine table",
+    "fails": [
+      "quarantine_exists",
+      "columns",
+      "no_overlap",
+      "partition",
+      "reasons"
+    ],
+    "sql": "CREATE OR REPLACE TABLE trips_clean AS SELECT * FROM trips;\n            DELETE FROM trips_clean WHERE fare_amount < 0 OR dropoff_at < pickup_at\n              OR pickup_at < TIMESTAMP '2024-01-01' OR pickup_at >= TIMESTAMP '2024-02-01' OR (trip_distance = 0 AND fare_amount >= 50);"
+  },
+  {
+    "name": "wrong (b): UNION ALL of the four rules with no exclusion (217 rows)",
+    "fails": [
+      "partition",
+      "reasons"
+    ],
+    "sql": "CREATE OR REPLACE TABLE quarantine AS\n            SELECT *, 'negative_fare' AS reason FROM trips WHERE fare_amount < 0\n            UNION ALL SELECT *, 'time_travel' FROM trips WHERE dropoff_at < pickup_at\n            UNION ALL SELECT *, 'outside_january' FROM trips WHERE pickup_at < TIMESTAMP '2024-01-01' OR pickup_at >= TIMESTAMP '2024-02-01'\n            UNION ALL SELECT *, 'zero_distance_high_fare' FROM trips WHERE trip_distance = 0 AND fare_amount >= 50;\n            CREATE OR REPLACE TABLE trips_clean AS SELECT t.* FROM trips t ANTI JOIN quarantine q ON q.row_id = t.row_id;"
+  },
+  {
+    "name": "wrong (c): January tested as pickup_at <= TIMESTAMP '2024-01-31' (loses January 31)",
+    "fails": [
+      "reasons"
+    ],
+    "sql": "-- Floor 3 reference. Input: trips (floor 2's reference output). Rules in order; a row gets the first reason it fails.\nCREATE OR REPLACE TABLE checked AS\nSELECT *, CASE WHEN fare_amount < 0 THEN 'negative_fare'\n               WHEN dropoff_at < pickup_at THEN 'time_travel'\n               WHEN NOT (pickup_at >= TIMESTAMP '2024-01-01' AND pickup_at <= TIMESTAMP '2024-01-31') THEN 'outside_january'\n               WHEN trip_distance = 0 AND fare_amount >= 50 THEN 'zero_distance_high_fare'\n          END AS reason\nFROM trips;\nCREATE OR REPLACE TABLE quarantine AS SELECT * FROM checked WHERE reason IS NOT NULL;\nCREATE OR REPLACE TABLE trips_clean AS SELECT * EXCLUDE (reason) FROM checked WHERE reason IS NULL;\nDROP TABLE checked;\n"
+  },
+  {
+    "name": "wrong (d): the last failing rule as the reason instead of the first",
+    "fails": [
+      "reasons"
+    ],
+    "sql": "CREATE OR REPLACE TABLE checked AS\n            SELECT *, CASE WHEN trip_distance = 0 AND fare_amount >= 50 THEN 'zero_distance_high_fare'\n                           WHEN pickup_at < TIMESTAMP '2024-01-01' OR pickup_at >= TIMESTAMP '2024-02-01' THEN 'outside_january'\n                           WHEN dropoff_at < pickup_at THEN 'time_travel'\n                           WHEN fare_amount < 0 THEN 'negative_fare' END AS reason\n            FROM trips;\n            CREATE OR REPLACE TABLE quarantine AS SELECT * FROM checked WHERE reason IS NOT NULL;\n            CREATE OR REPLACE TABLE trips_clean AS SELECT * EXCLUDE (reason) FROM checked WHERE reason IS NULL;\n            DROP TABLE checked;"
+  }
+]

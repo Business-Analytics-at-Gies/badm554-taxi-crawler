@@ -1,0 +1,97 @@
+  <section class="room" id="room-floor1" data-room="floor1" data-title="Floor 1: The double shift" aria-labelledby="h-floor1">
+    <h2 id="h-floor1">Floor 1: The double shift</h2>
+    <p class="cleared" data-cleared-floor="1" hidden>Cleared</p>
+    <article class="slide" id="f1-task" data-title="The feed came in twice" aria-labelledby="h-f1-task">
+      <h3 id="h-f1-task">The feed came in twice</h3>
+      {{context}}
+      {{refresher}}
+      <div class="lv" data-lv="1">
+        <p>The load for trips picked up on 15 January ran twice. Every trip from that day is in the table two times. So revenue looks higher than it was.</p>
+        {{task}}
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>You get two tables: <code>trips_raw</code> (7,345 rows) and <code>zones</code> (265 rows). <code>trips_clean</code> must keep every column of <code>trips_raw</code>, add no columns, and change no values.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT count(*) FROM trips_raw;
+
+SELECT loaded_at, count(*) AS rows
+FROM trips_raw
+GROUP BY loaded_at
+ORDER BY loaded_at;</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f1-distinct" data-title="Why DISTINCT finds nothing" aria-labelledby="h-f1-distinct">
+      <h3 id="h-f1-distinct">Why DISTINCT finds nothing</h3>
+      <div class="lv" data-lv="1">
+        <p><code>SELECT DISTINCT</code> removes rows that are equal in every column. The second copies are not equal: each one has a new <code>row_id</code> and a later <code>loaded_at</code>. So <code>DISTINCT</code> removes nothing.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>A row can be a copy even when some columns differ. Columns added by the load, like <code>row_id</code> and <code>loaded_at</code>, say how the row arrived. They do not say which trip it is.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT count(*)
+FROM (SELECT DISTINCT * FROM trips_raw);  -- still 7,345</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f1-key" data-title="Choose a trip key" aria-labelledby="h-f1-key">
+      <h3 id="h-f1-key">Choose a trip key</h3>
+      <div class="lv" data-lv="1">
+        <p>A duplicate is defined by a key you choose: the columns that together name one trip. Two rows with the same key are the same trip.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>In this game the trip key is <code>vendor_id</code>, <code>pickup_at</code>, <code>dropoff_at</code>, <code>pu_location_id</code>, <code>do_location_id</code> and <code>total_amount</code>. In the full January file, this key has no duplicates.</p>
+        <p>The check: count the rows, then count the distinct keys. If the two counts differ, the table has copies.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT count(*) AS rows FROM trips_raw;
+
+SELECT count(*) AS trips
+FROM (SELECT DISTINCT vendor_id, pickup_at, dropoff_at,
+                      pu_location_id, do_location_id, total_amount
+      FROM trips_raw);</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f1-fix" data-title="Keep one row per key" aria-labelledby="h-f1-fix">
+      <h3 id="h-f1-fix">Keep one row per key</h3>
+      <div class="lv" data-lv="1">
+        <p>Number the rows inside each key, and keep row number 1. Which copy survives does not matter, as long as each trip appears once.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>Do not keep only the keys that occur once: that drops both copies. Do not add up the copies with <code>GROUP BY</code>: the revenue stays doubled, and columns go missing.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>CREATE OR REPLACE TABLE trips_clean AS
+SELECT * FROM trips_raw
+QUALIFY row_number() OVER (
+  PARTITION BY /* your trip key */
+  ORDER BY row_id) = 1;</code></pre>
+      </div>
+    </article>
+    <article class="slide" id="f1-reconcile" data-title="Count before and after" aria-labelledby="h-f1-reconcile">
+      <h3 id="h-f1-reconcile">Count before and after</h3>
+      <div class="lv" data-lv="1">
+        <p>Say the count before and after, and explain the difference. Before: 7,345 rows. After: 7,171 rows. The difference, 174, is the rerun.</p>
+      </div>
+      <div class="lv" data-lv="2">
+        <p class="lv-tag">Lv 2 · How the check works</p>
+        <p>The check passes when <code>trips_clean</code> has the columns of <code>trips_raw</code> and no others, every row is an unchanged row of <code>trips_raw</code>, and it has 7,171 rows and 7,171 distinct trip keys.</p>
+        <p>Revenue (<code>sum(total_amount)</code>): 197,977.97 before, 193,403.10 after.</p>
+      </div>
+      <div class="lv" data-lv="3">
+        <p class="lv-tag">Lv 3 · The real SQL</p>
+        <pre><code>SELECT count(*) AS rows,
+       round(sum(total_amount), 2) AS revenue
+FROM trips_clean;</code></pre>
+      </div>
+    </article>
+    <p class="room-play js-only"><button type="button" class="play" data-floor="1">Play this floor</button></p>
+  </section>

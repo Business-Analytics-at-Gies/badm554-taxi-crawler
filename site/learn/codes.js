@@ -1,12 +1,13 @@
+import { FLOOR_IDS, validFloor } from '/floors/catalog.js';
 // Per-viewer convenience only: saved codes are not proof of the current sign-in's progress.
 export const CODES_KEY = 'tc.codes';
-export const validCode = (floor, code) => [1, 2, 3].includes(Number(floor)) &&
+export const validCode = (floor, code) => validFloor(Number(floor)) &&
   typeof code === 'string' && new RegExp(`^TAXI-${Number(floor)}-[A-Z]{8}$`).test(code);
 
 function cleanCodes(value) {
   const codes = {};
   if (!value || typeof value !== 'object' || Array.isArray(value)) return codes;
-  for (const floor of [1, 2, 3]) if (validCode(floor, value[floor])) codes[floor] = value[floor];
+  for (const floor of FLOOR_IDS) if (validCode(floor, value[floor])) codes[floor] = value[floor];
   return codes;
 }
 export function readCodes() {

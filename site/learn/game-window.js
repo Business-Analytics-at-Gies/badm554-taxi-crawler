@@ -1,3 +1,4 @@
+import { validFloor, FLOOR_IDS, floorError } from '/floors/catalog.js';
 // The game window: one long-lived iframe of /game/, created on first open and hidden on close, so
 // the SQL worker and the learner's tables survive moving between rooms.
 export function createGameWindow({ onEvent = () => {}, onToggle = () => {} } = {}) {
@@ -57,8 +58,8 @@ export function createGameWindow({ onEvent = () => {}, onToggle = () => {} } = {
     iframe.title = `Game window: floor ${n}`;
   }
 
-  async function show(n = floor || 1) {
-    if (![1, 2, 3].includes(n)) throw new Error('floor must be 1, 2 or 3');
+  async function show(n = floor || FLOOR_IDS[0]) {
+    if (!validFloor(n)) throw new Error(floorError());
     if (!iframe) create(n);
     open = true;
     document.body.classList.add('game-open');

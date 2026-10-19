@@ -1,0 +1,79 @@
+{
+  "id": 2,
+  "input": "trips",
+  "given": {
+    "trips": "_ref1.trips_clean",
+    "zones": "_base.zones"
+  },
+  "outputs": [
+    "trips_clean"
+  ],
+  "title": "Floor 2: Nowhere zones",
+  "task": "Create trips_clean with every row of trips, plus three columns:\n- pu_zone and do_zone: the zone name from zones (NULL when there is no match)\n- zone_flag: the first label that applies, checking both pu_location_id and do_location_id:\n  1. 'unmatched' if either id is NULL or not in zones\n  2. 'unknown' if either id is 264\n  3. 'outside_nyc' if either id is 265\n  4. 'ok' otherwise",
+  "dirt": "SELECT row_id, pu_location_id, do_location_id FROM trips\nWHERE pu_location_id IS NULL OR do_location_id IS NULL OR pu_location_id IN (264, 265) OR do_location_id IN (264, 265)\n   OR pu_location_id NOT IN (SELECT location_id FROM zones) OR do_location_id NOT IN (SELECT location_id FROM zones)",
+  "guideTask": "create trips_clean with every row of trips, plus three columns: pu_zone, do_zone and zone_flag.",
+  "card": "Some trips start or end in a zone that is not on the map.",
+  "context": "The depot needs to report where every trip started and ended, including trips whose locations cannot be matched. trips holds 7,171 trips with rerun copies already removed; zones is the location lookup. Keeping unmatched trips in the report prevents an incomplete picture of service and revenue.",
+  "refresher": [
+    {
+      "title": "Keep unmatched rows with LEFT JOIN",
+      "text": "A JOIN matches keys between tables. A LEFT JOIN keeps every row on the left and puts NULL in the right columns when there is no match. Aliases such as r and z name the two table copies. Joining twice lets you look up two locations.",
+      "sql": "WITH rides(id, place) AS (VALUES (1, 10), (2, 99)),\nplaces(id, name) AS (VALUES (10, 'Depot'))\nSELECT r.id, z.name FROM rides r\nLEFT JOIN places z ON z.id = r.place;"
+    },
+    {
+      "title": "Label the first matching condition",
+      "text": "CASE checks WHEN conditions in order and returns the first matching THEN value. ELSE handles the rest. Test missing values with IS NULL, not = NULL. OR means either condition can be true; IN checks membership in a list.",
+      "sql": "WITH places(id) AS (VALUES (10), (99), (NULL))\nSELECT id, CASE WHEN id IS NULL THEN 'missing'\nWHEN id IN (99) THEN 'outside' ELSE 'known' END AS flag\nFROM places;"
+    },
+    {
+      "title": "Save and count the joined result",
+      "text": "CREATE OR REPLACE TABLE ... AS saves the query so you can rebuild it. COUNT(*) checks that a join kept the expected number of rows. GROUP BY makes one group per label; HAVING can filter those groups.",
+      "sql": "CREATE OR REPLACE TABLE tiny AS\nSELECT * FROM (VALUES ('known'), ('missing')) AS labels(flag);\nSELECT flag, count(*) FROM tiny GROUP BY flag\nHAVING count(*) > 0;"
+    }
+  ],
+  "reviewLinks": [
+    {
+      "label": "M2I2 LEFT JOIN: keep every member",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M2/I2/#left-join-keep-every-member"
+    },
+    {
+      "label": "M2I2 Always check the row count",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M2/I2/#always-check-the-row-count"
+    },
+    {
+      "label": "M1I4 Anatomy of a Query",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M1/I4/"
+    },
+    {
+      "label": "M2I4 GROUP BY + Aggregate Functions",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M2/I4/"
+    }
+  ],
+  "summary": "2. Nowhere zones: zone 264 is \"Unknown\" and zone 265 is \"Outside of NYC\" (a real place), both in the lookup; some drop-off ids are 0 or NULL and match nothing. An inner join silently drops 25 rows. Keep every row and add a zone_flag. 7,171 in and out.",
+  "map": {
+    "label": "rows touching a nowhere zone (in the corner)",
+    "color": "#1e3a8a",
+    "double": false
+  },
+  "plant": {
+    "ordinary": "fare_amount > 0 AND dropoff_at > pickup_at AND trip_distance > 0\n  AND pickup_at >= TIMESTAMP '2024-01-01' AND pickup_at < TIMESTAMP '2024-02-01'\n  AND pu_location_id BETWEEN 1 AND 263 AND do_location_id BETWEEN 1 AND 263\n  AND loaded_at = TIMESTAMP '2024-02-01 06:00:00'\n  AND NOT (pickup_at >= TIMESTAMP '2024-01-15' AND pickup_at < TIMESTAMP '2024-01-16')",
+    "replacements": {
+      "duplicate": [
+        "TIMESTAMP '2024-02-01 07:20:00' AS loaded_at"
+      ],
+      "unmatched_zone": [
+        "0 AS do_location_id"
+      ],
+      "negative_fare": [
+        "-fare_amount AS fare_amount",
+        "-total_amount AS total_amount"
+      ],
+      "time_travel": [
+        "pickup_at - INTERVAL '7 minutes' AS dropoff_at"
+      ]
+    }
+  },
+  "tables": {},
+  "rulesText": "## Floor 2: Nowhere zones (joins, NULLs and sentinels)\n\n- **Tables given:** `trips` (floor 1's reference output, 7,171 rows), `zones`.\n- **The dirt:** real: 110 trips touch zone 264 \"Unknown\", 74 touch zone 265 \"Outside of NYC\".\n  Planted: 15 drop-off ids are 0 (not in the lookup) and 10 drop-off ids are NULL.\n- **Task:** create `trips_clean`: every row of `trips`, plus `pu_zone`, `do_zone` (the zone name,\n  NULL when there is no match) and `zone_flag`, the first that applies:\n  1. `'unmatched'`: either id is NULL or not in `zones`;\n  2. `'unknown'`: either id is 264;\n  3. `'outside_nyc'`: either id is 265;\n  4. `'ok'`.\n- **Expected:** 7,171 rows in and out. Flags: ok 6,962; unknown 110; outside_nyc 74; unmatched 25.\n  An inner join to `zones` on both ids keeps only 7,146 rows (it silently loses 25).\n- **Pass:** 7,171 rows; the multiset of `(row_id, pu_zone, do_zone, zone_flag)` equals the reference\n  `data/reference/floor2.sql`; all columns of `trips` present and unchanged.\n- **Aha line:** a join can drop rows without an error. \"Unknown\" (264) is in the lookup, so an anti-join cannot find it; a missing id (0, NULL) is not, so only a left join shows it. Flag, do not delete.\n\n",
+  "emblem": "/learn/img/floor2.svg"
+}

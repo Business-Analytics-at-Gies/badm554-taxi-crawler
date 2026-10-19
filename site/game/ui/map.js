@@ -1,3 +1,4 @@
+import { FLOORS, FLOOR_IDS } from '/floors/catalog.js';
 // The flat map: one cell per zone id on a fixed grid, grouped by borough (no shapes, no moving
 // cabs). Zones 264 and 265 and ids that match nothing sit in a "nowhere" corner. Rows are drawn
 // as marks in their zone: dirt for the floor, and the lit rows (at most 500).
@@ -18,11 +19,7 @@ const NOWHERE = [
   { key: 265, label: '265 Outside NYC', x: 29, y: 11 },
 ];
 const FILL = { EWR: '#c7d2fe', Manhattan: '#bfdbfe', 'Staten Island': '#bbf7d0', Bronx: '#fde68a', Queens: '#fecaca', Brooklyn: '#ddd6fe' };
-export const DIRT = {
-  1: { label: 'rows in a duplicate group (doubled dot)', color: '#1e3a8a', double: true },
-  2: { label: 'rows touching a nowhere zone (in the corner)', color: '#1e3a8a', double: false },
-  3: { label: 'impossible rides (red dot)', color: '#b91c1c', double: false },
-};
+export const DIRT = Object.fromEntries(FLOOR_IDS.map(n => [n, FLOORS[n].map]));
 
 function parseCsv(text) {
   const rows = [];
@@ -92,7 +89,7 @@ export async function createMap({ container, summary, table, legend }) {
   };
   const zoneName = key => cells.get(key)?.label || String(key);
 
-  let floor = 1;
+  let floor = FLOOR_IDS[0];
   let dirt = new Map();
   let lit = null; // { label, rows, byZone }
   const group = rows => { const m = new Map(); for (const r of rows) { const k = place(r); m.set(k, (m.get(k) || 0) + 1); } return m; };

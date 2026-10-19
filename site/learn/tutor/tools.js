@@ -1,3 +1,4 @@
+import { FLOORS, FLOOR_IDS } from '/floors/catalog.js';
 // Runs the tutor's tool calls in the browser (docs/interfaces.md part 2, server/tools.json).
 // Every input is validated here; a bad input or a failure returns { ok: false, output: why }.
 import { ROOMS } from '../guide.js';
@@ -7,9 +8,7 @@ export const MAX_OUTPUT = 8000;
 const KINDS = ['duplicate', 'unmatched_zone', 'negative_fare', 'time_travel'];
 const GAME_TARGETS = ['console', 'run-button', 'check-button', 'result-table', 'map', 'tables-list'];
 const FILES = {
-  'floor1-reference': '/data/reference/floor1.sql',
-  'floor2-reference': '/data/reference/floor2.sql',
-  'floor3-reference': '/data/reference/floor3.sql',
+  ...Object.fromEntries(FLOOR_IDS.map(n => [`floor${n}-reference`, FLOORS[n].reference])),
   'floor-check': '/game/db/floors.js',
   'floors-rules': '/learn/floors-rules.txt',
 };
@@ -23,7 +22,7 @@ const S = {
   undo_experiments: {},
   navigate: { room: { type: 'string', enum: ROOMS, req: true }, slide: { type: 'string', max: 60 } },
   highlight: { target: { type: 'string', enum: [...GAME_TARGETS, 'level-picker'], req: true }, note: { type: 'string', max: 120, req: true } },
-  game: { action: { type: 'string', enum: ['open', 'close'], req: true }, floor: { type: 'integer', min: 1, max: 3 } },
+  game: { action: { type: 'string', enum: ['open', 'close'], req: true }, floor: { type: 'integer', min: Math.min(...FLOOR_IDS), max: Math.max(...FLOOR_IDS), enum: FLOOR_IDS } },
   show_code: { file: { type: 'string', enum: Object.keys(FILES), req: true } },
   look: {},
 };
@@ -140,7 +139,9 @@ export function createTools({ guide, game, panel, layout, snapshot }) {
       return { ok: true, output: `game window open at floor ${n}; engine ${g.ui.status().engine}` };
     },
     async show_code({ file }) {
-      const res = await fetch(FILES[file], { credentials: 'same-origin' });
+      const n = game.loaded() ? game.floor() : Number(guide.state().room.slice(5)) || FLOOR_IDS[0];
+      const path = file === 'floor-check' ? FLOORS[n].check : FILES[file];
+      const res = await fetch(path, { credentials: 'same-origin' });
       if (!res.ok) return { ok: false, output: `could not load ${file} (HTTP ${res.status})` };
       let text = await res.text();
       if (file === 'floors-rules') {

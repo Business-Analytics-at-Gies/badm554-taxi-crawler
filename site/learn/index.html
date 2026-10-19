@@ -56,29 +56,12 @@
       <p>Each floor has slides at three levels. Lv 1 gives the big idea, Lv 2 shows how the check works, Lv 3 shows the real SQL. Start at Lv 1, and switch to Lv 3 when you want to see the code. The tutor follows the level you pick. Use the <a href="#level-picker">Detail level</a> picker above to change levels.</p>
       <p><strong>To play:</strong> press <strong>Start floor</strong> on a card. It opens that floor's slides here and the game next to them. The Floor 1, Floor 2 and Floor 3 tabs above only show the slides.</p>
       <p>On a phone, use the Guide, Game and Tutor tabs to choose a view. Scroll the page to reach the SQL box and results in the Game view, or the question box in the Tutor view.</p>
-      <ol class="floor-cards">
-        <li class="floor-card" data-floor="1">
-          <img class="floor-emblem" src="/learn/img/floor1.svg" alt="" aria-hidden="true" width="56" height="56" decoding="async">
-          <h4>Floor 1: The double shift</h4>
-          <p>One day's load ran twice.</p>
-          <p class="cleared" data-cleared-floor="1" hidden>Cleared</p>
-          <p class="card-actions js-only"><button type="button" class="play" data-floor="1">Start floor 1</button></p>
-        </li>
-        <li class="floor-card" data-floor="2">
-          <img class="floor-emblem" src="/learn/img/floor2.svg" alt="" aria-hidden="true" width="56" height="56" decoding="async">
-          <h4>Floor 2: Nowhere zones</h4>
-          <p>Some trips start or end in a zone that is not on the map.</p>
-          <p class="cleared" data-cleared-floor="2" hidden>Cleared</p>
-          <p class="card-actions js-only"><button type="button" class="play" data-floor="2">Start floor 2</button></p>
-        </li>
-        <li class="floor-card" data-floor="3">
-          <img class="floor-emblem" src="/learn/img/floor3.svg" alt="" aria-hidden="true" width="56" height="56" decoding="async">
-          <h4>Floor 3: Impossible rides</h4>
-          <p>Some rides cannot have happened.</p>
-          <p class="cleared" data-cleared-floor="3" hidden>Cleared</p>
-          <p class="card-actions js-only"><button type="button" class="play" data-floor="3">Start floor 3</button></p>
-        </li>
-      </ol>
+<ol class="floor-cards"><li class="floor-card" data-floor="1"><img class="floor-emblem" src="/learn/img/floor1.svg" alt="" aria-hidden="true" width="56" height="56" decoding="async"><h4>Floor 1: The double shift</h4><p>One day&#39;s load ran twice.</p><p class="cleared" data-cleared-floor="1" hidden>Cleared</p><p class="card-actions js-only"><button type="button" class="play" data-floor="1">Start floor 1</button></p></li><li class="floor-card" data-floor="2"><img class="floor-emblem" src="/learn/img/floor2.svg" alt="" aria-hidden="true" width="56" height="56" decoding="async"><h4>Floor 2: Nowhere zones</h4><p>Some trips start or end in a zone that is not on the map.</p><p class="cleared" data-cleared-floor="2" hidden>Cleared</p><p class="card-actions js-only"><button type="button" class="play" data-floor="2">Start floor 2</button></p></li><li class="floor-card" data-floor="3"><img class="floor-emblem" src="/learn/img/floor3.svg" alt="" aria-hidden="true" width="56" height="56" decoding="async"><h4>Floor 3: Impossible rides</h4><p>Some rides cannot have happened.</p><p class="cleared" data-cleared-floor="3" hidden>Cleared</p><p class="card-actions js-only"><button type="button" class="play" data-floor="3">Start floor 3</button></p></li></ol>
+<section id="about-data" aria-labelledby="about-data-h"><h4 id="about-data-h">About the data</h4>
+<p>These are NYC Taxi and Limousine Commission yellow taxi trip records for January 2024, with a location lookup and the game&#39;s teaching changes. row_id and loaded_at describe the load, not the trip. Location 264 means Unknown (zone N/A); 265 means Outside of NYC.</p>
+<h5>trips_raw</h5><ul><li class="data-column"><code>row_id</code>: Unique identifier for a physical row in the feed; load metadata, not a trip key.</li><li class="data-column"><code>vendor_id</code>: Provider that recorded the trip.</li><li class="data-column"><code>pickup_at</code>: Pick-up date and time in local time, without a time zone.</li><li class="data-column"><code>dropoff_at</code>: Drop-off date and time in local time, without a time zone.</li><li class="data-column"><code>passenger_count</code>: Reported number of passengers.</li><li class="data-column"><code>trip_distance</code>: Reported trip distance in miles.</li><li class="data-column"><code>pu_location_id</code>: Pick-up location id, matched to zones.location_id.</li><li class="data-column"><code>do_location_id</code>: Drop-off location id, matched to zones.location_id.</li><li class="data-column"><code>payment_type</code>: Code for the reported payment method.</li><li class="data-column"><code>fare_amount</code>: Metered fare amount in dollars.</li><li class="data-column"><code>tip_amount</code>: Recorded tip amount in dollars.</li><li class="data-column"><code>total_amount</code>: Reported total trip amount in dollars.</li><li class="data-column"><code>loaded_at</code>: When the physical row was loaded; load metadata, not a trip key.</li></ul>
+<h5>zones</h5><ul><li class="data-column"><code>location_id</code>: Location id used to match a trip location.</li><li class="data-column"><code>borough</code>: Borough reported for the location.</li><li class="data-column"><code>zone</code>: Name of the location.</li><li class="data-column"><code>service_zone</code>: Service area reported for the location.</li></ul>
+<p>Source: <a href="https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page" target="_blank" rel="noopener">NYC TLC trip records</a> and <a href="https://www.nyc.gov/assets/tlc/downloads/pdf/data_dictionary_trip_records_yellow.pdf" target="_blank" rel="noopener">Yellow taxi data dictionary (PDF)</a>. The game renames columns, for example tpep_pickup_datetime becomes pickup_at, and adds row_id and loaded_at. Use the game&#39;s column list above when writing your SQL.</p></section>
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
         <p>Each floor gives you tables in an SQL console. The console runs DuckDB inside your browser. You write SQL that creates the tables the floor asks for. Then you press <strong>Check</strong>.</p>
@@ -103,6 +86,14 @@ SELECT * FROM zones LIMIT 5;</code></pre>
     <p class="cleared" data-cleared-floor="1" hidden>Cleared</p>
     <article class="slide" id="f1-task" data-title="The feed came in twice" aria-labelledby="h-f1-task">
       <h3 id="h-f1-task">The feed came in twice</h3>
+      <div class="floor-context" id="f1-context"><p>The depot dashboard is overstating revenue because one delivery arrived twice. trips_raw holds every physical row in the incoming feed, including both copies, and zones names the locations. Keep one whole row per trip so the morning report counts each ride once.</p></div>
+      <section class="floor-refresher" id="f1-refresher" aria-labelledby="f1-refresher-h"><h4 id="f1-refresher-h">SQL refresher</h4><h5>Read, count and save a result</h5><p>SELECT chooses columns and FROM names a table. COUNT(*) counts rows. CREATE OR REPLACE TABLE ... AS saves a query result; rerunning it replaces the previous saved table.</p><pre><code>CREATE OR REPLACE TABLE tiny AS
+SELECT * FROM (VALUES (1, 12), (2, 18)) AS rides(id, fare);
+SELECT count(*) FROM tiny;</code></pre><h5>A key, grain and repeated groups</h5><p>Grain means what one row represents. A key is the set of columns that identifies one item at that grain. GROUP BY collects rows with the same key; HAVING filters the groups after counting. DISTINCT compares only the columns you select.</p><pre><code>WITH deliveries(ride, fare) AS (VALUES (1, 12), (1, 12), (2, 18))
+SELECT ride, fare, count(*) FROM deliveries
+GROUP BY ride, fare HAVING count(*) &gt; 1;</code></pre><h5>Keep a whole row from each group</h5><p>ROW_NUMBER numbers rows inside each PARTITION BY group. ORDER BY chooses which copy comes first. QUALIFY filters the window result, so keeping number 1 preserves a whole row instead of adding its amounts.</p><pre><code>WITH deliveries(ride, copy) AS (VALUES (1, 1), (1, 2), (2, 1))
+SELECT * FROM deliveries
+QUALIFY row_number() OVER (PARTITION BY ride ORDER BY copy) = 1;</code></pre><h5>Review in the textbook</h5><ul class="review-links"><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M4/I3/#two-ways-grain-goes-wrong" target="_blank" rel="noopener">M4I3 Grain: two ways grain goes wrong</a></li><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M5/I3/#what-a-functional-dependency-is" target="_blank" rel="noopener">M5I3 What a functional dependency is</a></li><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M6/I4/" target="_blank" rel="noopener">M6I4 Run It Again</a></li><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M1/I4/" target="_blank" rel="noopener">M1I4 Anatomy of a Query</a></li><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M2/I4/" target="_blank" rel="noopener">M2I4 GROUP BY + Aggregate Functions</a></li></ul></section>
       <div class="lv" data-lv="1">
         <p>The load for trips picked up on 15 January ran twice. Every trip from that day is in the table two times. So revenue looks higher than it was.</p>
         <p class="task"><strong>Your task:</strong> Create <code>trips_clean</code> with exactly one row per trip key, and every column of <code>trips_raw</code>. A trip key is the set of columns that together identify one trip. Two trips that differ in any amount are different trips. <code>row_id</code> and <code>loaded_at</code> describe the load, not the trip. Use <code>CREATE OR REPLACE TABLE</code> to run your SQL again without a <code>DROP</code>.</p>
@@ -199,13 +190,24 @@ FROM trips_clean;</code></pre>
     <p class="cleared" data-cleared-floor="2" hidden>Cleared</p>
     <article class="slide" id="f2-task" data-title="Trips to nowhere" aria-labelledby="h-f2-task">
       <h3 id="h-f2-task">Trips to nowhere</h3>
+      <div class="floor-context" id="f2-context"><p>The depot needs to report where every trip started and ended, including trips whose locations cannot be matched. trips holds 7,171 trips with rerun copies already removed; zones is the location lookup. Keeping unmatched trips in the report prevents an incomplete picture of service and revenue.</p></div>
+      <section class="floor-refresher" id="f2-refresher" aria-labelledby="f2-refresher-h"><h4 id="f2-refresher-h">SQL refresher</h4><h5>Keep unmatched rows with LEFT JOIN</h5><p>A JOIN matches keys between tables. A LEFT JOIN keeps every row on the left and puts NULL in the right columns when there is no match. Aliases such as r and z name the two table copies. Joining twice lets you look up two locations.</p><pre><code>WITH rides(id, place) AS (VALUES (1, 10), (2, 99)),
+places(id, name) AS (VALUES (10, &#39;Depot&#39;))
+SELECT r.id, z.name FROM rides r
+LEFT JOIN places z ON z.id = r.place;</code></pre><h5>Label the first matching condition</h5><p>CASE checks WHEN conditions in order and returns the first matching THEN value. ELSE handles the rest. Test missing values with IS NULL, not = NULL. OR means either condition can be true; IN checks membership in a list.</p><pre><code>WITH places(id) AS (VALUES (10), (99), (NULL))
+SELECT id, CASE WHEN id IS NULL THEN &#39;missing&#39;
+WHEN id IN (99) THEN &#39;outside&#39; ELSE &#39;known&#39; END AS flag
+FROM places;</code></pre><h5>Save and count the joined result</h5><p>CREATE OR REPLACE TABLE ... AS saves the query so you can rebuild it. COUNT(*) checks that a join kept the expected number of rows. GROUP BY makes one group per label; HAVING can filter those groups.</p><pre><code>CREATE OR REPLACE TABLE tiny AS
+SELECT * FROM (VALUES (&#39;known&#39;), (&#39;missing&#39;)) AS labels(flag);
+SELECT flag, count(*) FROM tiny GROUP BY flag
+HAVING count(*) &gt; 0;</code></pre><h5>Review in the textbook</h5><ul class="review-links"><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M2/I2/#left-join-keep-every-member" target="_blank" rel="noopener">M2I2 LEFT JOIN: keep every member</a></li><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M2/I2/#always-check-the-row-count" target="_blank" rel="noopener">M2I2 Always check the row count</a></li><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M1/I4/" target="_blank" rel="noopener">M1I4 Anatomy of a Query</a></li><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M2/I4/" target="_blank" rel="noopener">M2I4 GROUP BY + Aggregate Functions</a></li></ul></section>
       <div class="lv" data-lv="1">
         <p>Some trips start or end in a zone that is not a real place on the map. If you join to the zone lookup the wrong way, those trips vanish without an error.</p>
         <p class="task"><strong>Your task:</strong> create <code>trips_clean</code> with every row of <code>trips</code>, plus three columns: <code>pu_zone</code>, <code>do_zone</code> and <code>zone_flag</code>. Use <code>CREATE OR REPLACE TABLE</code> to run your SQL again without a <code>DROP</code>.</p>
       </div>
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
-        <p>You get <code>trips</code> (floor 1's correct result, 7,171 rows) and <code>zones</code> (265 rows). <code>pu_zone</code> and <code>do_zone</code> are the zone names from <code>zones</code>, or NULL when there is no match.</p>
+        <p>You get <code>trips</code> (rerun copies already removed, 7,171 rows) and <code>zones</code> (265 rows). <code>pu_zone</code> and <code>do_zone</code> are the zone names from <code>zones</code>, or NULL when there is no match.</p>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
@@ -306,13 +308,24 @@ ORDER BY trips DESC;</code></pre>
     <p class="cleared" data-cleared-floor="3" hidden>Cleared</p>
     <article class="slide" id="f3-task" data-title="Impossible rides" aria-labelledby="h-f3-task">
       <h3 id="h-f3-task">Impossible rides</h3>
+      <div class="floor-context" id="f3-context"><p>The depot must explain rides with impossible measurements before using them in a report. trips holds 7,171 trips with zone names and zone_flag; zones is the location lookup. Separating questionable rows with a reason preserves the evidence and leaves a clean report that reconciles to the input.</p></div>
+      <section class="floor-refresher" id="f3-refresher" aria-labelledby="f3-refresher-h"><h4 id="f3-refresher-h">SQL refresher</h4><h5>Filter ranges and combine conditions</h5><p>WHERE keeps rows whose condition is true. Compare values with &lt;, &gt;= and =; use AND when both conditions must hold and OR when either may hold. A timestamp range with an inclusive start and exclusive end includes the whole final day.</p><pre><code>WITH rides(started_at, fare) AS (VALUES (TIMESTAMP &#39;2024-03-01&#39;, -2))
+SELECT * FROM rides WHERE fare &lt; 0
+OR (started_at &gt;= TIMESTAMP &#39;2024-03-01&#39; AND started_at &lt; TIMESTAMP &#39;2024-04-01&#39;);</code></pre><h5>Choose the first reason</h5><p>CASE evaluates WHEN conditions from top to bottom. Only the first matching reason is returned, even when several rules fail. A CASE without ELSE returns NULL if no condition matches; IS NULL tests that result.</p><pre><code>WITH rides(fare, miles) AS (VALUES (-2, 0), (10, 2))
+SELECT *, CASE WHEN fare &lt; 0 THEN &#39;negative&#39;
+WHEN miles = 0 THEN &#39;no_distance&#39; END AS reason
+FROM rides;</code></pre><h5>Save a partition without deleting evidence</h5><p>CREATE OR REPLACE TABLE ... AS saves a query. Put failing rows in one table and the others in another. A subquery with NOT IN can keep ids absent from a non-NULL id list. COUNT(*) checks that the two tables reconcile; GROUP BY and HAVING can reveal repeated ids.</p><pre><code>WITH checked(id, reason) AS (VALUES (1, &#39;negative&#39;), (2, NULL))
+SELECT * FROM checked WHERE id NOT IN
+(SELECT id FROM checked WHERE reason IS NOT NULL);</code></pre><h5>Check counts by reason</h5><p>COUNT(*) counts every row in each group. GROUP BY reason separates the labels; HAVING filters groups after counting. The clean count plus the quarantined count must equal the input count.</p><pre><code>WITH checked(reason) AS (VALUES (&#39;negative&#39;), (&#39;negative&#39;), (NULL))
+SELECT reason, count(*) FROM checked
+GROUP BY reason HAVING count(*) &gt; 0;</code></pre><h5>Review in the textbook</h5><ul class="review-links"><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M7/I3/" target="_blank" rel="noopener">M7I3 The Cheap Checks</a></li><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M2/I5/" target="_blank" rel="noopener">M2I5 WHERE vs. HAVING</a></li><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M1/I4/" target="_blank" rel="noopener">M1I4 Anatomy of a Query</a></li><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M2/I4/" target="_blank" rel="noopener">M2I4 GROUP BY + Aggregate Functions</a></li></ul></section>
       <div class="lv" data-lv="1">
         <p>Some rides in the feed cannot have happened: a negative fare, a drop-off before the pick-up, a pick-up outside January, or a trip of zero miles with a big fare. These are real rows, as TLC published them.</p>
         <p class="task"><strong>Your task:</strong> move the failing rows to a table <code>quarantine</code>, with a <code>reason</code>, and keep the other rows in <code>trips_clean</code>. Use <code>CREATE OR REPLACE TABLE</code> to run your SQL again without a <code>DROP</code>.</p>
       </div>
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
-        <p>You get <code>trips</code> (floor 2's correct result, 7,171 rows, with <code>zone_flag</code>) and <code>zones</code>. <code>quarantine</code> has every column of <code>trips</code> plus <code>reason</code>. <code>trips_clean</code> has the columns of <code>trips</code>.</p>
+        <p>You get <code>trips</code> (zone labels already added, 7,171 rows, with <code>zone_flag</code>) and <code>zones</code>. <code>quarantine</code> has every column of <code>trips</code> plus <code>reason</code>. <code>trips_clean</code> has the columns of <code>trips</code>.</p>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
@@ -407,6 +420,11 @@ WHERE row_id NOT IN (SELECT row_id FROM quarantine);</code></pre>
     </article>
     <p class="room-play js-only"><button type="button" class="play" data-floor="3">Play this floor</button></p>
   </section>
+
+
+
+
+
 
   </div>
 </section>
