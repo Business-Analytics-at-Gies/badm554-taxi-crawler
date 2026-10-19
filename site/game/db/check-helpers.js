@@ -53,12 +53,23 @@ function fraction(n, d = 1n) {
   return `n:${n / a}/${d / a}`;
 }
 
-function exactNumeric(text) {
-  const match = String(text).match(/^([+-]?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i);
+function exactNumeric(text, cents = false) {
+  // Numeric text follows the same exact decimal path as native numeric strings. Never
+  // pass it through Number/DOUBLE: that would erase extra digits before comparison.
+  const match = String(text).trim().match(/^([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:e([+-]?\d+))?$/i);
   if (!match) return `invalid:${text}`;
-  const numerator = BigInt(`${match[1]}${match[2]}${match[3] ?? ''}`);
-  const scale = (match[3]?.length ?? 0) - Number(match[4] ?? 0);
-  return scale >= 0 ? fraction(numerator, 10n ** BigInt(scale)) : fraction(numerator * 10n ** BigInt(-scale));
+  const digits = match[3] ?? match[4] ?? '';
+  const scale = digits.length - Number(match[5] ?? 0);
+  if (!Number.isSafeInteger(scale) || Math.abs(scale) > 10000) return `invalid:${text}`;
+  let numerator = BigInt(`${match[1]}${match[2] ?? '0'}${digits}`);
+  const denominator = scale >= 0 ? 10n ** BigInt(scale) : 1n;
+  if (scale < 0) numerator *= 10n ** BigInt(-scale);
+  if (cents) {
+    const magnitude = (numerator < 0n ? -numerator : numerator) * 100n;
+    const rounded = magnitude / denominator + (2n * (magnitude % denominator) >= denominator ? 1n : 0n);
+    return fraction(numerator < 0n ? -rounded : rounded, 100n);
+  }
+  return fraction(numerator, denominator);
 }
 
 // Native VARCHAR conversion preserves DECIMAL digits, integer precision and sub-millisecond
@@ -80,7 +91,7 @@ export async function exactDiff(db, cols, have, from, reference) {
     return rows.map(row => JSON.stringify(cols.map((c, i) => {
       const value = row[c.name];
       if (value === null) return null;
-      if (NUMERIC_TYPES.test(types[i])) return exactNumeric(value);
+      if (NUMERIC_TYPES.test(c.type)) return exactNumeric(value, money[i]);
       return `s:${value}`;
     })));
   };
