@@ -106,3 +106,59 @@ describe('R3: numeric text keeps the old accepted conversions without hiding cha
     assert.equal((await h.call('check', 3)).pass, true);
   });
 });
+
+describe('R4: a checker must return every declared rule with an explicit outcome', () => {
+  const ids = ['exists', 'columns', 'unchanged', 'row_count', 'trip_keys'];
+  const good = ids.map(id => ({ id, rule: id, ok: true, expected: 'unchanged', got: 'unchanged', hint: 'Keep the original values.' }));
+  const cases = [
+    ['empty list', []],
+    ['missing one rule', good.slice(0, -1)],
+    ['duplicate rule', [...good.slice(0, -1), good[0]]],
+    ['unknown rule', [...good.slice(0, -1), { ...good.at(-1), id: 'invented' }]],
+    ['truthy string outcome', good.map(r => ({ ...r, ok: 'false' }))],
+    ['truthy numeric outcome', good.map(r => ({ ...r, ok: 1 }))],
+    ['missing outcome', good.map(({ ok, ...r }) => r)],
+    ['missing description', good.map(({ rule, ...r }) => r)],
+    ['null entry', [null, ...good.slice(1)]],
+    ['object instead of list', { every: true }],
+    ['null instead of list', null],
+    ['extra rule', [...good, { ...good[0], id: 'extra' }]],
+  ];
+  async function checkResult(result) {
+    // Use the shipped dispatcher and catalog with only the pack's checker replaced.
+    // No database is needed: a broken checker must not award a pass on its own.
+    const page = await h.page.context().browser().newPage();
+    try {
+      await page.route('**/floors/floor1/check.js', route => route.fulfill({
+        contentType: 'text/javascript', body: `export async function check() { return ${JSON.stringify(result)}; }`,
+      }));
+      await page.goto(`${h.url}/__db_test.html`);
+      return await page.evaluate(async () => {
+        const { checkFloor } = await import('/game/db/floors.js');
+        try { return await checkFloor({}, 1); }
+        catch (error) { return { pass: false, error: error.message }; }
+      });
+    } finally { await page.close(); }
+  }
+  for (const [label, result] of cases) test(`${label} cannot pass`, async () => {
+    const checked = await checkResult(result);
+    assert.equal(checked.pass, false, label);
+    assert.match(checked.error ?? '', /rule/i, 'malformed results must explain the checker failure');
+  });
+  test('a complete result passes, and an explicit failed rule does not', async () => {
+    assert.equal((await checkResult(good)).pass, true);
+    const checked = await checkResult(good.map((r, i) => i === 0 ? { ...r, ok: false } : r));
+    assert.equal(checked.pass, false);
+    assert.equal(checked.error, undefined);
+    assert.equal(checked.rules.length, ids.length);
+  });
+  test('packs require a nonempty list of unique rule ids', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const { validatePack } = await import('../../site/floors/contract.mjs');
+    const pack = JSON.parse(await readFile(new URL('../floors/floor4/pack.json', import.meta.url), 'utf8'));
+    for (const ruleIds of [undefined, [], [''], ['sample', 'sample'], ['sample', 1], 'sample']) {
+      assert.throws(() => validatePack({ ...pack, ruleIds }), /ruleIds/);
+    }
+    assert.doesNotThrow(() => validatePack({ ...pack, ruleIds: ['sample'] }));
+  });
+});

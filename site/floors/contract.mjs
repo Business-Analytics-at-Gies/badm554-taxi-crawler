@@ -7,6 +7,9 @@ export function validatePack(pack) {
   for (const field of ['title', 'input', 'task', 'guideTask', 'context', 'summary', 'rulesText', 'dirt']) {
     if (typeof pack[field] !== 'string' || !pack[field].trim()) fail(field);
   }
+  if (!Array.isArray(pack.ruleIds) || !pack.ruleIds.length
+      || pack.ruleIds.some(id => typeof id !== 'string' || !/^[a-z][a-z0-9_]*$/.test(id))
+      || new Set(pack.ruleIds).size !== pack.ruleIds.length) fail('ruleIds');
   if (!pack.given || !Object.keys(pack.given).length || !pack.given[pack.input]) fail('given');
   if (!Array.isArray(pack.outputs) || !pack.outputs.length) fail('outputs');
   if (!Array.isArray(pack.refresher) || !pack.refresher.length) fail('refresher');

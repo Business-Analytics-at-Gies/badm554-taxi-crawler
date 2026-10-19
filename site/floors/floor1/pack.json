@@ -193,5 +193,12 @@
         "url": "https://www.nyc.gov/assets/tlc/downloads/pdf/data_dictionary_trip_records_yellow.pdf"
       }
     ]
-  }
+  },
+  "ruleIds": [
+    "exists",
+    "columns",
+    "unchanged",
+    "row_count",
+    "trip_keys"
+  ]
 }

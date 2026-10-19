@@ -198,6 +198,13 @@ const packs = [
         }
       ]
     },
+    "ruleIds": [
+      "exists",
+      "columns",
+      "unchanged",
+      "row_count",
+      "trip_keys"
+    ],
     "reference": "/floors/floor1/reference.sql",
     "check": "/floors/floor1/check.js"
   },
@@ -279,6 +286,13 @@ const packs = [
     "tables": {},
     "rulesText": "## Floor 2: Nowhere zones (joins, NULLs and sentinels)\n\n- **Tables given:** `trips` (floor 1's reference output, 7,171 rows), `zones`.\n- **The dirt:** real: 110 trips touch zone 264 \"Unknown\", 74 touch zone 265 \"Outside of NYC\".\n  Planted: 15 drop-off ids are 0 (not in the lookup) and 10 drop-off ids are NULL.\n- **Task:** create `trips_clean`: every row of `trips`, plus `pu_zone`, `do_zone` (the zone name,\n  NULL when there is no match) and `zone_flag`, the first that applies:\n  1. `'unmatched'`: either id is NULL or not in `zones`;\n  2. `'unknown'`: either id is 264;\n  3. `'outside_nyc'`: either id is 265;\n  4. `'ok'`.\n- **Expected:** 7,171 rows in and out. Flags: ok 6,962; unknown 110; outside_nyc 74; unmatched 25.\n  An inner join to `zones` on both ids keeps only 7,146 rows (it silently loses 25).\n- **Pass:** 7,171 rows; the multiset of `(row_id, pu_zone, do_zone, zone_flag)` equals the reference\n  `data/reference/floor2.sql`; all columns of `trips` present and unchanged.\n- **Aha line:** a join can drop rows without an error. \"Unknown\" (264) is in the lookup, so an anti-join cannot find it; a missing id (0, NULL) is not, so only a left join shows it. Flag, do not delete.\n\n",
     "emblem": "/learn/img/floor2.svg",
+    "ruleIds": [
+      "exists",
+      "columns",
+      "row_count",
+      "zone_flags",
+      "unchanged"
+    ],
     "reference": "/floors/floor2/reference.sql",
     "check": "/floors/floor2/check.js"
   },
@@ -368,6 +382,15 @@ const packs = [
     "tables": {},
     "rulesText": "## Floor 3: Impossible rides (range checks and quarantine)\n\n- **Tables given:** `trips` (floor 2's reference output, 7,171 rows, with `zone_flag`), `zones`.\n- **The dirt (all real):** negative fares, drop-off before pick-up, pick-ups outside January,\n  zero distance with a fare of $50 or more.\n- **Rules, in this order; a row gets the first `reason` it fails:**\n  1. `'negative_fare'`: `fare_amount < 0`\n  2. `'time_travel'`: `dropoff_at < pickup_at`\n  3. `'outside_january'`: `pickup_at < TIMESTAMP '2024-01-01'` or `pickup_at >= TIMESTAMP '2024-02-01'`\n  4. `'zero_distance_high_fare'`: `trip_distance = 0 AND fare_amount >= 50`\n  None of these four columns has a NULL in the data (checked); a NULL fails no rule.\n  `zone_flag` is not a quarantine reason.\n- **Task:** create `quarantine` (the failing rows, every column of `trips`, plus `reason`) and\n  `trips_clean` (the other rows, the columns of `trips`).\n- **Expected:** 7,171 in; 6,955 clean; 216 quarantined (negative_fare 132, zero_distance_high_fare\n  47, time_travel 20, outside_january 17). One row fails two rules; it appears once.\n- **Pass:** the two tables share no `row_id`; together they hold exactly the 7,171 `row_id` values of\n  `trips`; the multiset of `(row_id, reason)` in `quarantine` equals the reference\n  `data/reference/floor3.sql`; columns as above. Every original value of `trips` is unchanged in both output tables: non-money values and timestamps exactly, and money to cents.\n- **Aha line:** do not delete what you cannot explain. Clean plus quarantine equals raw: 6,955 + 216 = 7,171.\n\n",
     "emblem": "/learn/img/floor3.svg",
+    "ruleIds": [
+      "clean_exists",
+      "quarantine_exists",
+      "columns",
+      "no_overlap",
+      "partition",
+      "reasons",
+      "unchanged"
+    ],
     "reference": "/floors/floor3/reference.sql",
     "check": "/floors/floor3/check.js"
   }

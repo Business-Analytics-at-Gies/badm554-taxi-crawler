@@ -8,6 +8,9 @@ results, hints, task wording and existing slide ids are preserved. The approved 
 pilot defect is corrected here: unchanged-row checks compare non-money values exactly, including
 numeric values too precise for a cast to DOUBLE. Only fare_amount, tip_amount and total_amount
 compare to cents. This enforces the existing unchanged-value rule; expected counts do not change.
+Stage 2 review round 1 additionally tightens floor 3: every original value stays unchanged in both
+output tables (see the Claude-approved change log in `docs/floors.md`). Equivalent DOUBLE, DECIMAL
+and numeric-text representations compare by value, retaining extra digits and timestamp precision.
 The dispatch additionally
 requires context, short SQL refreshers, textbook links and an About the data section.
 
@@ -15,24 +18,28 @@ Each folder contains:
 
 - `pack.json`: id, title, input, pristine `given` sources, required `outputs`, game `task`, guide
   `guideTask`, context, refresher lessons, review links, tutor summary, learner-facing rules,
-  map query/style and plant options. `tables` defines the documented columns and types; the
-  first pack supplies the shared taxi tables and their data-source explanation.
+  map query/style, required `ruleIds`, and plant options. `tables` defines the documented columns
+  and types; the first pack supplies the shared taxi tables and their data-source explanation.
 - `reference.sql`: the reference solution used to build the hidden `_ref<N>` schema.
 - `check.js`: `export async function check(db, context)`, returning the ordered rule results.
+  The engine requires each declared rule id exactly once, an explicit Boolean `ok`, and non-empty
+  `rule`, `expected`, `got` and `hint` strings. Empty, missing, duplicate, unknown or malformed rules
+  return a failed check with an error, never a pass.
   `db.rows(sql)` and `db.one(sql)` read through the trusted checker connection. `context` provides
   `pack`, `plantedEver`, the learner schema name and the reference schema name. Shared multiset,
   normalization and catalog helpers are in `site/game/db/check-helpers.js`; schema names and
   quoting are in `names.js`. Learner objects cannot replace the qualified built-ins.
 - `solutions.json`: valid and wrong SQL cases, each with `name`, `sql` and the expected failing
-  rule ids in `fails`. The unchanged legacy tests remain an independent oracle for floors 1–3.
+  rule ids in `fails`. The legacy tests remain an independent oracle for floors 1–3; the approved
+  floor 3 tightening adds its new failure id to the existing missing/repeated-output cases.
 - `guide.html`: the complete room, retaining its slide ids, detail levels and teaching text.
   `{{context}}`, `{{refresher}}` and `{{task}}` are required slots before the first task.
 
 Run `node tools/build-floor-packs.mjs` after changing a pack. The builder discovers the floor
 folders and validates them before writing anything. A pack cannot load without context, at
 least one refresher with a two-to-five-line runnable example, and named absolute HTTPS review
-links. Reference dependencies must point to an earlier floor. Each pack must include both valid
-and wrong solutions.
+links. Rule ids must form a non-empty list of unique identifiers. Reference dependencies must
+point to an earlier floor. Each pack must include both valid and wrong solutions.
 
 The builder writes the browser catalog, static guide, game floor buttons, tutor floor summaries
 and tool choices, learner-facing rules, and compatibility copies at `data/reference/floor<N>.sql`.

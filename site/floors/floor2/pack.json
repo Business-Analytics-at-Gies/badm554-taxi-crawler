@@ -75,5 +75,12 @@
   },
   "tables": {},
   "rulesText": "## Floor 2: Nowhere zones (joins, NULLs and sentinels)\n\n- **Tables given:** `trips` (floor 1's reference output, 7,171 rows), `zones`.\n- **The dirt:** real: 110 trips touch zone 264 \"Unknown\", 74 touch zone 265 \"Outside of NYC\".\n  Planted: 15 drop-off ids are 0 (not in the lookup) and 10 drop-off ids are NULL.\n- **Task:** create `trips_clean`: every row of `trips`, plus `pu_zone`, `do_zone` (the zone name,\n  NULL when there is no match) and `zone_flag`, the first that applies:\n  1. `'unmatched'`: either id is NULL or not in `zones`;\n  2. `'unknown'`: either id is 264;\n  3. `'outside_nyc'`: either id is 265;\n  4. `'ok'`.\n- **Expected:** 7,171 rows in and out. Flags: ok 6,962; unknown 110; outside_nyc 74; unmatched 25.\n  An inner join to `zones` on both ids keeps only 7,146 rows (it silently loses 25).\n- **Pass:** 7,171 rows; the multiset of `(row_id, pu_zone, do_zone, zone_flag)` equals the reference\n  `data/reference/floor2.sql`; all columns of `trips` present and unchanged.\n- **Aha line:** a join can drop rows without an error. \"Unknown\" (264) is in the lookup, so an anti-join cannot find it; a missing id (0, NULL) is not, so only a left join shows it. Flag, do not delete.\n\n",
-  "emblem": "/learn/img/floor2.svg"
+  "emblem": "/learn/img/floor2.svg",
+  "ruleIds": [
+    "exists",
+    "columns",
+    "row_count",
+    "zone_flags",
+    "unchanged"
+  ]
 }

@@ -39,5 +39,14 @@ export async function checkFloor(db, n, plantedEver = []) {
   const pack = FLOORS[n];
   const { check } = await import(pack.check);
   const rules = await check(db, { pack, plantedEver, learner: learner(n), ref: ref(n) });
-  return { pass: rules.every(r => r.ok), rules };
+  const invalid = () => ({ pass: false, rules: [], error: `Floor ${n}: invalid rule results; every declared rule must have an explicit Boolean outcome and complete details.` });
+  const expected = new Set(pack.ruleIds);
+  if (!Array.isArray(rules) || !expected.size || rules.length !== expected.size) return invalid();
+  const seen = new Set();
+  for (const rule of rules) {
+    if (!rule || !expected.has(rule.id) || seen.has(rule.id) || typeof rule.ok !== 'boolean'
+        || ['rule', 'expected', 'got', 'hint'].some(key => typeof rule[key] !== 'string' || !rule[key].trim())) return invalid();
+    seen.add(rule.id);
+  }
+  return { pass: rules.every(r => r.ok === true), rules };
 }

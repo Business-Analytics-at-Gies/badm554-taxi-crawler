@@ -1,5 +1,6 @@
 {
   "id": 4,
+  "ruleIds": ["sample"],
   "title": "Floor 4: The sample desk",
   "card": "A supervisor needs two trips to audit.",
   "input": "trips",
