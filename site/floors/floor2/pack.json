@@ -144,7 +144,8 @@
     "C033",
     "C081",
     "C083",
-    "CASE_WHEN"
+    "CASE_WHEN",
+    "C085"
   ],
   "refreshes": {
     "CASE_WHEN": "Label the first matching condition",

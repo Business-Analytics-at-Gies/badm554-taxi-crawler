@@ -1,4 +1,5 @@
-// Content validation only: inspect trusted pack SQL, never execute its statements.
+// Trusted, versioned content only. Detection inspects SQL; refresher proof also
+// executes its example in a rolled-back transaction before granting credit.
 import { nativeTokens } from '../game/db/sql.js';
 const literal = sql => `'${sql.replaceAll("'", "''")}'`;
 
@@ -105,9 +106,18 @@ async function fromTokens(conn, sql) {
     }
     return tokens.length; // An unfinished body still owns the remaining tokens.
   };
+  const windowFunction = over => {
+    if (tokens[over - 1]?.word !== ')') return null;
+    let depth = 0;
+    for (let i = over - 1; i >= 0; i--) {
+      if (tokens[i].word === ')') depth++;
+      if (tokens[i].word === '(' && --depth === 0) return tokens[i - 1]?.word;
+    }
+    return null;
+  };
   const ctes = [], windows = [];
   for (let i = 0; i < tokens.length; i++) {
-    if (at(i, 'OVER') && tokens[i + 1]?.word === '(') windows.push([i + 1, close(i + 1)]);
+    if (at(i, 'OVER') && tokens[i + 1]?.word === '(') windows.push([i + 1, close(i + 1), windowFunction(i)]);
     if (!at(i, 'WITH')) continue;
     let j = i + 1;
     if (at(j, 'RECURSIVE')) j++;
@@ -130,7 +140,15 @@ async function fromTokens(conn, sql) {
   for (const [word, id] of [['SELECT','C005'], ['FROM','C006'], ['WHERE','C007'], ['VALUES','C003'],
     ['WITH','C033'], ['QUALIFY','C035'], ['CASE','CASE_WHEN'], ['OVER','C025'], ['HAVING','C024'],
     ['LIMIT','C008'], ['TIMESTAMP','C085']]) add(has(word), id);
-  add(pair('CREATE', 'TABLE') || pair('CREATE', 'OR') && pair('REPLACE', 'TABLE'), 'C053');
+  add(tokens.some((_, i) => {
+    if (!at(i++, 'CREATE')) return false;
+    if (at(i, 'OR') && at(i + 1, 'REPLACE')) i += 2;
+    if (at(i, 'TEMP') || at(i, 'TEMPORARY')) i++;
+    return at(i, 'TABLE');
+  }), 'C053');
+  add(pair('DROP', 'TABLE') || pair('CREATE', 'OR') && pair('OR', 'REPLACE'), 'C073');
+  add(has('JOIN') && (has('ON') || has('USING')), 'C013');
+  add(pair('FOREIGN', 'KEY') || has('REFERENCES'), 'C046');
   add(pair('GROUP', 'BY'), 'C021'); add(pair('ORDER','BY'), 'C008'); add(pair('PARTITION','BY'), 'C026');
   add(tokens.some((_, i) => at(i, 'ORDER') && at(i + 1, 'BY') && inRange(i, windows)), 'C027');
   add(tokens.some((_, i) => at(i, 'OVER') && inRange(i, ctes)), 'C034');
@@ -143,17 +161,31 @@ async function fromTokens(conn, sql) {
   add(has('JOIN') && !has('LEFT') && !has('RIGHT') && !has('FULL'), 'C014');
   add(['ROW_NUMBER','RANK','DENSE_RANK'].some(call), 'C028');
   add(['SUM','AVG','MIN','MAX','COUNT'].some(call), 'C022'); add(call('COUNT'), 'C010'); add(call('ROUND'), 'ROUND');
+  add(call('COALESCE'), 'C020');
+  add(['LAG', 'LEAD'].some(call), 'C030');
+  add(call('EXTRACT') || call('DATE_PART') || pair('UNION', 'ALL'), 'C036');
+  add(['READ_CSV', 'READ_CSV_AUTO', 'CSV_SCAN', 'READ_PARQUET', 'PARQUET_SCAN'].some(call), 'C052');
+  add(tokens.some((_, i) => tokens[i].word === '(' && at(i + 1, 'SELECT') && !ctes.some(([start]) => start === i)), 'C032');
+  add(has('JOIN') && pair('GROUP', 'BY'), 'C023');
+  add(windows.some(([start, end, fn]) => fn === 'SUM'
+    && tokens.slice(start, end).some((_, j) => at(start + j, 'ORDER') && at(start + j + 1, 'BY'))), 'C029');
+  add(found.has('C015') && found.has('C016'), 'C083');
+  add(found.has('C016') || has('BETWEEN') || has('DATE') || has('INTERVAL')
+    || tokens.some((t, i) => t.word === '0' && ['=', '<', '>'].includes(tokens[i - 1]?.word)), 'C085');
   return [...found].sort();
 }
 
 export async function detectSQL(conn, sql) {
   const table = await conn.query(`SELECT system.main.json_serialize_sql(${literal(sql)}) AS ast`);
   const ast = JSON.parse(table.toArray()[0].ast);
-  if (!ast.error) return { concepts: fromAST(ast), method: 'parser' };
+  // Token inventory complements the native tree (for example EXTRACT is rewritten
+  // to date_part and COALESCE to an operator). Never inspect raw literal text.
+  const tokens = await fromTokens(conn, sql);
+  if (!ast.error) return { concepts: [...new Set([...fromAST(ast), ...tokens])].sort(), method: 'parser' };
   // The pinned serializer supports SELECT-family ASTs. Valid DDL returns its
   // explicit 'not implemented' response; both that case and partial teaching SQL
   // use native tokens. A tokenizer/connection failure is reported by the gate.
-  return { concepts: await fromTokens(conn, sql), method: 'tokens' };
+  return { concepts: tokens, method: 'tokens' };
 }
 
 const decode = html => html.replace(/&(?:lt|gt|amp|quot|#39);/g, s => ({'&lt;':'<','&gt;':'>','&amp;':'&','&quot;':'"','&#39;':"'"}[s]));
@@ -190,13 +222,26 @@ export async function checkConcepts(conn, pack, graph, overrides) {
   for (const item of detected) for (const id of item.concepts) {
     if (!declared.has(id)) errors.push(`${item.source}: undeclared ${id}`);
   }
+  const executed = new Map();
   for (const [id, title] of Object.entries(pack.refreshes ?? {})) {
     if (!declared.has(id)) errors.push(`Refresher ${id} must also be declared`);
     const lessons = (pack.refresher ?? []).filter(l => l.title === title);
     if (lessons.length !== 1) { errors.push(`${id}: refresher ${title} is missing or ambiguous`); continue; }
     const proof = detected.find(item => item.source === `refresher: ${title}`);
     if (!proof?.concepts.includes(id)) errors.push(`${id}: refresher ${title} does not demonstrate the concept`);
-    else refreshed.add(id);
+    else {
+      if (!executed.has(title)) {
+        let failure = null;
+        await conn.query('BEGIN TRANSACTION');
+        try { await conn.query(lessons[0].sql); }
+        catch (e) { failure = e.message; }
+        finally { await conn.query('ROLLBACK'); }
+        executed.set(title, failure);
+      }
+      const failure = executed.get(title);
+      if (failure) errors.push(`${id}: refresher ${title} does not run: ${failure}`);
+      else refreshed.add(id);
+    }
   }
   for (const id of declared) {
     if (!graph[id] && !overrides[id]?.reason) { errors.push(`Unknown concept ${id}`); continue; }

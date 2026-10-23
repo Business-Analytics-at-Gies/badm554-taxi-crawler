@@ -26,37 +26,89 @@ CASE_WHEN records textbook issue #97. Other explicit gaps are SELECT_DISTINCT,
 COUNT_DISTINCT, UNION_ALL, aggregate FILTER and ROUND. They are not silently treated
 as taught by a general SELECT, aggregate or COUNT lesson.
 
-## Detection and map
+## Detection and complete SQL-surface inventory (round 9)
 
-`site/floors/concept-gate.mjs` inspects every reference, refresher SQL example,
-guide code fragment and structured hint outline/sql field. Each finding retains
-its source and whether it came from a parser or tokens. Valid SELECT-family SQL
-uses DuckDB's native syntax tree. Incomplete teaching SQL uses DuckDB's tokenizer;
-valid DDL also uses tokens because the pinned JSON serializer explicitly does not
-implement DDL ASTs. The native token offsets can include trailing comments; the
-gate reads the leading lexeme and retains the tokenizer's literal/comment classes.
-No statements from the inspected content are executed by the detector.
+All 90 graph rows and all eight overrides were inspected. The inventory below
+lists every graph row with a recognizable SQL keyword, clause, function or
+statement form, including combinations named by the graph. It is independent of
+which constructs the current floors happen to use. The tests keep explicit
+complete and unfinished examples for every row, and scan each through references,
+refreshers, guide code and hint outlines. Function names include quoted and mixed
+case forms; CREATE forms allow comments and line breaks between native tokens.
 
-| Construct | Graph id or explicit override |
+| Graph id | SQL surface covered |
 |---|---|
-| Tiny VALUES tables; SELECT; FROM; WHERE | C003, C005, C006, C007 |
-| ORDER BY and LIMIT; COUNT(*) | C008, C010 |
-| INNER; LEFT; RIGHT/FULL joins; IS NULL | C014, C015, C017, C016 |
-| GROUP BY; aggregates; HAVING | C021, C022, C024 |
-| OVER; PARTITION BY; window ordering | C025, C026, C027 |
-| ROW_NUMBER, RANK and DENSE_RANK | C028 |
-| Nested subquery; WITH; a window inside a CTE | C032, C033, C034 |
-| QUALIFY; CREATE TABLE | C035, C053 (both overridden) |
-| Timestamp range values | C085 |
-| CASE; SELECT DISTINCT; COUNT(DISTINCT ...) | CASE_WHEN, SELECT_DISTINCT, COUNT_DISTINCT |
-| UNION ALL; aggregate FILTER; ROUND | UNION_ALL, AGGREGATE_FILTER, ROUND |
+| C003 | VALUES table/rows/columns |
+| C005 | SELECT column list |
+| C006 | FROM table |
+| C007 | WHERE |
+| C008 | ORDER BY; LIMIT |
+| C010 | COUNT(*) |
+| C013 | JOIN with ON or USING (shared-key surface) |
+| C014 | JOIN; INNER JOIN |
+| C015 | LEFT [OUTER] JOIN |
+| C016 | IS NULL; IS NOT NULL |
+| C017 | RIGHT [OUTER] JOIN; FULL [OUTER] JOIN |
+| C020 | COALESCE |
+| C021 | GROUP BY |
+| C022 | SUM, AVG, MIN, MAX, COUNT |
+| C023 | JOIN together with GROUP BY |
+| C024 | HAVING |
+| C025 | OVER |
+| C026 | PARTITION BY |
+| C027 | ORDER BY inside OVER |
+| C028 | ROW_NUMBER; RANK; DENSE_RANK |
+| C029 | SUM OVER with ORDER BY (running total, including explicit ROWS frames) |
+| C030 | LAG; LEAD |
+| C032 | Nested SELECT subquery |
+| C033 | WITH, including RECURSIVE, CTE column aliases and materialization modifiers |
+| C034 | OVER inside a CTE body |
+| C035 | QUALIFY (override takes precedence) |
+| C036 | EXTRACT / DATE_PART; UNION ALL (both are in this untaught graph row) |
+| C046 | FOREIGN KEY; REFERENCES (foreign-key declaration surface) |
+| C052 | READ_CSV, READ_CSV_AUTO, CSV_SCAN; READ_PARQUET, PARQUET_SCAN |
+| C053 | CREATE [OR REPLACE] [TEMP / TEMPORARY] TABLE, with or without AS SELECT (override) |
+| C073 | DROP TABLE; CREATE OR REPLACE (drop/rebuild surface) |
+| C083 | LEFT JOIN together with IS [NOT] NULL (orphan-check surface) |
+| C085 | Null tests, BETWEEN, zero comparisons, DATE / TIMESTAMP / INTERVAL range values |
 
-The full parser and the incomplete-token path distinguish a window inside a CTE
-from an outer window, and window ordering from an outer ORDER BY. Strings, quoted
-keyword identifiers and nested comments cannot invent concepts. Quoted function
-names still count. A missing reference or an empty reference scan fails explicitly.
-Private engine/map queries and legacy solution oracles are not learner-facing SQL.
-The pre-existing DELETE warning is ordinary prose rather than a SQL code example.
+| Override | SQL surface covered |
+|---|---|
+| C035 | QUALIFY |
+| C053 | All CREATE TABLE forms listed above |
+| CASE_WHEN | CASE, including unfinished CASE WHEN |
+| SELECT_DISTINCT | SELECT DISTINCT |
+| COUNT_DISTINCT | COUNT(DISTINCT ...) |
+| UNION_ALL | UNION ALL, also detected as C036 |
+| AGGREGATE_FILTER | Aggregate FILTER (WHERE ...) |
+| ROUND | ROUND |
+
+The remaining graph rows have no independent SQL form to recognize:
+C001, C002, C004, C009, C011, C012, C018, C019, C031, C037–C045,
+C047–C051, C054–C072, C074–C082, C084, C086–C090. These describe
+questions, habits, tools/APIs, schema design, reconciliation goals or NoSQL
+choices. For example, counting after a join, uniqueness and totals reconciliation
+use constructs already covered above; syntax cannot establish the analyst's
+intent. A surrogate key likewise has no unique SQL syntax: a column's role is a
+schema decision. Such concepts may still be declared and checked for teaching
+coverage; they are not inferred from arbitrary identifier names or prose.
+
+`site/floors/concept-gate.mjs` inspects each reference, refresher example, guide
+code fragment and structured hint outline/sql field. It retains source and parser
+versus token provenance. Complete SELECT-family SQL uses DuckDB's native tree,
+complemented by its native token inventory; unfinished examples and DDL use native
+tokens. Literal/comment token classes prevent strings and nested comments from
+inventing concepts. Quoted keyword identifiers are ignored as keywords; quoted
+function names still count. CTE and window ranges distinguish inner and outer
+windows. A missing reference or empty scan fails explicitly.
+
+Detection never executes inspected content. Refresher credit is a separate proof:
+once a lesson contains the claimed concept, the gate actually executes its whole
+example inside a transaction and rolls it back. Parser, binder and execution
+errors all deny credit. A successful example is reused only within that pack's
+current check, never cached across checks. Only trusted versioned pack content is
+accepted here; this is not a learner-query executor. Private engine/map queries
+and legacy solution oracles are outside the learner-facing scan.
 
 ## Content and tests
 
@@ -83,13 +135,30 @@ Four focused browser cases passed: each CASE lesson is visible at all three Deta
 levels, with JavaScript disabled, at desktop and 375 px. The examples and the R2
 regressions were also run in the focused database checks.
 
-## Full verification
+## Round 9 regression evidence
+
+Both added test groups failed against the exact detector from `6543528`, loaded
+from `git show` through the same browser harness: **0 passed, 2 failed**. The
+inventory group reported missing SQL surfaces; the refresher group reproduced the
+review's false pass. The broken fixture is exactly `SELECT CASE\nWHEN ___ THEN`.
+The same test also denies a missing-table CASE lesson and a CASE whose cast fails
+at execution, so syntax validation alone cannot satisfy the regression.
+
+After the fix, all seven focused concept tests pass. All 50 inventory examples are
+required in a complete query and unfinished example, in all four source types;
+each detected undeclared id must also produce a gate error. Existing positive
+controls and required negative fixtures remain intact. Floor 2 now declares C085
+for its existing null checks; floor 3 declares C036 and points it at its existing,
+executed UNION ALL lesson. Floors 1–3 pass without weakening any gate condition.
+
+## Full verification (round 9)
+
 
 All four suites exited successfully; no failures:
 
 | Suite | Passed | Skipped |
 |---|---:|---:|
-| Database | 2,526 | 0 |
+| Database | 2,528 | 0 |
 | Stub browser | 177 | 25 |
 | Real-database browser | 197 | 5 |
 | Server | 69 | 0 |

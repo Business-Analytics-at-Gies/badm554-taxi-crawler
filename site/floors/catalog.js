@@ -436,7 +436,8 @@ const packs = [
       "C033",
       "C081",
       "C083",
-      "CASE_WHEN"
+      "CASE_WHEN",
+      "C085"
     ],
     "refreshes": {
       "CASE_WHEN": "Label the first matching condition",
@@ -606,7 +607,8 @@ const packs = [
       "C085",
       "CASE_WHEN",
       "UNION_ALL",
-      "AGGREGATE_FILTER"
+      "AGGREGATE_FILTER",
+      "C036"
     ],
     "refreshes": {
       "CASE_WHEN": "Choose the first reason",
@@ -616,7 +618,8 @@ const packs = [
       "C007": "Filter ranges and combine conditions",
       "C085": "Filter ranges and combine conditions",
       "C021": "Check counts by reason",
-      "C024": "Check counts by reason"
+      "C024": "Check counts by reason",
+      "C036": "Stack results with UNION ALL"
     },
     "reference": "/floors/floor3/reference.sql",
     "check": "/floors/floor3/check.js"

@@ -143,3 +143,76 @@ test('R3 no missing reference or empty scan can pass, and an overridden taught e
   assert.match(result.errors.join('\n'), /C053: not taught/);
   assert.equal(graph.C003.ConceptName, 'Tables, columns, rows');
 });
+
+// Inventory is deliberately independent of the detector. Every SQL-bearing graph
+// row has a complete query and an unfinished teaching example (token fallback).
+const inventory = [
+  ['C003', 'SELECT * FROM (VALUES (1)) t(n)', 'VALUES (1), ('],
+  ['C005', 'SELECT 1', 'SELECT ('],
+  ['C006', 'SELECT * FROM t', 'SELECT * FROM'],
+  ['C007', 'SELECT * FROM t WHERE true', 'SELECT * FROM t WHERE'],
+  ['C008', 'SELECT 1 ORDER BY 1 LIMIT 1', 'SELECT 1 ORDER BY'],
+  ['C010', 'SELECT count(*)', 'SELECT count(*'],
+  ['C013', 'SELECT * FROM t JOIN u USING (n)', 'SELECT * FROM t JOIN u ON'],
+  ['C014', 'SELECT * FROM t INNER JOIN u ON true', 'SELECT * FROM t INNER JOIN'],
+  ['C015', 'SELECT * FROM t LEFT JOIN u ON true', 'SELECT * FROM t LEFT JOIN'],
+  ['C016', 'SELECT 1 IS NULL', 'SELECT n IS NULL AND'],
+  ['C017', 'SELECT * FROM t FULL OUTER JOIN u ON true', 'SELECT * FROM t RIGHT OUTER JOIN'],
+  ['C020', 'SELECT coalesce(NULL, 1)', 'SELECT "coalesce"(NULL,'],
+  ['C021', 'SELECT n FROM t GROUP BY n', 'SELECT n FROM t GROUP BY'],
+  ['C022', 'SELECT sum(n) FROM t', 'SELECT avg('],
+  ['C023', 'SELECT t.n, sum(u.n) FROM t JOIN u ON t.n=u.n GROUP BY t.n', 'SELECT sum(t.n) FROM t JOIN u ON true GROUP BY'],
+  ['C024', 'SELECT count(*) FROM t HAVING count(*)>1', 'SELECT count(*) FROM t HAVING'],
+  ['C025', 'SELECT sum(1) OVER ()', 'SELECT sum(1) OVER ('],
+  ['C026', 'SELECT sum(n) OVER (PARTITION BY k) FROM t', 'SELECT sum(n) OVER (PARTITION BY'],
+  ['C027', 'SELECT sum(n) OVER (ORDER BY k) FROM t', 'SELECT sum(n) OVER (ORDER BY'],
+  ['C028', 'SELECT row_number() OVER ()', 'SELECT "dense_rank"() OVER ('],
+  ['C029', 'SELECT sum(n) OVER (ORDER BY k ROWS UNBOUNDED PRECEDING) FROM t', 'SELECT sum(n) OVER (ORDER BY k ROWS UNBOUNDED'],
+  ...['lag', 'lead'].map(fn => ['C030', `SELECT ${fn}(1) OVER ()`, `SELECT "${fn}"(1) OVER (`]),
+  ['C032', 'SELECT * FROM (SELECT 1) t', 'SELECT * FROM (SELECT'],
+  ['C033', 'WITH t AS (SELECT 1) SELECT * FROM t', 'WITH t AS (SELECT'],
+  ['C034', 'WITH t AS (SELECT row_number() OVER ()) SELECT * FROM t', 'WITH t AS (SELECT row_number() OVER ('],
+  ['C035', 'SELECT row_number() OVER () AS rn QUALIFY rn=1', 'SELECT * FROM t QUALIFY'],
+  ['C036', "SELECT extract(year FROM DATE '2024-01-01')", 'SELECT extract(year FROM'],
+  ['C036', 'SELECT 1 UNION ALL SELECT 2', 'SELECT 1 UNION ALL'],
+  ['C046', 'CREATE TABLE child (n INT REFERENCES parent(n))', 'CREATE TABLE child (n INT, FOREIGN KEY'],
+  ...['read_csv', 'read_csv_auto', 'read_parquet', 'parquet_scan', 'csv_scan'].map(fn => ['C052', `SELECT * FROM ${fn}('tiny')`, `SELECT * FROM "${fn}"(`]),
+  ...['', 'OR REPLACE ', 'TEMP ', 'TEMPORARY ', 'OR REPLACE TEMP ', 'OR REPLACE TEMPORARY '].map(form => ['C053', `CREATE ${form}TABLE t AS SELECT 1`, `CREATE ${form}TABLE t AS SELECT (`]),
+  ['C073', 'DROP TABLE IF EXISTS t', 'DROP TABLE'],
+  ['C083', 'SELECT * FROM t LEFT JOIN u ON t.n=u.n WHERE u.n IS NULL', 'SELECT * FROM t LEFT JOIN u ON t.n=u.n WHERE u.n IS NULL AND'],
+  ['C085', "SELECT TIMESTAMP '2024-01-01'", 'SELECT n BETWEEN 0 AND'],
+  ['CASE_WHEN', 'SELECT CASE WHEN true THEN 1 END', 'SELECT CASE WHEN ___ THEN'],
+  ['SELECT_DISTINCT', 'SELECT DISTINCT 1', 'SELECT DISTINCT ('],
+  ['COUNT_DISTINCT', 'SELECT count(DISTINCT n) FROM t', 'SELECT count(DISTINCT'],
+  ['UNION_ALL', 'SELECT 1 UNION ALL SELECT 2', 'SELECT 1 UNION ALL'],
+  ['AGGREGATE_FILTER', 'SELECT count(*) FILTER (WHERE true)', 'SELECT count(*) FILTER (WHERE'],
+  ['ROUND', 'SELECT round(1.25, 1)', 'SELECT "round"('],
+];
+
+test('R3 round 9 complete SQL inventory detects every surface in complete and unfinished examples', async () => {
+  await ready();
+  const missing = [];
+  for (const [id, complete, partial] of inventory) for (const [form, sql] of [['complete', complete], ['unfinished', partial]]) {
+    const result = await detection(sql);
+    if (!result.concepts.includes(id)) missing.push(`${id} ${form}: ${sql}`);
+    for (const fields of [{ referenceSql: sql }, { refresher: [{ title: 'inventory', sql }] },
+      { guide: `<code>${sql.replaceAll('<', '&lt;')}</code>` }, { hints: { rule: [{ outline: sql }] } }]) {
+      const scanned = await check({ ...base(), concepts: ['C042'], ...fields });
+      if (!scanned.errors.some(error => error.endsWith(`undeclared ${id}`))) missing.push(`${id} ${form} in ${Object.keys(fields)[0]}`);
+    }
+    if (form === 'unfinished') assert.equal(result.method, 'tokens', sql);
+  }
+  assert.deepEqual(missing, []);
+});
+
+test('R3 round 9 broken CASE example cannot earn refresher credit even though it contains CASE', async () => {
+  await ready();
+  const pack = { ...base(), concepts: ['C005', 'CASE_WHEN'], referenceSql: 'SELECT CASE WHEN true THEN 1 END',
+    refreshes: { CASE_WHEN: 'Broken example' }, refresher: [{ title: 'Broken example', sql: 'SELECT CASE\nWHEN ___ THEN' }] };
+  for (const sql of [pack.refresher[0].sql, 'SELECT CASE WHEN true THEN n END FROM missing_table',
+    "SELECT CASE WHEN true THEN CAST('broken' AS INTEGER) END"]) {
+    const result = await check({ ...pack, refresher: [{ ...pack.refresher[0], sql }] });
+    assert.match(result.errors.join('\n'), /CASE_WHEN.*(?:run|execut)/i);
+    assert.match(result.errors.join('\n'), /CASE_WHEN: not taught/);
+  }
+});
