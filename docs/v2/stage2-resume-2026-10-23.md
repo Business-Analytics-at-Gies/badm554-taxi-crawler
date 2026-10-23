@@ -1,7 +1,7 @@
 # Stage 2 resume: answer-query grading, concept gate, hint ladder
 
 Created: 2026-10-23
-Last Updated: 2026-10-23 (review round 1: 6 findings applied)
+Last Updated: 2026-10-23 (review rounds 1 and 2 applied)
 
 Vishal's decisions of 10-23 are in `docs/decisions/2026-10-23-v2-grading-and-gates.md` on `main`.
 This file turns them into build items for crew-codex-v2. It amends `docs/v2/plan-as-approved.md`.
@@ -226,11 +226,17 @@ green item. **Stop for Claude's review after R0 and after R1.** Then R2 to R4 an
 
 - Three failed checks on the same rule show rungs 1, 2 and 3 in order. A fourth stays at 3.
 - Restart floor resets to rung 1. The ladder works with `TUTOR_OFF=1`.
-- For each rung-3 outline, build every single-token completion: fill each blank with any one
-  column of the floor's given tables, or with any one number from the task and hints, and also
-  remove each clause that holds a blank (for example a `LIMIT ___`). Every completion that runs
-  must fail the check. At least one completion must run without a syntax or unknown-name error;
-  otherwise the test fails as inconclusive. A syntax error never counts as evidence.
+- For each rung-3 outline, build every single-token completion. Fill each blank with any one of:
+  - a column of the floor's given tables;
+  - a number from the task or the hints;
+  - a distinct value, written as a typed literal, of any given-table column with at most 50
+    distinct values (for example each `loaded_at` timestamp).
+  Also remove each clause that holds a blank (for example a `LIMIT ___`). Every completion that
+  runs must fail the check. At least one completion must run without a syntax or unknown-name
+  error; otherwise the test fails as inconclusive. A syntax error never counts as evidence.
+- Must-flag fixtures for the leak test itself: `SELECT * FROM trips_raw WHERE loaded_at = ___`
+  (a timestamp literal completes it into the first-load solution) and the first-load solution
+  followed by `LIMIT ___`. The leak test must report both as leaks.
 - The whole displayed rung text, not only the outline, never contains the full key (on floor 1,
   all six key columns).
 - The outlines pass the R3 gate.
@@ -239,7 +245,12 @@ green item. **Stop for Claude's review after R0 and after R1.** Then R2 to R4 an
 
 As the plan specifies, with these R1 changes:
 
-- Error help applies to both boxes.
+- Error help applies to both boxes, each against the tables that box reads. For Scratch it lists
+  the workspace table's columns (quiet inspection, 0.3). For Answer it lists the pristine given
+  table's columns, which is what the answer runs against. Tests: replace `trips_raw` in Scratch
+  with a one-column table, then `SELECT VendorID FROM trips_raw` in Answer lists the pristine
+  columns; drop `trips_raw` in Scratch, and the same Answer error still lists them; the same
+  query in Scratch lists the workspace table's columns, or says the table does not exist.
 - The history list labels each entry `scratch` or `answer`.
 - "Load" puts a past query back into the box it came from, without running it. Undo restores that
   box's previous text.
