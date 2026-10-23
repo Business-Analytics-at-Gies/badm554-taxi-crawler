@@ -1,0 +1,3 @@
+FIX
+
+1. **[P2] Review links override the learner’s saved location after reload** — [site/learn/app.js:112](/Users/vishal/teaching/badm554-taxi-crawler-v2/site/learn/app.js:112). Open **SQL refresher** from Floor 3, navigate in the new guide tab to Floor 1’s “Choose a trip key,” then reload. The address still contains `?review=f3-refresher`, so startup sends the guide back to Floor 3 and overwrites the saved room and slide. I reproduced this by executing the changed startup code in memory: `room=floor1&slide=f1-key` becomes `room=floor3&slide=f3-task`. Consume and remove the review parameter after the initial handoff, and add a browser test that follows the link, navigates elsewhere and reloads.
