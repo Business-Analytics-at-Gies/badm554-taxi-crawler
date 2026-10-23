@@ -244,6 +244,14 @@
         "Answer uses only this floor’s original given tables, even if you change or drop a table in Scratch. Check floor leaves both boxes, Scratch and Result alone. The task checklist says Answer: not run yet, then shows the row count from your last Run answer; it does not say the answer is correct.",
         "Run answer and Check floor accept the same single SELECT or WITH query. Use Scratch for other statements. Answer text is saved separately for each floor and survives reload, floor switches and Restart floor. Run answer adds an answer entry to both query records; Check floor adds no run."
       ]
+    },
+    {
+      "id": "hint-ladder",
+      "levels": [
+        "After Check floor, each failed rule has its own hint ladder: first what is wrong, then an idea and a SQL refresher link, then an inspection query outline with blanks. Further failures stay on rung 3. Hints work with the tutor closed. Passing a rule resets its ladder; passing the floor or Restart floor resets that floor’s ladders.",
+        "Check floor advances only the rules that fail: rung 1 explains the problem, rung 2 links an idea to the SQL refresher, and rung 3 gives an inspection query outline with blanks. Complete it in Scratch to investigate; it is not a finished answer. Ladders survive reload and floor switches. A pass or Restart floor resets the relevant ladders, even with the tutor closed.",
+        "Each rule has a separate Check floor counter in this browser, capped at rung 3: problem, idea with refresher link, then an inspection outline with blanks. A parser error or refused answer does not advance it. Passing a rule resets that counter; a full pass or Restart floor resets this floor. Other floors keep their counters. The tutor does not control these hints."
+      ]
     }
   ],
   "module": "M7",
@@ -282,5 +290,77 @@
     "C034": "Keep a whole row from each group",
     "C021": "A key, grain and repeated groups",
     "C024": "A key, grain and repeated groups"
+  },
+  "hints": {
+    "exists": [
+      {
+        "text": "There is no answer result to check."
+      },
+      {
+        "text": "Start with a small SELECT from trips_raw, then build your answer in steps.",
+        "refresher": "A query in steps: WITH"
+      },
+      {
+        "text": "Inspect one column before building the answer.",
+        "outline": "SELECT ___ FROM trips_raw LIMIT 10;"
+      }
+    ],
+    "columns": [
+      {
+        "text": "The answer is missing original columns or includes extra ones."
+      },
+      {
+        "text": "Keep a whole source row; remove any helper column from the final SELECT.",
+        "refresher": "Keep a whole row from each group"
+      },
+      {
+        "text": "Inspect a column name, then compare it with the table chip.",
+        "outline": "SELECT ___ FROM trips_raw LIMIT 10;"
+      }
+    ],
+    "unchanged": [
+      {
+        "text": "Some answer rows differ from the original feed, or occur too often."
+      },
+      {
+        "text": "Choose source rows rather than changing amounts or mixing values from different copies.",
+        "refresher": "Keep a whole row from each group"
+      },
+      {
+        "text": "Inspect a source value beside its physical row identifier.",
+        "outline": "SELECT row_id, ___ FROM trips_raw LIMIT 10;"
+      }
+    ],
+    "row_count": [
+      {
+        "text": "The answer has the wrong number of rows for one copy of each trip.",
+        "checkHintPrefixes": [
+          "Your answer has between"
+        ]
+      },
+      {
+        "text": "Number rows inside trip-key groups, then keep row 1 in a final query.",
+        "refresher": "Keep a whole row from each group",
+        "checkHint": true
+      },
+      {
+        "text": "Try one candidate grouping column to investigate repeats; this is an inspection query, not the answer.",
+        "outline": "SELECT ___, count(*) AS copies FROM trips_raw GROUP BY 1 HAVING count(*) > 1;",
+        "checkHint": true
+      }
+    ],
+    "trip_keys": [
+      {
+        "text": "Some trips are missing or still have more than one copy."
+      },
+      {
+        "text": "A trip key distinguishes trips whose amounts differ. Compare candidate groups before numbering rows.",
+        "refresher": "A key, grain and repeated groups"
+      },
+      {
+        "text": "Inspect repeated values of a candidate column before choosing your trip key.",
+        "outline": "SELECT ___, count(*) AS copies FROM trips_raw GROUP BY 1 HAVING count(*) > 1;"
+      }
+    ]
   }
 }

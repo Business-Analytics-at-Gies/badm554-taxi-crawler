@@ -28,6 +28,18 @@ export function validatePack(pack) {
   for (const [id, title] of Object.entries(pack.refreshes)) {
     if (!pack.concepts.includes(id) || typeof title !== 'string' || !pack.refresher.some(l => l.title === title)) fail('refreshes');
   }
+  if (!pack.hints || typeof pack.hints !== 'object' || Array.isArray(pack.hints)
+      || Object.keys(pack.hints).length !== pack.ruleIds.length) fail('hints');
+  for (const id of pack.ruleIds) {
+    const rungs = pack.hints[id];
+    if (!Array.isArray(rungs) || rungs.length !== 3 || rungs.some(rung => typeof rung?.text !== 'string' || !rung.text.trim())
+        || !pack.refresher.some(lesson => lesson.title === rungs[1].refresher)
+        || typeof rungs[2].outline !== 'string' || !rungs[2].outline.includes('___')) fail('hint ladder');
+    if (pack.tripKey) for (const rung of rungs) {
+      const displayed = [rung.text, rung.refresher ?? '', rung.outline ?? ''].join(' ').toLowerCase();
+      if (pack.tripKey.every(column => displayed.includes(column.toLowerCase()))) fail('hint full key');
+    }
+  }
   if (!Array.isArray(pack.reviewLinks) || !pack.reviewLinks.length) fail('reviewLinks');
   for (const link of pack.reviewLinks) {
     if (!link.label?.trim()) fail('reviewLinks label');

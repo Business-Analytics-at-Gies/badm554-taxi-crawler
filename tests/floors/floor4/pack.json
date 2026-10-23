@@ -84,5 +84,20 @@
     "C008",
     "C033"
   ],
-  "refreshes": {}
+  "refreshes": {},
+  "hints": {
+    "sample": [
+      {
+        "text": "The result needs another look."
+      },
+      {
+        "text": "Review a tiny query.",
+        "refresher": "Choose a small ordered sample"
+      },
+      {
+        "text": "Inspect a value.",
+        "outline": "SELECT ___;"
+      }
+    ]
+  }
 }

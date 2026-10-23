@@ -1,6 +1,7 @@
 // The game window (site/game/): map, SQL console, result table, floor check and receipt.
 // Exposes window.taxiGame = { db, ui, ready, events } for the guide page (docs/interfaces.md part 4).
 import { createMap } from './map.js';
+import { createHintLadder } from './hint-ladder.mjs';
 import { friendlyError } from './errors.js';
 import { readCodes, writeCodes, validCode, CODES_KEY } from '/learn/codes.js';
 import { FLOORS, FLOOR_IDS, validFloor, RERUN_INSTRUCTION } from '/floors/catalog.js';
@@ -22,6 +23,7 @@ let lastCheck = null;
 let running = false;
 let codes = readCodes();
 const answerRows = {};
+const hintLadder = createHintLadder({ getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) });
 let previewTable = null;
 let previewVersion = 0;
 const clearedFloors = () => FLOOR_IDS.filter(n => validCode(n, codes[n]));
@@ -292,13 +294,38 @@ async function checkFloor() {
     const head = document.createElement('p');
     head.className = r.pass ? 'pass' : '';
     head.textContent = r.pass ? `Floor ${n} passes every rule.` : `Floor ${n} does not pass yet.`;
+    if (r.pass) hintLadder.reset(n);
     const ul = document.createElement('ul');
     for (const rule of lastCheck.rules) {
       const li = document.createElement('li');
       const mark = document.createElement('span');
       mark.className = rule.ok ? 'ok' : 'no';
       mark.textContent = rule.ok ? 'Pass: ' : 'Not yet: ';
-      li.append(mark, `${rule.rule} (expected ${rule.expected}, got ${rule.got})${!rule.ok && rule.hint ? `. ${rule.hint}` : ''}`);
+      li.append(mark, `${rule.rule} (expected ${rule.expected}, got ${rule.got})`);
+      if (rule.ok) hintLadder.reset(n, rule.id);
+      else if (FLOORS[n].hints?.[rule.id]) {
+        const rung = hintLadder.fail(n, rule.id);
+        const content = FLOORS[n].hints[rule.id][rung - 1];
+        const help = document.createElement('div');
+        help.className = 'rule-hint'; help.dataset.rule = rule.id; help.dataset.rung = String(rung);
+        const label = document.createElement('strong'); label.textContent = `Hint ${rung} of 3: `;
+        help.append(label, content.text);
+        // Packs decide which existing check diagnostic belongs on this rung.
+        if (rule.hint && (content.checkHint || content.checkHintPrefixes?.some(prefix => rule.hint.startsWith(prefix)))) {
+          const diagnostic = document.createElement('p'); diagnostic.textContent = rule.hint; help.append(diagnostic);
+        }
+        if (content.refresher) {
+          const link = document.createElement('a');
+          link.href = `/learn/?review=f${n}-refresher#room=floor${n}&slide=f${n}-task&lv=1`;
+          link.target = '_blank'; link.rel = 'noopener'; link.textContent = `SQL refresher: ${content.refresher}`;
+          help.append(' ', link);
+        }
+        if (content.outline) {
+          const pre = document.createElement('pre'), code = document.createElement('code');
+          code.textContent = content.outline; pre.append(code); help.append(pre);
+        }
+        li.append(help);
+      } else if (rule.hint) li.append(`. ${rule.hint}`);
       ul.append(li);
     }
     out.append(head, ul);
@@ -393,6 +420,7 @@ $('undo-btn').addEventListener('click', async () => { await db.undoExperiments()
 $('restart-btn').addEventListener('click', async () => {
   if (!confirm(`Restart floor ${floor}? Your tables on this floor will be removed.`)) return;
   await db.restartFloor(floor);
+  hintLadder.reset(floor);
   delete answerRows[floor];
   await setFloor(floor);
   $('result-status').textContent = `Floor ${floor} restarted.`;

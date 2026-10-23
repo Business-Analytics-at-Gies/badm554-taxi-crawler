@@ -11,3 +11,9 @@ On the v2 branch, use Scratch to explore and Answer for one SELECT or WITH query
 Run answer displays the result; Check floor grades it against pristine given tables,
 without using or changing Scratch tables. Floor 3 returns every trip once with a reason
 column (NULL for clean trips). See [the R1 contract](docs/v2/stage2-resume-2026-10-23.md).
+
+Failed rules have a local three-step hint ladder: what is wrong, an idea with a
+SQL refresher link, then an inspection outline with blanks. Repeated failures
+advance each rule separately, even with the tutor closed. Passing a rule resets
+its ladder; a full pass or Restart floor resets that floor. See the
+[R4 verification](docs/v2/stage2-r4-verification.md).

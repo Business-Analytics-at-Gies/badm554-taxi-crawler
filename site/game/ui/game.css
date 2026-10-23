@@ -88,3 +88,7 @@ td.null { color: var(--muted); font-style: italic; }
 .task-panel { margin: .4rem 0 .65rem; border: 1px solid var(--line); border-radius: 6px; padding: .4rem .6rem; }
 .task-panel summary { cursor: pointer; font-weight: 600; }
 #task-checklist { padding-left: 1.2rem; font-size: .85rem; overflow-wrap: anywhere; }
+
+.rule-hint { margin: .35rem 0 .7rem; padding: .45rem .6rem; border-left: 3px solid var(--navy); background: var(--soft); }
+.rule-hint p { margin: .3rem 0; }
+.rule-hint pre { margin: .4rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }

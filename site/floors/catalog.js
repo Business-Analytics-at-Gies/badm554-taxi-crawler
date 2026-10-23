@@ -248,6 +248,14 @@ const packs = [
           "Answer uses only this floor’s original given tables, even if you change or drop a table in Scratch. Check floor leaves both boxes, Scratch and Result alone. The task checklist says Answer: not run yet, then shows the row count from your last Run answer; it does not say the answer is correct.",
           "Run answer and Check floor accept the same single SELECT or WITH query. Use Scratch for other statements. Answer text is saved separately for each floor and survives reload, floor switches and Restart floor. Run answer adds an answer entry to both query records; Check floor adds no run."
         ]
+      },
+      {
+        "id": "hint-ladder",
+        "levels": [
+          "After Check floor, each failed rule has its own hint ladder: first what is wrong, then an idea and a SQL refresher link, then an inspection query outline with blanks. Further failures stay on rung 3. Hints work with the tutor closed. Passing a rule resets its ladder; passing the floor or Restart floor resets that floor’s ladders.",
+          "Check floor advances only the rules that fail: rung 1 explains the problem, rung 2 links an idea to the SQL refresher, and rung 3 gives an inspection query outline with blanks. Complete it in Scratch to investigate; it is not a finished answer. Ladders survive reload and floor switches. A pass or Restart floor resets the relevant ladders, even with the tutor closed.",
+          "Each rule has a separate Check floor counter in this browser, capped at rung 3: problem, idea with refresher link, then an inspection outline with blanks. A parser error or refused answer does not advance it. Passing a rule resets that counter; a full pass or Restart floor resets this floor. Other floors keep their counters. The tutor does not control these hints."
+        ]
       }
     ],
     "module": "M7",
@@ -286,6 +294,78 @@ const packs = [
       "C034": "Keep a whole row from each group",
       "C021": "A key, grain and repeated groups",
       "C024": "A key, grain and repeated groups"
+    },
+    "hints": {
+      "exists": [
+        {
+          "text": "There is no answer result to check."
+        },
+        {
+          "text": "Start with a small SELECT from trips_raw, then build your answer in steps.",
+          "refresher": "A query in steps: WITH"
+        },
+        {
+          "text": "Inspect one column before building the answer.",
+          "outline": "SELECT ___ FROM trips_raw LIMIT 10;"
+        }
+      ],
+      "columns": [
+        {
+          "text": "The answer is missing original columns or includes extra ones."
+        },
+        {
+          "text": "Keep a whole source row; remove any helper column from the final SELECT.",
+          "refresher": "Keep a whole row from each group"
+        },
+        {
+          "text": "Inspect a column name, then compare it with the table chip.",
+          "outline": "SELECT ___ FROM trips_raw LIMIT 10;"
+        }
+      ],
+      "unchanged": [
+        {
+          "text": "Some answer rows differ from the original feed, or occur too often."
+        },
+        {
+          "text": "Choose source rows rather than changing amounts or mixing values from different copies.",
+          "refresher": "Keep a whole row from each group"
+        },
+        {
+          "text": "Inspect a source value beside its physical row identifier.",
+          "outline": "SELECT row_id, ___ FROM trips_raw LIMIT 10;"
+        }
+      ],
+      "row_count": [
+        {
+          "text": "The answer has the wrong number of rows for one copy of each trip.",
+          "checkHintPrefixes": [
+            "Your answer has between"
+          ]
+        },
+        {
+          "text": "Number rows inside trip-key groups, then keep row 1 in a final query.",
+          "refresher": "Keep a whole row from each group",
+          "checkHint": true
+        },
+        {
+          "text": "Try one candidate grouping column to investigate repeats; this is an inspection query, not the answer.",
+          "outline": "SELECT ___, count(*) AS copies FROM trips_raw GROUP BY 1 HAVING count(*) > 1;",
+          "checkHint": true
+        }
+      ],
+      "trip_keys": [
+        {
+          "text": "Some trips are missing or still have more than one copy."
+        },
+        {
+          "text": "A trip key distinguishes trips whose amounts differ. Compare candidate groups before numbering rows.",
+          "refresher": "A key, grain and repeated groups"
+        },
+        {
+          "text": "Inspect repeated values of a candidate column before choosing your trip key.",
+          "outline": "SELECT ___, count(*) AS copies FROM trips_raw GROUP BY 1 HAVING count(*) > 1;"
+        }
+      ]
     },
     "reference": "/floors/floor1/reference.sql",
     "check": "/floors/floor1/check.js"
@@ -413,6 +493,14 @@ const packs = [
           "Answer uses only this floor’s original given tables, even if you change or drop a table in Scratch. Check floor leaves both boxes, Scratch and Result alone. The task checklist says Answer: not run yet, then shows the row count from your last Run answer; it does not say the answer is correct.",
           "Run answer and Check floor accept the same single SELECT or WITH query. Use Scratch for other statements. Answer text is saved separately for each floor and survives reload, floor switches and Restart floor. Run answer adds an answer entry to both query records; Check floor adds no run."
         ]
+      },
+      {
+        "id": "hint-ladder",
+        "levels": [
+          "After Check floor, each failed rule has its own hint ladder: first what is wrong, then an idea and a SQL refresher link, then an inspection query outline with blanks. Further failures stay on rung 3. Hints work with the tutor closed. Passing a rule resets its ladder; passing the floor or Restart floor resets that floor’s ladders.",
+          "Check floor advances only the rules that fail: rung 1 explains the problem, rung 2 links an idea to the SQL refresher, and rung 3 gives an inspection query outline with blanks. Complete it in Scratch to investigate; it is not a finished answer. Ladders survive reload and floor switches. A pass or Restart floor resets the relevant ladders, even with the tutor closed.",
+          "Each rule has a separate Check floor counter in this browser, capped at rung 3: problem, idea with refresher link, then an inspection outline with blanks. A parser error or refused answer does not advance it. Passing a rule resets that counter; a full pass or Restart floor resets this floor. Other floors keep their counters. The tutor does not control these hints."
+        ]
       }
     ],
     "module": "M7",
@@ -445,6 +533,73 @@ const packs = [
       "C015": "Keep unmatched rows with LEFT JOIN",
       "C021": "Count the joined result",
       "C024": "Count the joined result"
+    },
+    "hints": {
+      "exists": [
+        {
+          "text": "There is no answer result to check."
+        },
+        {
+          "text": "Start with trips in a WITH query; the final SELECT returns your answer.",
+          "refresher": "A query in steps: WITH"
+        },
+        {
+          "text": "Inspect a starting column before adding zone information.",
+          "outline": "SELECT ___ FROM trips LIMIT 10;"
+        }
+      ],
+      "columns": [
+        {
+          "text": "The answer is missing required source or zone-label columns."
+        },
+        {
+          "text": "Keep the trip columns, then add pickup and drop-off zone labels with joins.",
+          "refresher": "Keep unmatched rows with LEFT JOIN"
+        },
+        {
+          "text": "Inspect the lookup before choosing a join column.",
+          "outline": "SELECT ___ FROM zones LIMIT 10;"
+        }
+      ],
+      "row_count": [
+        {
+          "text": "The answer lost trips or repeated them."
+        },
+        {
+          "text": "A LEFT JOIN preserves unmatched trips. Check the lookup key and count rows after each join.",
+          "refresher": "Count the joined result"
+        },
+        {
+          "text": "Inspect one lookup column beside each trip identifier.",
+          "outline": "SELECT t.row_id, ___ FROM trips t LEFT JOIN zones z ON t.do_location_id = z.location_id;"
+        }
+      ],
+      "zone_flags": [
+        {
+          "text": "Some zone names or flags do not match the trip."
+        },
+        {
+          "text": "Test both trip ends and put the unmatched condition first; the first true CASE branch wins.",
+          "refresher": "Label the first matching condition"
+        },
+        {
+          "text": "Try one condition on a small sample before writing the complete flag.",
+          "outline": "SELECT row_id, CASE WHEN ___ THEN 'unmatched' ELSE 'ok' END AS trial_flag FROM trips LIMIT 10;"
+        }
+      ],
+      "unchanged": [
+        {
+          "text": "Original trip values changed or trips were lost or repeated."
+        },
+        {
+          "text": "Add labels to the source rows; avoid replacing the trip values.",
+          "refresher": "Keep unmatched rows with LEFT JOIN"
+        },
+        {
+          "text": "Compare a source column with its trip identifier.",
+          "outline": "SELECT row_id, ___ FROM trips LIMIT 10;"
+        }
+      ]
     },
     "reference": "/floors/floor2/reference.sql",
     "check": "/floors/floor2/check.js"
@@ -589,6 +744,14 @@ const packs = [
           "Answer uses only this floor’s original given tables, even if you change or drop a table in Scratch. Check floor leaves both boxes, Scratch and Result alone. The task checklist says Answer: not run yet, then shows the row count from your last Run answer; it does not say the answer is correct.",
           "Run answer and Check floor accept the same single SELECT or WITH query. Use Scratch for other statements. Answer text is saved separately for each floor and survives reload, floor switches and Restart floor. Run answer adds an answer entry to both query records; Check floor adds no run."
         ]
+      },
+      {
+        "id": "hint-ladder",
+        "levels": [
+          "After Check floor, each failed rule has its own hint ladder: first what is wrong, then an idea and a SQL refresher link, then an inspection query outline with blanks. Further failures stay on rung 3. Hints work with the tutor closed. Passing a rule resets its ladder; passing the floor or Restart floor resets that floor’s ladders.",
+          "Check floor advances only the rules that fail: rung 1 explains the problem, rung 2 links an idea to the SQL refresher, and rung 3 gives an inspection query outline with blanks. Complete it in Scratch to investigate; it is not a finished answer. Ladders survive reload and floor switches. A pass or Restart floor resets the relevant ladders, even with the tutor closed.",
+          "Each rule has a separate Check floor counter in this browser, capped at rung 3: problem, idea with refresher link, then an inspection outline with blanks. A parser error or refused answer does not advance it. Passing a rule resets that counter; a full pass or Restart floor resets this floor. Other floors keep their counters. The tutor does not control these hints."
+        ]
       }
     ],
     "module": "M7",
@@ -608,7 +771,8 @@ const packs = [
       "CASE_WHEN",
       "UNION_ALL",
       "AGGREGATE_FILTER",
-      "C036"
+      "C036",
+      "C008"
     ],
     "refreshes": {
       "CASE_WHEN": "Choose the first reason",
@@ -620,6 +784,73 @@ const packs = [
       "C021": "Check counts by reason",
       "C024": "Check counts by reason",
       "C036": "Stack results with UNION ALL"
+    },
+    "hints": {
+      "exists": [
+        {
+          "text": "There is no answer result to check."
+        },
+        {
+          "text": "Use a WITH query to prepare the checks and a final SELECT to return every trip.",
+          "refresher": "A query in steps: WITH"
+        },
+        {
+          "text": "Inspect a starting column before combining the checks.",
+          "outline": "SELECT ___ FROM trips LIMIT 10;"
+        }
+      ],
+      "columns": [
+        {
+          "text": "The answer needs the source columns and one reason column."
+        },
+        {
+          "text": "Keep the original columns and add a CASE expression; clean trips receive NULL.",
+          "refresher": "Choose the first reason"
+        },
+        {
+          "text": "Inspect a source column before adding reason.",
+          "outline": "SELECT ___ FROM trips LIMIT 10;"
+        }
+      ],
+      "partition": [
+        {
+          "text": "Some source trips are missing or appear more than once."
+        },
+        {
+          "text": "Keep clean and bad trips together and assign one first-match reason per source row.",
+          "refresher": "Choose the first reason"
+        },
+        {
+          "text": "Count rows matching one condition before combining the rules.",
+          "outline": "SELECT count(*) AS matching_rows FROM trips WHERE ___;"
+        }
+      ],
+      "unchanged": [
+        {
+          "text": "Some original values changed or rows were lost or repeated."
+        },
+        {
+          "text": "Add reason while copying every original value from trips unchanged.",
+          "refresher": "Choose the first reason"
+        },
+        {
+          "text": "Inspect a source value beside its trip identifier.",
+          "outline": "SELECT row_id, ___ FROM trips LIMIT 10;"
+        }
+      ],
+      "reasons": [
+        {
+          "text": "Some trips have the wrong first reason, or a clean trip has a reason."
+        },
+        {
+          "text": "Test the four rules in task order with CASE; the first true branch wins and ELSE can be NULL.",
+          "refresher": "Choose the first reason"
+        },
+        {
+          "text": "Try one condition on a sample before combining all four rules.",
+          "outline": "SELECT row_id, CASE WHEN ___ THEN 'negative_fare' ELSE NULL END AS trial_reason FROM trips LIMIT 10;"
+        }
+      ]
     },
     "reference": "/floors/floor3/reference.sql",
     "check": "/floors/floor3/check.js"
