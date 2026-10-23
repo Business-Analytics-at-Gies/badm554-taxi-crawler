@@ -33,3 +33,20 @@ on 10-23.
   items A and B are rewritten for answer-query grading; 2.6 is the hint ladder; each pack gets the
   learning-graph gate test and a `CASE WHEN` refresher where a floor first needs it.
 - No change to the live site and no merge before Mon 10-26. The Rerun keeps its own grading.
+
+## Follow-up: the pilot's `lens` use (question 8)
+
+Codex Edu counted it from the pilot's chat store on 2026-10-23, aggregates only; the copy was
+deleted after the count. Claude saw only these numbers:
+
+| Measure | Count |
+|---|---|
+| Learner sessions | 20 |
+| Learner questions | 143 |
+| Model calls (settled) | 175 (matches the 10-18 spend aggregate, so the right store was read) |
+| Tutor tool calls stored | 13: `run_sql` 7, `show_code` 3, `highlight` 2, `game` 1 |
+| `lens` calls | **0**, in 0 sessions |
+| Sessions with older turns trimmed | 5 of 20 (stored counts are a lower bound) |
+
+By the revisit rule above, `lens` almost never ran. Reported to control for the switch to option 3
+(remove the map); stage 5 waits for that answer.
