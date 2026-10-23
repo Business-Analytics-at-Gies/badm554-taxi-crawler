@@ -38,6 +38,13 @@ code { font-family: var(--mono); font-size: .9em; overflow-wrap: anywhere; }
 .columns-content:not(:empty) { padding-bottom: .4rem; }
 .columns-list { list-style: none; padding: 0; margin: 0; }
 .columns-list li { padding: .2rem 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.table-chip > .preview-button { margin-top: .15rem; padding: .25rem .5rem; }
+.g-preview { align-self: start; border: 1px solid var(--line); border-radius: 6px; padding: .5rem .6rem; margin-top: .5rem; }
+.g-preview h2 { margin: 0; overflow-wrap: anywhere; }
+@media (min-width: 60em) and (max-width: 74.999em) { .g-preview { grid-column: 2; } }
+@media (min-width: 75em) {
+  .g-main:has(> .g-preview:not([hidden])) { grid-template-columns: minmax(0, .85fr) minmax(0, 1.3fr) minmax(0, 1fr); }
+}
 .sql-label { display: block; font-weight: 600; margin-top: .5rem; font-size: .9rem; }
 #sql-input { width: 100%; font: 14px/1.4 var(--mono); padding: .45rem; border: 1px solid #6b7280; border-radius: 6px; resize: vertical; }
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin: .4rem 0; }

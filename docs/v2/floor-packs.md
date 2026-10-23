@@ -1,7 +1,7 @@
 # Floor packs
 
 Created: 2026-10-18
-Last Updated: 2026-10-18
+Last Updated: 2026-10-23
 
 Stage 2.0 moves the three existing floors into `site/floors/floor<N>/`. The pass rules, reference
 results, hints, task wording and existing slide ids are preserved. The approved plan's known
@@ -120,4 +120,12 @@ Item 2.2 makes each table chip a keyboard-operable column disclosure, using quie
 Open column lists refresh when a learner replaces a table; floor switches close the previous
 floor's chips. The editor, Result and both query records are untouched by opening a chip.
 
-Items 2.3–2.5 retain their previous behavior until their own implementation steps.
+Item 2.3 adds a separate Preview control per chip, showing up to ten rows through quiet
+inspection. The panel sits beside the console on wide screens and below it on narrow screens;
+wide tables scroll within the panel. It refreshes with replacement, closes on drop or floor
+switch, and displays the inspection API's open-transaction explanation without reading rows.
+Keyboard controls work in the guide's game window, and Close preview returns focus to its chip.
+The final narrow-screen check also verifies that the task panel's review links open Guide
+and scroll to the requested refresher or About the data, without requiring a tab change.
+
+Items 2.4–2.5 retain their previous behavior until their own implementation steps.

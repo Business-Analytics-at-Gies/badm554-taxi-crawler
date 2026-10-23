@@ -106,3 +106,17 @@ document.getElementById('game-slot').addEventListener('load', () => {
 
 window.taxiLearn = { guide, game, layout, panel, snapshot, dispatch };
 panel.start({ dispatch, snapshot });
+
+// Review links from the game open the requested resource, including on the
+// narrow layout whose ordinary entry point is the Tutor tab.
+const review = document.getElementById(new URLSearchParams(location.search).get('review'));
+if (review?.matches('.floor-refresher, #about-data')) {
+  guide.go(review.closest('.room').dataset.room, review.closest('.slide').id);
+  layout.show('guide');
+  requestAnimationFrame(() => {
+    const heading = review.querySelector('h4');
+    heading.tabIndex = -1;
+    heading.focus({ preventScroll: true });
+    review.scrollIntoView({ block: 'start' });
+  });
+}

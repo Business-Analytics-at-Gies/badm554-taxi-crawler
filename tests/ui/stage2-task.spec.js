@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { resetMock, openFloor, showTab, runSql, noHorizontalScroll } from './helpers.js';
+import { resetMock, openFloor, runSql, noHorizontalScroll } from './helpers.js';
 
 test.beforeEach(async ({ request }) => resetMock(request));
 
@@ -26,15 +26,15 @@ test('2.1 full ordered rules and review links work on a direct floor and an in-g
   const popupPromise = page.waitForEvent('popup');
   await review.click();
   const guide = await popupPromise;
-  await showTab(guide, 'Guide');
   await expect(guide.locator('#f3-refresher')).toBeVisible();
+  await expect(guide.locator('#f3-refresher')).toBeInViewport();
   await expect(guide.locator('#f3-task .task-rules')).toHaveText(wording.replace(/\s*Use CREATE OR REPLACE TABLE[\s\S]*$/, ''));
   await guide.close();
   const aboutPromise = page.waitForEvent('popup');
   await page.getByRole('link', { name: 'About the data', exact: true }).click();
   const about = await aboutPromise;
-  await showTab(about, 'Guide');
   await expect(about.locator('#about-data')).toBeVisible();
+  await expect(about.locator('#about-data')).toBeInViewport();
   await about.close();
   await page.getByRole('button', { name: 'Floor 1', exact: true }).click();
   await expect(page.locator('#engine-status')).toHaveText('Floor 1 is ready.');

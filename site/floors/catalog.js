@@ -222,6 +222,14 @@ const packs = [
           "The columns and types describe the table on the active floor, including tables you create. When you replace a table, an open chip refreshes its column view. After switching floors, open the new floor’s chip to inspect that floor’s columns and types.",
           "Use the table chip’s columns and types to choose names for SELECT, WHERE and joins. The column view reads the table quietly: it adds no query to your history or the tutor’s recent queries and never replaces unfinished SQL."
         ]
+      },
+      {
+        "id": "table-preview",
+        "levels": [
+          "Choose Preview beside any table chip under Tables to see its first 10 rows in a separate panel beside the console, or below it on a narrow screen. Start with trips_raw to see what a row holds. Preview leaves Your SQL, Result and query records alone; Close preview takes you back to the chip.",
+          "Preview shows up to 10 rows from the table on this floor, including your own outputs. An empty table still shows its column names. Preview refreshes after a replacement and closes when you drop its table or change floors. The panel scrolls sideways for wide rows on a phone.",
+          "Preview is a quiet SELECT * with LIMIT 10, without a guaranteed sort order. It does not add a run to either query record. When a transaction is open, Preview explains that you must COMMIT or ROLLBACK before reading rows; it shows columns without running row expressions or changing your transaction."
+        ]
       }
     ],
     "reference": "/floors/floor1/reference.sql",
@@ -328,6 +336,14 @@ const packs = [
           "Under Tables above Your SQL, open a table chip to see its columns and types. Start with trips to find the available names before writing a query. Opening a chip leaves your SQL and Result alone; Enter or Space opens and closes it from the keyboard.",
           "The columns and types describe the table on the active floor, including tables you create. When you replace a table, an open chip refreshes its column view. After switching floors, open the new floor’s chip to inspect that floor’s columns and types.",
           "Use the table chip’s columns and types to choose names for SELECT, WHERE and joins. The column view reads the table quietly: it adds no query to your history or the tutor’s recent queries and never replaces unfinished SQL."
+        ]
+      },
+      {
+        "id": "table-preview",
+        "levels": [
+          "Choose Preview beside any table chip under Tables to see its first 10 rows in a separate panel beside the console, or below it on a narrow screen. Start with trips to see what a row holds. Preview leaves Your SQL, Result and query records alone; Close preview takes you back to the chip.",
+          "Preview shows up to 10 rows from the table on this floor, including your own outputs. An empty table still shows its column names. Preview refreshes after a replacement and closes when you drop its table or change floors. The panel scrolls sideways for wide rows on a phone.",
+          "Preview is a quiet SELECT * with LIMIT 10, without a guaranteed sort order. It does not add a run to either query record. When a transaction is open, Preview explains that you must COMMIT or ROLLBACK before reading rows; it shows columns without running row expressions or changing your transaction."
         ]
       }
     ],
@@ -445,6 +461,14 @@ const packs = [
           "Under Tables above Your SQL, open a table chip to see its columns and types. Start with trips to find the available names before writing a query. Opening a chip leaves your SQL and Result alone; Enter or Space opens and closes it from the keyboard.",
           "The columns and types describe the table on the active floor, including tables you create. When you replace a table, an open chip refreshes its column view. After switching floors, open the new floor’s chip to inspect that floor’s columns and types.",
           "Use the table chip’s columns and types to choose names for SELECT, WHERE and joins. The column view reads the table quietly: it adds no query to your history or the tutor’s recent queries and never replaces unfinished SQL."
+        ]
+      },
+      {
+        "id": "table-preview",
+        "levels": [
+          "Choose Preview beside any table chip under Tables to see its first 10 rows in a separate panel beside the console, or below it on a narrow screen. Start with trips to see what a row holds. Preview leaves Your SQL, Result and query records alone; Close preview takes you back to the chip.",
+          "Preview shows up to 10 rows from the table on this floor, including your own outputs. An empty table still shows its column names. Preview refreshes after a replacement and closes when you drop its table or change floors. The panel scrolls sideways for wide rows on a phone.",
+          "Preview is a quiet SELECT * with LIMIT 10, without a guaranteed sort order. It does not add a run to either query record. When a transaction is open, Preview explains that you must COMMIT or ROLLBACK before reading rows; it shows columns without running row expressions or changing your transaction."
         ]
       }
     ],

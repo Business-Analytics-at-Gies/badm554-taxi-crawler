@@ -21,6 +21,8 @@ let engine = 'loading';
 let lastCheck = null;
 let running = false;
 let codes = readCodes();
+let previewTable = null;
+let previewVersion = 0;
 const clearedFloors = () => FLOOR_IDS.filter(n => validCode(n, codes[n]));
 
 let settingsWindow = window;
@@ -107,7 +109,19 @@ async function refreshTables() {
     details.append(summary, content);
     details.addEventListener('toggle', () => { if (details.open) showColumns(details, t.name, content); });
     details.open = opened.has(t.name);
-    li.append(details); ul.append(li);
+    const preview = document.createElement('button');
+    preview.type = 'button';
+    preview.className = 'preview-button';
+    preview.dataset.table = t.name;
+    preview.textContent = 'Preview';
+    preview.setAttribute('aria-label', `Preview ${t.name}`);
+    preview.setAttribute('aria-controls', 'table-preview');
+    preview.addEventListener('click', () => showPreview(t.name, { focus: true }));
+    li.append(details, preview); ul.append(li);
+  }
+  if (previewTable) {
+    if (st.tables.some(t => t.name === previewTable)) await showPreview(previewTable);
+    else closePreview();
   }
 }
 
@@ -132,6 +146,52 @@ async function showColumns(details, name, content) {
   }
 }
 
+function closePreview(focus = false) {
+  const name = previewTable;
+  previewTable = null;
+  previewVersion++;
+  $('table-preview').hidden = true;
+  $('preview-table').replaceChildren();
+  $('preview-status').textContent = '';
+  if (focus) {
+    const source = [...$('tables-ul').querySelectorAll('.preview-button')].find(b => b.dataset.table === name);
+    (source || $('tables')).focus();
+  }
+}
+
+async function showPreview(name, { focus = false } = {}) {
+  if (engine !== 'ready') return;
+  const n = floor;
+  const version = ++previewVersion;
+  previewTable = name;
+  const pane = $('table-preview');
+  const status = $('preview-status');
+  pane.hidden = false;
+  $('preview-title').textContent = `Preview: ${name}`;
+  $('preview-table').replaceChildren();
+  status.classList.remove('bad');
+  status.textContent = 'Reading preview…';
+  try {
+    const result = await db.inspect(name, { rows: 10 });
+    if (version !== previewVersion || n !== floor) return;
+    if (!result.ok) {
+      status.textContent = result.error;
+      status.classList.add('bad');
+    } else {
+      renderTable($('preview-table'), result.columns.map(c => c.name), result.rows);
+      status.textContent = result.previewSkipped || `${fmt(result.rows.length)} row${result.rows.length === 1 ? '' : 's'} shown (up to 10)`;
+    }
+  } catch {
+    if (version !== previewVersion || n !== floor) return;
+    status.textContent = 'The preview could not be read. Choose Preview again to retry.';
+    status.classList.add('bad');
+  }
+  if (focus && version === previewVersion && n === floor) {
+    pane.focus({ preventScroll: true });
+    pane.scrollIntoView({ block: 'nearest' });
+  }
+}
+
 function renderResult(r) {
   const status = $('result-status');
   const table = $('result-table');
@@ -143,11 +203,16 @@ function renderResult(r) {
   }
   status.classList.remove('bad');
   status.textContent = `${fmt(r.rowCount)} row${r.rowCount === 1 ? '' : 's'}${r.truncated ? `, showing the first ${fmt(r.rows.length)}` : ''} · ${fmt(r.ms ?? 0)} ms`;
-  if (!r.columns.length) return;
+  renderTable(table, r.columns, r.rows);
+}
+
+function renderTable(table, columns, rows) {
+  table.replaceChildren();
+  if (!columns.length) return;
   const head = table.createTHead().insertRow();
-  for (const c of r.columns) { const th = document.createElement('th'); th.scope = 'col'; th.textContent = c; head.append(th); }
+  for (const c of columns) { const th = document.createElement('th'); th.scope = 'col'; th.textContent = c; head.append(th); }
   const body = table.createTBody();
-  for (const row of r.rows) {
+  for (const row of rows) {
     const tr = body.insertRow();
     for (const v of row) {
       const td = tr.insertCell();
@@ -268,9 +333,10 @@ async function setFloor(n) {
   $('floor-title').textContent = f.title;
   $('floor-task').textContent = `${f.task}\n${RERUN_INSTRUCTION}`;
   $('task-context').textContent = f.taskContext;
-  $('task-refresher').href = `/learn/#room=floor${n}&slide=f${n}-task&lv=1`;
+  $('task-refresher').href = `/learn/?review=f${n}-refresher#room=floor${n}&slide=f${n}-task&lv=1`;
   $('task-checklist').replaceChildren();
   $('tables-ul').replaceChildren();
+  closePreview();
   $('check-btn').textContent = `Check floor ${n}`;
   for (const b of document.querySelectorAll('.floor-pick button')) b.setAttribute('aria-pressed', String(Number(b.dataset.floor) === n));
   showSavedCodes(n);
@@ -302,6 +368,7 @@ function highlight(target, note) {
 }
 
 $('run-btn').addEventListener('click', runSql);
+$('preview-close').addEventListener('click', () => closePreview(true));
 $('cancel-btn').addEventListener('click', () => db?.cancel());
 $('sql-input').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runSql(); } });
 $('check-btn').addEventListener('click', checkFloor);
