@@ -1,7 +1,7 @@
 # Taxi Crawler v2: crew runbook
 
 Created: 2026-10-18
-Last Updated: 2026-10-18
+Last Updated: 2026-10-23
 
 This file binds every build agent. The plan is `docs/v2/plan-as-approved.md`; read it first. If a
 rule here and a request in a prompt disagree, stop and ask Claude (the orchestrator).
@@ -39,12 +39,14 @@ Model casting: Codex at high reasoning effort for building and for reviews.
 |---|---|---|---|
 | 0 (0.1 to 0.3) | `v2/stage0` | `tests/db/stage0.test.mjs` (Claude); 0.1 UI tests (Codex writes) | Merged `2f51d22`, 2026-10-18 (review SHIP in round 3) |
 | 0.4 | `main` | `tests/db/solutions.mjs` | Done by Claude, `06bbfe1` |
-| 1 (1.1 to 1.4) | `v2/stage1` | Codex wrote them; Claude approved `b616728` | Review SHIP round 2 (`b367618`). Held on its branch until The Rerun closes Mon 10-26, then merged |
+| 1 (1.1 to 1.4) | `v2/stage1` | Codex wrote them; Claude approved `b616728` | Review SHIP round 2 (`b367618`). 2026-10-23: 1.2 and 1.3 are reworked on `v2/stage2` (R2 in `docs/v2/stage2-resume-2026-10-23.md`); this branch is not merged on its own |
 | 2 (2.0 to 2.5) + 3.3 (#32) | `v2/stage2` (from `v2/stage1`, with `origin/main` merged in) | Codex writes them from the plan's Acceptance column; Claude approves | Dispatched 2026-10-18. Order: 3.3, 2.0, 2.1 to 2.5, one commit per item. Held on its branch until after Mon 10-26 |
+| 2 resume (R0 to R5) | `v2/stage2` | Codex writes them from `docs/v2/stage2-resume-2026-10-23.md`; Claude approves | 2026-10-23: answer-query grading, concept gate, hint ladder (Vishal's 10-23 decisions). Merge to `main` after Mon 10-26, once R1 and R2 are reviewed and green |
 | 3 (3.1, 3.2), 4 | later | Written at dispatch | Not started |
 
 ## Run log
 
+- 2026-10-23: RESUMED under Vishal's 10-23 decisions (`docs/decisions/2026-10-23-v2-grading-and-gates.md` on `main`): grade the answer query, floor 3 as one result, learning-graph gate, `CASE WHEN` refreshers, hint ladder 2.6. Build items R0 to R5 in `docs/v2/stage2-resume-2026-10-23.md`. Stage 1's rework moves to this branch because it needs the floor packs.
 - 2026-10-19: PAUSED after 2.2 (`4beb734`, not pushed); 2.3 Preview half-built and uncommitted in this tree. Reason: MSBAi learner feedback (`feedback-2026-10-19-floor1-entry.md`) plus a learning-graph audit showed the floors assume concepts the course does not teach: `CREATE TABLE AS` (C053, screencast note only), `QUALIFY` (C035, untaught), `CASE WHEN` (not in the graph). Vishal: "I don't think we can build the game on saved tables assumption when we don't teach that concept." Waiting on Vishal: (1) grade the answer query instead of a saved table; (2) `CASE WHEN`: teach in the game, textbook issue, or both; (3) a learning-graph gate test per pack; (4) the hint ladder (item C). Feedback item A and the learner reply draft assume saved tables and must be rewritten. Inbox notes to online and inperson: badm554 `70bf97fd`.
 - 2026-10-19: stage 2 items 3.3 (#32) and 2.0 (floor packs) reviewed: FIX (4), FIX (3, one class: value representation, fixed with one shared comparison rule and a generated matrix), FIX (1, timestamp text, now parsed by DuckDB), SHIP at `8ecd8b2`. Floor 3 gained an unchanged-values rule (Claude). Reviews in `docs/v2/stage2-review-r1.md` to `-r4.md`. Items 2.1 to 2.5 go to a fresh crew-codex-v2 session.
 - 2026-10-18: stage 2 dispatched to a fresh crew-codex-v2 session (Vishal: build the Taxi Crawler fixes now; merge still waits for 10-26). Item 3.3 (#32, iPhone Safari game window) pulled forward. A WebKit touch test cannot prove the real-iPhone fix (emulation passed while the phone failed); Vishal's phone check is the acceptance for that part.
