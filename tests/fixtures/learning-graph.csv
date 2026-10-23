@@ -1,0 +1,91 @@
+ConceptID,ConceptName,TaughtIn
+C001,Stakeholder question first (question -> data -> answer),S0
+C002,OLAP warehouse vs OLTP transactional database,M1I3
+C003,"Tables, columns, rows",M1I3
+C004,BigQuery public datasets,M1I3
+C005,SELECT column list,M1I4
+C006,FROM table,M1I4
+C007,WHERE row filter,M1I4
+C008,ORDER BY (and LIMIT),M1I4
+C009,Question-to-query translation,M1I5
+C010,COUNT(*) whole-table count,M1I6
+C011,Pre-AI / AI-mediated / post-AI workflow with attribution log and AIAS levels,S0
+C012,Habit 1: sanity-check the AI's answer (nondeterminism; plausibility filter),M1I7
+C013,Shared key between two tables,M2I2
+C014,INNER JOIN,M2I2
+C015,LEFT JOIN,M2I2
+C016,NULL from unmatched rows,M2I2
+C017,RIGHT and FULL OUTER JOIN; choosing the join from the question,M2I3
+C018,Silent row loss from an INNER JOIN,M2I2
+C019,Habit 2: count the rows after a join,M2I2
+C020,COALESCE to label NULLs,-
+C021,"GROUP BY (the ""per"" signal; non-aggregated columns must be grouped)",M2I4
+C022,"Aggregate functions SUM, AVG, MIN, MAX, COUNT",M2I4
+C023,JOIN then GROUP BY,M2I4
+C024,HAVING vs WHERE,M2I5
+C025,Window function keeps every row (OVER),M3I2
+C026,PARTITION BY,M3I2
+C027,ORDER BY inside OVER (frame awareness),M3I2
+C028,Ranking functions and tie handling (ROW_NUMBER / RANK / DENSE_RANK),M3I3
+C029,Running total,M3I3
+C030,Period comparison with LAG / LEAD,M3I3
+C031,Habit 3: confirm the window ran,M3I7
+C032,Nested subqueries,M3I4
+C033,CTE with WITH; subquery vs CTE vs temp table,M3I4
+C034,Windows inside CTEs (multi-step readable query),M3I5
+C035,QUALIFY (BigQuery),-
+C036,EXTRACT date part and UNION ALL,-
+C037,bq CLI as a second access pattern,M3I8
+C038,Denormalize for reading,M4I2
+C039,Fact table,M4I2
+C040,Dimension table,M4I2
+C041,Star schema,M4I2
+C042,Grain (what one fact row means),M4I3
+C043,Grain constrains which questions are answerable,M4I3
+C044,Join fan-out at mismatched grain,M4I3
+C045,Additive / semi-additive / non-additive measures,M4I4
+C046,Foreign-key spokes,M4I4
+C047,Star vs snowflake,M4I4
+C048,Slowly changing dimensions (awareness),M4I4
+C049,Design a star from the question,M4I5
+C050,Critique a broken star,M4I5
+C051,Three-Options protocol,M4I1
+C052,DuckDB local analytical engine (read CSV / Parquet),M4I6
+C053,CREATE TABLE AS (DDL),M4I6
+C054,Habit 4: check your grain before you SUM (grain-align first),M4I7
+C055,Transactional systems normalize for write safety (anomalies),M5I1
+C056,"Analyst reads 3NF, doesn't design it",M5I1
+C057,1NF,M5I2
+C058,2NF,M5I2
+C059,3NF,M5I2
+C060,Functional dependency,M5I3
+C061,FDs predict the joins,M5I3
+C062,Sakila / Pagila as clean 3NF reference; trace one rental across tables,M5I4
+C063,Textbook vs real (personal-export) data; pre-flight privacy scrub,M5I5
+C064,Query a DuckDB file from a notebook (duckdb.connect; pandas result),M5I6
+C065,pandas DataFrame basics,-
+C066,ETL as three staged contracts (E / T / L; load is the only writer),M6I2
+C067,Extract copies faithfully (raw copy kept; rebuildability),M6I2
+C068,Transform reshapes source to star (derived columns are decisions),M6I3
+C069,Flatten dimensions from 3NF,M6I3
+C070,Build the fact at its grain,M6I3
+C071,Surrogate keys,M6I3
+C072,SQL vs dataframe code for the transform,M6I3
+C073,Idempotent load (drop and rebuild),M6I4
+C074,"Habit 5: run it twice, compare counts",M6I4
+C075,Shared schema contract / data dictionary,M6I5
+C076,Schema negotiation via pull requests,M6I5
+C077,GitHub branch / pull-request workflow,-
+C078,Adversarial stance: what would make me wrong,M7I2
+C079,"Four validation layers (provenance, schema, totals, edge cases)",M7I2
+C080,Provenance: source fingerprint,M7I3
+C081,Count in / count out reconciliation,M7I3
+C082,Key uniqueness check,M7I3
+C083,Orphan check via LEFT JOIN nulls,M7I3
+C084,Totals reconciliation to source,M7I3
+C085,"Edge cases: nulls, zeros, ranges",M7I4
+C086,Documentation as contract (checks vs assumptions),M7I5
+C087,Mechanical checks run inside the pipeline,M7I3
+C088,Access pattern as the decision lens (relational's three assumptions),M8I2
+C089,"Four NoSQL families (document, key-value, graph, columnar)",M8I3
+C090,Defend the choice: why the project stayed relational; oral defense,M8I5

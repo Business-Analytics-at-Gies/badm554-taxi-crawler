@@ -1,0 +1,11 @@
+{
+  "repository": "vishalsachdev/badm554-textbook",
+  "commit": "c728ccfeb65a6c28c198777068a1c15b0caa8194",
+  "path": "docs/graph/learning-graph.csv",
+  "sourceSha256": "f9213b1838f47070603debfff6f22a17a41105f17eb9049ddf55b12194cb79f6",
+  "columns": [
+    "ConceptID",
+    "ConceptName",
+    "TaughtIn"
+  ]
+}

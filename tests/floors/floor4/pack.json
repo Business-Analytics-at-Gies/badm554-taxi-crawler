@@ -75,5 +75,14 @@
         "Run answer and Check floor accept the same single SELECT or WITH query. Use Scratch for other statements. Answer text is saved separately for each floor and survives reload, floor switches and Restart floor. Run answer adds an answer entry to both query records; Check floor adds no run."
       ]
     }
-  ]
+  ],
+  "module": "M7",
+  "concepts": [
+    "C003",
+    "C005",
+    "C006",
+    "C008",
+    "C033"
+  ],
+  "refreshes": {}
 }

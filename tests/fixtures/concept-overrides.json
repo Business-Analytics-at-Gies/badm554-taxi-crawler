@@ -1,0 +1,34 @@
+{
+  "C053": {
+    "name": "CREATE TABLE AS",
+    "reason": "Not taught in practice: a screencast note only (2026-10-19 audit)."
+  },
+  "C035": {
+    "name": "QUALIFY",
+    "reason": "Untaught; the graph has no TaughtIn lesson."
+  },
+  "CASE_WHEN": {
+    "name": "CASE WHEN",
+    "reason": "Not in the learning graph; textbook issue vishalsachdev/badm554-textbook#97."
+  },
+  "SELECT_DISTINCT": {
+    "name": "SELECT DISTINCT",
+    "reason": "No graph entry or confirmed lesson; teach it in the pack instead of treating aggregate COUNT as DISTINCT instruction."
+  },
+  "COUNT_DISTINCT": {
+    "name": "COUNT(DISTINCT ...)",
+    "reason": "No explicit distinct-count lesson in the graph; the general aggregate entry alone is not evidence of distinct-count teaching."
+  },
+  "UNION_ALL": {
+    "name": "UNION ALL",
+    "reason": "The graph lists it in untaught C036 with EXTRACT; this separate id requires a runnable UNION ALL refresher."
+  },
+  "AGGREGATE_FILTER": {
+    "name": "Aggregate FILTER (WHERE ...)",
+    "reason": "No explicit graph lesson for aggregate FILTER; a whole-table COUNT lesson alone does not teach filtered aggregates."
+  },
+  "ROUND": {
+    "name": "ROUND",
+    "reason": "No explicit graph lesson for numeric rounding; teach the function locally when displaying rounded revenue."
+  }
+}

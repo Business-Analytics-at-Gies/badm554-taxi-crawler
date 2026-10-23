@@ -27,8 +27,8 @@
     },
     {
       "title": "Choose the first reason",
-      "text": "CASE evaluates WHEN conditions from top to bottom. Only the first matching reason is returned, even when several rules fail. A CASE without ELSE returns NULL if no condition matches; IS NULL tests that result.",
-      "sql": "WITH rides(fare, miles) AS (VALUES (-2, 0), (10, 2))\nSELECT *, CASE WHEN fare < 0 THEN 'negative'\nWHEN miles = 0 THEN 'no_distance' END AS reason\nFROM rides;"
+      "text": "CASE tests WHEN conditions in order: the first true branch wins. Here 1 meets both conditions but gets first; 2 gets second, and 3 reaches ELSE. In an answer without ELSE, rows that match no branch get NULL. Test missing values with IS NULL.",
+      "sql": "WITH examples(n) AS (VALUES (1), (2), (3))\nSELECT n, CASE WHEN n < 2 THEN 'first'\nWHEN n < 3 THEN 'second' ELSE 'other' END AS label\nFROM examples;"
     },
     {
       "title": "Keep every trip and explain its status",
@@ -39,6 +39,16 @@
       "title": "Check counts by reason",
       "text": "COUNT(*) counts every row in each group. GROUP BY reason separates the labels; HAVING filters groups after counting. The clean count plus the quarantined count must equal the input count.",
       "sql": "WITH checked(reason) AS (VALUES ('negative'), ('negative'), (NULL))\nSELECT reason, count(*) FROM checked\nGROUP BY reason HAVING count(*) > 0;"
+    },
+    {
+      "title": "Stack results with UNION ALL",
+      "text": "UNION ALL stacks rows from queries with matching columns and types. It keeps repeated rows, so the same trip in two branches appears twice. Keep the rule branches exclusive when using it to explain trip reasons.",
+      "sql": "WITH first_day(id) AS (VALUES (1)), second_day(id) AS (VALUES (2))\nSELECT * FROM first_day\nUNION ALL SELECT * FROM second_day;"
+    },
+    {
+      "title": "Count rows that meet a condition",
+      "text": "FILTER (WHERE ...) applies a condition to one aggregate without removing rows from the whole query. COUNT(*) still gives the total; the filtered count gives only the rows matching its condition.",
+      "sql": "WITH rides(fare) AS (VALUES (-2), (10))\nSELECT count(*) FILTER (WHERE fare < 0) AS negative,\ncount(*) AS total FROM rides;"
     }
   ],
   "reviewLinks": [
@@ -129,5 +139,33 @@
         "Run answer and Check floor accept the same single SELECT or WITH query. Use Scratch for other statements. Answer text is saved separately for each floor and survives reload, floor switches and Restart floor. Run answer adds an answer entry to both query records; Check floor adds no run."
       ]
     }
-  ]
+  ],
+  "module": "M7",
+  "concepts": [
+    "C003",
+    "C005",
+    "C006",
+    "C007",
+    "C010",
+    "C016",
+    "C021",
+    "C022",
+    "C024",
+    "C033",
+    "C081",
+    "C085",
+    "CASE_WHEN",
+    "UNION_ALL",
+    "AGGREGATE_FILTER"
+  ],
+  "refreshes": {
+    "CASE_WHEN": "Choose the first reason",
+    "UNION_ALL": "Stack results with UNION ALL",
+    "AGGREGATE_FILTER": "Count rows that meet a condition",
+    "C033": "A query in steps: WITH",
+    "C007": "Filter ranges and combine conditions",
+    "C085": "Filter ranges and combine conditions",
+    "C021": "Check counts by reason",
+    "C024": "Check counts by reason"
+  }
 }

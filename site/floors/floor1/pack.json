@@ -29,6 +29,16 @@
       "title": "Keep a whole row from each group",
       "text": "ROW_NUMBER numbers rows inside each PARTITION BY group. ORDER BY chooses which copy comes first. Put the numbered rows in a CTE, then use WHERE rn = 1 in the final SELECT to keep one whole row per group. Leave rn out of the answer.",
       "sql": "WITH deliveries(ride, copy) AS (VALUES (1, 1), (1, 2), (2, 1)),\nranked AS (SELECT *, row_number() OVER (PARTITION BY ride ORDER BY copy) AS rn FROM deliveries)\nSELECT ride, copy FROM ranked WHERE rn = 1;"
+    },
+    {
+      "title": "What DISTINCT compares",
+      "text": "DISTINCT compares only the selected columns. Two loads of one ride can have different copy numbers, so selecting every column keeps both. Selecting just ride gives one ride value. This differs from keeping one complete row with ROW_NUMBER.",
+      "sql": "WITH loads(ride, copy) AS (VALUES (1, 1), (1, 2))\nSELECT DISTINCT ride FROM loads;"
+    },
+    {
+      "title": "Round a displayed amount",
+      "text": "ROUND(value, 2) displays an amount to two decimal places. Round a total for presentation after calculating it; do not change the source amounts while choosing which trips to keep.",
+      "sql": "WITH amounts(total) AS (VALUES (1.105), (2.50))\nSELECT round(total, 2) AS cents FROM amounts;"
     }
   ],
   "reviewLinks": [
@@ -235,5 +245,42 @@
         "Run answer and Check floor accept the same single SELECT or WITH query. Use Scratch for other statements. Answer text is saved separately for each floor and survives reload, floor switches and Restart floor. Run answer adds an answer entry to both query records; Check floor adds no run."
       ]
     }
-  ]
+  ],
+  "module": "M7",
+  "concepts": [
+    "C003",
+    "C005",
+    "C006",
+    "C007",
+    "C008",
+    "C010",
+    "C021",
+    "C022",
+    "C024",
+    "C025",
+    "C026",
+    "C027",
+    "C028",
+    "C032",
+    "C033",
+    "C034",
+    "C042",
+    "C081",
+    "C082",
+    "C084",
+    "SELECT_DISTINCT",
+    "ROUND"
+  ],
+  "refreshes": {
+    "SELECT_DISTINCT": "What DISTINCT compares",
+    "ROUND": "Round a displayed amount",
+    "C033": "A query in steps: WITH",
+    "C025": "Keep a whole row from each group",
+    "C026": "Keep a whole row from each group",
+    "C027": "Keep a whole row from each group",
+    "C028": "Keep a whole row from each group",
+    "C034": "Keep a whole row from each group",
+    "C021": "A key, grain and repeated groups",
+    "C024": "A key, grain and repeated groups"
+  }
 }

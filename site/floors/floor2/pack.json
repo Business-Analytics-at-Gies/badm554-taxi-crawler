@@ -27,8 +27,8 @@
     },
     {
       "title": "Label the first matching condition",
-      "text": "CASE checks WHEN conditions in order and returns the first matching THEN value. ELSE handles the rest. Test missing values with IS NULL, not = NULL. OR means either condition can be true; IN checks membership in a list.",
-      "sql": "WITH places(id) AS (VALUES (10), (99), (NULL))\nSELECT id, CASE WHEN id IS NULL THEN 'missing'\nWHEN id IN (99) THEN 'outside' ELSE 'known' END AS flag\nFROM places;"
+      "text": "CASE tests WHEN conditions in order: the first true branch wins. Here 1 meets both conditions but gets first; 2 gets second, and 3 reaches ELSE. In an answer without ELSE, rows that match no branch get NULL. Test missing values with IS NULL.",
+      "sql": "WITH examples(n) AS (VALUES (1), (2), (3))\nSELECT n, CASE WHEN n < 2 THEN 'first'\nWHEN n < 3 THEN 'second' ELSE 'other' END AS label\nFROM examples;"
     },
     {
       "title": "Count the joined result",
@@ -122,5 +122,35 @@
         "Run answer and Check floor accept the same single SELECT or WITH query. Use Scratch for other statements. Answer text is saved separately for each floor and survives reload, floor switches and Restart floor. Run answer adds an answer entry to both query records; Check floor adds no run."
       ]
     }
-  ]
+  ],
+  "module": "M7",
+  "concepts": [
+    "C003",
+    "C005",
+    "C006",
+    "C007",
+    "C008",
+    "C010",
+    "C013",
+    "C014",
+    "C015",
+    "C016",
+    "C018",
+    "C019",
+    "C021",
+    "C022",
+    "C024",
+    "C032",
+    "C033",
+    "C081",
+    "C083",
+    "CASE_WHEN"
+  ],
+  "refreshes": {
+    "CASE_WHEN": "Label the first matching condition",
+    "C033": "A query in steps: WITH",
+    "C015": "Keep unmatched rows with LEFT JOIN",
+    "C021": "Count the joined result",
+    "C024": "Count the joined result"
+  }
 }

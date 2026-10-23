@@ -33,6 +33,16 @@ const packs = [
         "title": "Keep a whole row from each group",
         "text": "ROW_NUMBER numbers rows inside each PARTITION BY group. ORDER BY chooses which copy comes first. Put the numbered rows in a CTE, then use WHERE rn = 1 in the final SELECT to keep one whole row per group. Leave rn out of the answer.",
         "sql": "WITH deliveries(ride, copy) AS (VALUES (1, 1), (1, 2), (2, 1)),\nranked AS (SELECT *, row_number() OVER (PARTITION BY ride ORDER BY copy) AS rn FROM deliveries)\nSELECT ride, copy FROM ranked WHERE rn = 1;"
+      },
+      {
+        "title": "What DISTINCT compares",
+        "text": "DISTINCT compares only the selected columns. Two loads of one ride can have different copy numbers, so selecting every column keeps both. Selecting just ride gives one ride value. This differs from keeping one complete row with ROW_NUMBER.",
+        "sql": "WITH loads(ride, copy) AS (VALUES (1, 1), (1, 2))\nSELECT DISTINCT ride FROM loads;"
+      },
+      {
+        "title": "Round a displayed amount",
+        "text": "ROUND(value, 2) displays an amount to two decimal places. Round a total for presentation after calculating it; do not change the source amounts while choosing which trips to keep.",
+        "sql": "WITH amounts(total) AS (VALUES (1.105), (2.50))\nSELECT round(total, 2) AS cents FROM amounts;"
       }
     ],
     "reviewLinks": [
@@ -240,6 +250,43 @@ const packs = [
         ]
       }
     ],
+    "module": "M7",
+    "concepts": [
+      "C003",
+      "C005",
+      "C006",
+      "C007",
+      "C008",
+      "C010",
+      "C021",
+      "C022",
+      "C024",
+      "C025",
+      "C026",
+      "C027",
+      "C028",
+      "C032",
+      "C033",
+      "C034",
+      "C042",
+      "C081",
+      "C082",
+      "C084",
+      "SELECT_DISTINCT",
+      "ROUND"
+    ],
+    "refreshes": {
+      "SELECT_DISTINCT": "What DISTINCT compares",
+      "ROUND": "Round a displayed amount",
+      "C033": "A query in steps: WITH",
+      "C025": "Keep a whole row from each group",
+      "C026": "Keep a whole row from each group",
+      "C027": "Keep a whole row from each group",
+      "C028": "Keep a whole row from each group",
+      "C034": "Keep a whole row from each group",
+      "C021": "A key, grain and repeated groups",
+      "C024": "A key, grain and repeated groups"
+    },
     "reference": "/floors/floor1/reference.sql",
     "check": "/floors/floor1/check.js"
   },
@@ -272,8 +319,8 @@ const packs = [
       },
       {
         "title": "Label the first matching condition",
-        "text": "CASE checks WHEN conditions in order and returns the first matching THEN value. ELSE handles the rest. Test missing values with IS NULL, not = NULL. OR means either condition can be true; IN checks membership in a list.",
-        "sql": "WITH places(id) AS (VALUES (10), (99), (NULL))\nSELECT id, CASE WHEN id IS NULL THEN 'missing'\nWHEN id IN (99) THEN 'outside' ELSE 'known' END AS flag\nFROM places;"
+        "text": "CASE tests WHEN conditions in order: the first true branch wins. Here 1 meets both conditions but gets first; 2 gets second, and 3 reaches ELSE. In an answer without ELSE, rows that match no branch get NULL. Test missing values with IS NULL.",
+        "sql": "WITH examples(n) AS (VALUES (1), (2), (3))\nSELECT n, CASE WHEN n < 2 THEN 'first'\nWHEN n < 3 THEN 'second' ELSE 'other' END AS label\nFROM examples;"
       },
       {
         "title": "Count the joined result",
@@ -368,6 +415,36 @@ const packs = [
         ]
       }
     ],
+    "module": "M7",
+    "concepts": [
+      "C003",
+      "C005",
+      "C006",
+      "C007",
+      "C008",
+      "C010",
+      "C013",
+      "C014",
+      "C015",
+      "C016",
+      "C018",
+      "C019",
+      "C021",
+      "C022",
+      "C024",
+      "C032",
+      "C033",
+      "C081",
+      "C083",
+      "CASE_WHEN"
+    ],
+    "refreshes": {
+      "CASE_WHEN": "Label the first matching condition",
+      "C033": "A query in steps: WITH",
+      "C015": "Keep unmatched rows with LEFT JOIN",
+      "C021": "Count the joined result",
+      "C024": "Count the joined result"
+    },
     "reference": "/floors/floor2/reference.sql",
     "check": "/floors/floor2/check.js"
   },
@@ -400,8 +477,8 @@ const packs = [
       },
       {
         "title": "Choose the first reason",
-        "text": "CASE evaluates WHEN conditions from top to bottom. Only the first matching reason is returned, even when several rules fail. A CASE without ELSE returns NULL if no condition matches; IS NULL tests that result.",
-        "sql": "WITH rides(fare, miles) AS (VALUES (-2, 0), (10, 2))\nSELECT *, CASE WHEN fare < 0 THEN 'negative'\nWHEN miles = 0 THEN 'no_distance' END AS reason\nFROM rides;"
+        "text": "CASE tests WHEN conditions in order: the first true branch wins. Here 1 meets both conditions but gets first; 2 gets second, and 3 reaches ELSE. In an answer without ELSE, rows that match no branch get NULL. Test missing values with IS NULL.",
+        "sql": "WITH examples(n) AS (VALUES (1), (2), (3))\nSELECT n, CASE WHEN n < 2 THEN 'first'\nWHEN n < 3 THEN 'second' ELSE 'other' END AS label\nFROM examples;"
       },
       {
         "title": "Keep every trip and explain its status",
@@ -412,6 +489,16 @@ const packs = [
         "title": "Check counts by reason",
         "text": "COUNT(*) counts every row in each group. GROUP BY reason separates the labels; HAVING filters groups after counting. The clean count plus the quarantined count must equal the input count.",
         "sql": "WITH checked(reason) AS (VALUES ('negative'), ('negative'), (NULL))\nSELECT reason, count(*) FROM checked\nGROUP BY reason HAVING count(*) > 0;"
+      },
+      {
+        "title": "Stack results with UNION ALL",
+        "text": "UNION ALL stacks rows from queries with matching columns and types. It keeps repeated rows, so the same trip in two branches appears twice. Keep the rule branches exclusive when using it to explain trip reasons.",
+        "sql": "WITH first_day(id) AS (VALUES (1)), second_day(id) AS (VALUES (2))\nSELECT * FROM first_day\nUNION ALL SELECT * FROM second_day;"
+      },
+      {
+        "title": "Count rows that meet a condition",
+        "text": "FILTER (WHERE ...) applies a condition to one aggregate without removing rows from the whole query. COUNT(*) still gives the total; the filtered count gives only the rows matching its condition.",
+        "sql": "WITH rides(fare) AS (VALUES (-2), (10))\nSELECT count(*) FILTER (WHERE fare < 0) AS negative,\ncount(*) AS total FROM rides;"
       }
     ],
     "reviewLinks": [
@@ -503,6 +590,34 @@ const packs = [
         ]
       }
     ],
+    "module": "M7",
+    "concepts": [
+      "C003",
+      "C005",
+      "C006",
+      "C007",
+      "C010",
+      "C016",
+      "C021",
+      "C022",
+      "C024",
+      "C033",
+      "C081",
+      "C085",
+      "CASE_WHEN",
+      "UNION_ALL",
+      "AGGREGATE_FILTER"
+    ],
+    "refreshes": {
+      "CASE_WHEN": "Choose the first reason",
+      "UNION_ALL": "Stack results with UNION ALL",
+      "AGGREGATE_FILTER": "Count rows that meet a condition",
+      "C033": "A query in steps: WITH",
+      "C007": "Filter ranges and combine conditions",
+      "C085": "Filter ranges and combine conditions",
+      "C021": "Check counts by reason",
+      "C024": "Check counts by reason"
+    },
     "reference": "/floors/floor3/reference.sql",
     "check": "/floors/floor3/check.js"
   }

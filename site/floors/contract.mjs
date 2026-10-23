@@ -7,6 +7,9 @@ export function validatePack(pack) {
   for (const field of ['title', 'input', 'task', 'guideTask', 'context', 'taskContext', 'summary', 'rulesText', 'dirt']) {
     if (typeof pack[field] !== 'string' || !pack[field].trim()) fail(field);
   }
+  if (!/^M[1-9]\d*$/.test(pack.module ?? '')) fail('module');
+  if (!Array.isArray(pack.concepts) || !pack.concepts.length || pack.concepts.some(id => typeof id !== 'string' || !/^(C\d{3}|[A-Z][A-Z0-9_]+)$/.test(id)) || new Set(pack.concepts).size !== pack.concepts.length) fail('concepts');
+  if (!pack.refreshes || typeof pack.refreshes !== 'object' || Array.isArray(pack.refreshes)) fail('refreshes');
   if (!Array.isArray(pack.ruleIds) || !pack.ruleIds.length
       || pack.ruleIds.some(id => typeof id !== 'string' || !/^[a-z][a-z0-9_]*$/.test(id))
       || new Set(pack.ruleIds).size !== pack.ruleIds.length) fail('ruleIds');
@@ -21,6 +24,9 @@ export function validatePack(pack) {
     if (!lesson.title?.trim() || !lesson.text?.trim() || !lesson.sql?.trim()) fail('refresher');
     const lines = lesson.sql.trim().split('\n').length;
     if (lines < 2 || lines > 5) fail('refresher SQL (2 to 5 lines)');
+  }
+  for (const [id, title] of Object.entries(pack.refreshes)) {
+    if (!pack.concepts.includes(id) || typeof title !== 'string' || !pack.refresher.some(l => l.title === title)) fail('refreshes');
   }
   if (!Array.isArray(pack.reviewLinks) || !pack.reviewLinks.length) fail('reviewLinks');
   for (const link of pack.reviewLinks) {
