@@ -1,0 +1,7 @@
+**FIX**
+
+1. **[P2] Complete the required route tests.** At [tests/server/rerun-access.test.js:58](/Users/vishal/teaching/badm554-taxi-crawler-rerun/tests/server/rerun-access.test.js:58) and [tests/server/rerun-access.test.js:71](/Users/vishal/teaching/badm554-taxi-crawler-rerun/tests/server/rerun-access.test.js:71), the permitted-access cases check the page, floor check, receipt and initial tutor question, but omit a successful tutor continuation. The only Rerun continuation test sends an empty request and expects refusal before opening.
+
+   For example, a listed learner must be able to ask a question, receive a tutor action, and send its result back **before opening**; an unlisted learner must complete that exchange **at and after opening**. A change that always refuses `/api/rerun/tutor/continue` would escape the current tests. Add successful exchanges for those cases and confirm that losing early access refuses an otherwise valid continuation. Also assert that listed learners can retrieve tutor history before opening.
+
+I found no server-access bypass. An additional 165 checks using memory-only storage passed. The standard access suite could not finish here because the read-only environment blocks its temporary files; browser tests were not run. No files were changed.
