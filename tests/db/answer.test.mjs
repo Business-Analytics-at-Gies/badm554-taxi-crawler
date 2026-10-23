@@ -109,3 +109,49 @@ test('R1 Check preserves Scratch, open transactions and both records; Run answer
     assert.equal((await h.call('inspect', sql.split('FROM ')[1])).ok, false);
   }
 });
+
+// Collect the whole class so a failure cannot hide untested catalog paths.
+test('R7 both buttons refuse catalog reads regardless of CTE scope or query depth', async () => {
+  await fresh(2);
+  const before = await snapshot();
+  const failures = [];
+  const refs = ['pg_tables', 'information_schema.tables', 'information_schema.columns',
+    'duckdb_tables()', 'duckdb_columns()', 'sqlite_master', 'pg_catalog.pg_tables', 'pg_catalog.pg_class'];
+  for (const ref of refs) {
+    const name = ref.split('.').at(-1).replace('()', '');
+    const queries = [
+      `SELECT * FROM ${ref}`,
+      `WITH ${name} AS (SELECT * FROM ${ref}) SELECT * FROM ${name}`,
+      `WITH outer_cte AS (WITH ${name} AS (SELECT * FROM ${ref}) SELECT * FROM ${name}) SELECT * FROM outer_cte`,
+      `SELECT * FROM (SELECT * FROM ${ref}) sub`,
+      `WITH ${name} AS (SELECT * FROM (SELECT * FROM ${ref}) sub) SELECT * FROM ${name}`,
+      `WITH RECURSIVE ${name} AS (SELECT * FROM ${ref} UNION ALL SELECT * FROM ${name} WHERE false) SELECT * FROM ${name}`,
+      `WITH earlier AS (SELECT * FROM ${ref}), ${name} AS (SELECT 1) SELECT * FROM earlier`,
+    ];
+    for (const sql of queries) for (const button of ['queryAnswer', 'check']) {
+      const r = await h.call(button, ...(button === 'check' ? [2, sql] : [sql]));
+      if (!r.refused || !/given tables.*trips.*zones/i.test(r.error ?? '')) failures.push(`${button}: ${sql}: ${JSON.stringify(r)}`);
+    }
+  }
+  const exploit = `WITH pg_tables AS (SELECT * FROM pg_tables) SELECT * FROM (${ANSWERS[2]}) answer
+    WHERE EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'answers')`;
+  for (const button of ['queryAnswer', 'check']) {
+    const r = await h.call(button, ...(button === 'check' ? [2, exploit] : [exploit]));
+    if (!r.refused) failures.push(`${button}: hidden-answer catalog predicate was accepted`);
+  }
+  if (!failures.length) assert.deepEqual(await snapshot(), before, 'catalog refusals change neither workspace nor records');
+  // Valid CTE names may match catalogs. Prior siblings and outer scopes remain visible;
+  // a recursive name is visible only in its recursive term, not its initial term.
+  for (const sql of [
+    'WITH pg_tables AS (SELECT 1 AS n) SELECT * FROM pg_tables',
+    'WITH pg_tables AS (SELECT 1 AS n), later AS (SELECT * FROM pg_tables) SELECT * FROM later',
+    'WITH pg_tables AS (SELECT 1 AS n) SELECT * FROM (WITH pg_tables AS (SELECT * FROM pg_tables) SELECT * FROM pg_tables) sub',
+    'WITH trips AS (SELECT * FROM trips) SELECT * FROM trips LIMIT 1',
+    'WITH RECURSIVE pg_tables AS (SELECT 1 AS n UNION ALL SELECT n+1 FROM pg_tables WHERE n<3) SELECT * FROM pg_tables',
+  ]) {
+    const r = await h.call('queryAnswer', sql);
+    if (r.error) failures.push(`valid CTE refused: ${sql}: ${r.error}`);
+  }
+  // Only valid runs above may enter the records; every refused catalog probe stays quiet.
+  assert.equal(failures.length, 0, failures.join('\n'));
+});

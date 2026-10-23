@@ -80,3 +80,37 @@ test.describe('R1 guide without JavaScript', () => {
     await noHorizontalScroll(page);
   });
 });
+
+for (const [from, to] of [[1, 2], [2, 1]]) {
+  test(`R7 a Run answer completing after switching floor ${from} to ${to} stays on its starting floor`, async ({ page }) => {
+    test.skip(!process.env.DB_SITE, 'exercise the real run and its per-floor records');
+    await gameReady(page, from);
+    // Hold only delivery to the UI: the real engine runs and records the query normally.
+    await page.evaluate(() => {
+      const db = window.taxiGame.db;
+      const original = db.queryAnswer;
+      db.queryAnswer = async (...args) => {
+        const result = await original(...args);
+        window.answerCompleted = true;
+        await new Promise(resolve => { window.releaseAnswer = resolve; });
+        return result;
+      };
+    });
+    const sql = `SELECT 42 AS floor_${from}_only`;
+    await page.locator('#answer-input').fill(sql);
+    await page.locator('#run-answer-btn').click();
+    await page.waitForFunction(() => window.answerCompleted);
+    await page.getByRole('button', { name: `Floor ${to}`, exact: true }).click();
+    await expect(page.locator('#engine-status')).toHaveText(`Floor ${to} is ready.`);
+    const before = await quietSnapshot(page);
+    await page.evaluate(() => window.releaseAnswer());
+    await expect(page.locator('#run-answer-btn')).toBeEnabled();
+    for (const id of ['check-btn', 'restart-btn', 'undo-btn']) await expect.soft(page.locator(`#${id}`)).toBeEnabled();
+    await expect.soft(page.locator('#task-checklist')).toHaveText('Answer: not run yet');
+    expect.soft(await quietSnapshot(page)).toEqual(before);
+    await page.getByRole('button', { name: `Floor ${from}`, exact: true }).click();
+    await expect(page.locator('#engine-status')).toHaveText(`Floor ${from} is ready.`);
+    await expect.soft(page.locator('#task-checklist')).toHaveText('Answer: 1 rows (last run)');
+    expect((await page.evaluate(() => window.taxiGame.db.history())).at(-1)).toMatchObject({ source: 'answer', sql, rowCount: 1 });
+  });
+}

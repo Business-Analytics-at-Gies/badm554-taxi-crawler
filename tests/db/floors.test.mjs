@@ -100,12 +100,19 @@ describe('check details', () => {
     await fresh(2);
     await fresh(1);
     await run(`CREATE TABLE trips_clean AS ${SOLUTIONS[1][0].sql}`);
+    const saved = await run('SELECT * FROM trips_clean ORDER BY row_id');
     await h.call('loadFloor', 2);
     assert.match((await h.call('query', 'SELECT count(*) FROM trips_clean')).error ?? '', /does not exist/, 'floor 2 has no trips_clean yet');
     await h.call('loadFloor', 1);
+    const restored = await run('SELECT * FROM trips_clean ORDER BY row_id');
+    assert.equal(restored.rowCount, 7171);
+    assert.deepEqual(restored.rows, saved.rows, 'saved Scratch contents survive switching floors');
+    assert.deepEqual(await one(`WITH expected AS (${SOLUTIONS[1][0].sql.trim().replace(/;$/, '')}) SELECT count(*) FROM ((SELECT * FROM trips_clean EXCEPT ALL SELECT * FROM expected) UNION ALL (SELECT * FROM expected EXCEPT ALL SELECT * FROM trips_clean)) differences`), [0]);
     assert.equal((await h.call('check', 1, '')).pass, false, 'a saved Scratch table never counts');
     assert.equal((await h.call('check', 1, SOLUTIONS[1][0].sql)).pass, true);
     await h.call('restartFloor', 1);
+    assert.equal((await h.call('state')).tables.some(t => t.name === 'trips_clean'), false, 'Restart removes saved Scratch tables');
+    assert.match((await h.call('query', 'SELECT * FROM trips_clean')).error ?? '', /does not exist/, 'saved table is absent after Restart');
     assert.equal((await h.call('check', 1)).pass, false);
   });
   test('floor 2 starts from the reference floor 1 output even when floor 1 was solved wrongly', async () => {

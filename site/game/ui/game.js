@@ -250,6 +250,7 @@ async function runSql(source = 'scratch') {
   const text = $(answer ? 'answer-input' : 'sql-input').value;
   const sql = answer ? text : text.trim();
   if ((!sql && !answer) || running || engine !== 'ready') return;
+  const runFloor = floor;
   running = true;
   $('run-btn').disabled = true;
   $('run-answer-btn').disabled = true;
@@ -260,15 +261,15 @@ async function runSql(source = 'scratch') {
   }
   try {
     const r = await db[answer ? 'queryAnswer' : 'query'](sql, { timeoutMs: 10000 });
+    if (answer && !r.refused && !r.error) answerRows[runFloor] = r.rowCount;
+    if (runFloor !== floor) return;
     if (r.refused) { $('check-result').textContent = r.error; return; }
-    if (answer && !r.error) answerRows[floor] = r.rowCount;
     renderResult(r);
     if (!answer) await lightResult(r);
     await refreshTables();
   } finally {
     running = false;
-    $('run-btn').disabled = engine !== 'ready';
-    $('run-answer-btn').disabled = engine !== 'ready';
+    setEngine(engine, $('engine-status').textContent);
     $('cancel-btn').hidden = true;
   }
 }

@@ -18,7 +18,13 @@ export async function answerPolicy(conn, sql, given) {
     const visit = (node, scope = new Set()) => {
       if (!node || typeof node !== 'object') return;
       const entries = node.cte_map?.map ?? [];
-      const local = new Set([...scope, ...entries.map(entry => foldIdentifier(entry.key))]);
+      const local = new Set(scope);
+      // Non-recursive bodies see outer CTEs and preceding siblings, never their
+      // own name or a later sibling (which could conceal a real catalog read).
+      for (const entry of entries) {
+        visit(entry.value.query, local);
+        local.add(foldIdentifier(entry.key));
+      }
       if (node.type === 'BASE_TABLE') {
         const name = foldIdentifier(node.table_name);
         if (/https?:\/\//i.test(name)) external = true;
@@ -27,9 +33,14 @@ export async function answerPolicy(conn, sql, given) {
       if (typeof node.function_name === 'string' && /^(duckdb_|pragma_)/i.test(node.function_name)) foreign = true;
       for (const [key, value] of Object.entries(node)) if (key !== 'cte_map' && value && typeof value === 'object') {
         if (Array.isArray(value)) value.forEach(child => visit(child, local));
-        else visit(value, local);
+        else {
+          // Only the recursive term may read its CTE's own name. The seed is
+          // still an ordinary query and must pass the given-table restriction.
+          const childScope = node.type === 'RECURSIVE_CTE_NODE' && key === 'right'
+            ? new Set([...local, foldIdentifier(node.cte_name)]) : local;
+          visit(value, childScope);
+        }
       }
-      for (const entry of entries) visit(entry.value.query, local);
     };
     visit(ast.statements[0]);
     if (external) return refused;
