@@ -28,7 +28,9 @@ on 10-23.
 
 ## What changes in the plan
 
-- Stage 1: items 1.2 and 1.3 are reworked on `v2/stage1` before it merges. Items 1.1 and 1.4 stay.
+- Stage 1: items 1.2 and 1.3 are reworked on `v2/stage2`, because the rework needs the floor packs
+  (2.0); the reworked stage 1 then merges from `v2/stage2` after 10-26 (route sent to control for
+  confirmation, 10-23). Items 1.1 and 1.4 stay.
 - Stage 2: the check grades the answer query (item 1 above). Items 2.3 to 2.5 continue; feedback
   items A and B are rewritten for answer-query grading; 2.6 is the hint ladder; each pack gets the
   learning-graph gate test and a `CASE WHEN` refresher where a floor first needs it.
