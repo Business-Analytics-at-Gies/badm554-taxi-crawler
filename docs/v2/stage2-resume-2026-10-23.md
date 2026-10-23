@@ -1,7 +1,7 @@
 # Stage 2 resume: answer-query grading, concept gate, hint ladder
 
 Created: 2026-10-23
-Last Updated: 2026-10-23
+Last Updated: 2026-10-23 (review round 1: 6 findings applied)
 
 Vishal's decisions of 10-23 are in `docs/decisions/2026-10-23-v2-grading-and-gates.md` on `main`.
 This file turns them into build items for crew-codex-v2. It amends `docs/v2/plan-as-approved.md`.
@@ -53,12 +53,23 @@ green item. **Stop for Claude's review after R0 and after R1.** Then R2 to R4 an
   refuses anything else with one message and no state change: "Your answer is one query: SELECT,
   or WITH ... SELECT. Use Scratch for anything else." Refused: DDL, DML, `PRAGMA`, `ATTACH`, more
   than one statement, an empty box, comments only.
-- **Isolation.** The answer runs against a pristine copy of the floor's given tables. It does not
-  see Scratch tables and cannot be harmed by them. If it names a table that is not given on this
-  floor, the check fails and names the given tables. The result goes into a hidden answers
-  schema. The pack's `check.js` runs against that schema, through `context`, and reads the output
-  name as it does today. Like quiet inspection (0.3), the answers schema is closed to learner SQL
-  and tutor SQL.
+- **One SQL policy for both buttons.** "Run answer" and "Check floor" both use DuckDB's native
+  parser and the existing policy in `site/game/db/sql.js` (statement type, function
+  classification), and the engine's disabled external access (`site/game/db/db.js`). A leading
+  keyword check is not enough. Refused as well: learner macros, stateful functions (for example
+  `nextval`), indirect SQL (`query()`, `query_table()`), and file or URL readers (`read_parquet`,
+  `read_csv`, `read_json`, any `http://` or `https://` path).
+- **Isolation.** The answer runs where only a pristine copy of the floor's given tables exists,
+  under their given names (for example a separate database, as The Rerun's isolated check does).
+  No learner schema, `_base`, `_ref<N>`, `tutor`, answers schema, attached database, learner macro
+  or sequence is reachable from it. Check the objects the query actually reads, including nested
+  queries and CTE bodies, not only its final table names. A name that is not a given table fails,
+  and the message names the given tables. A qualified name such as `_ref3.trips`,
+  `_base.trips_raw`, a learner schema's `trips_clean` or `tutor.trips` fails the same way, even
+  when its last part matches a given table. The result goes into a hidden answers schema. The
+  pack's `check.js` runs against that schema, through `context`, and reads the output name as it
+  does today. Like quiet inspection (0.3), the answers schema is closed to learner SQL and tutor
+  SQL.
 - **The check changes nothing in the workspace.** Scratch tables, both boxes, the Result area and
   the tutor's last-3 query record stay the same after Check floor. "Run answer" is a run: it goes
   into both query records, labelled `answer`.
@@ -66,8 +77,15 @@ green item. **Stop for Claude's review after R0 and after R1.** Then R2 to R4 an
   `reason` is NULL for a clean trip. For a bad trip, it is the first rule the trip breaks, with the
   same rule order and labels as the pilot's quarantine. The counts do not change: the clean count
   and the per-reason counts equal the pilot's. Rewrite floor 3's `check.js` rules, `solutions.json`
-  and its legacy oracle tests for the single result. This spec authorizes that change to
-  Claude-written tests (runbook rule 8). It authorizes no other change to those tests.
+  and its legacy oracle tests for the single result.
+- **Test migration (authorized; runbook rule 8).** Existing floor 1 to 3 tests move to answer
+  grading. Where a test creates a saved table and then calls the check, it submits the same logic
+  as one answer query instead, with CTEs in place of intermediate tables. Each test keeps its
+  expected outcome: a pass, or the same failing rule ids. On floor 3, old ids map to new ids in one
+  table in `solutions.json`, which review checks. A test whose purpose is that a saved table counts
+  is rewritten to assert the opposite. Exact-text hint assertions that R2 changes (for example the
+  DISTINCT hint in `tests/db/stage1.test.mjs`) move to the new text. No expected outcome may be
+  loosened. List every migrated test in the commit message.
 - **Persistence.** The Answer text is saved per floor in the browser, like the editor text, and
   comes back after a reload and a floor switch. Restart floor resets the floor's tables and keeps
   the Answer text.
@@ -84,7 +102,16 @@ green item. **Stop for Claude's review after R0 and after R1.** Then R2 to R4 an
   solution, rewritten as an answer query, passes. Each wrong solution fails with the same rule ids
   (on floor 3, with the new ids, listed in `solutions.json`).
 - A CTE-only answer passes on every floor. No passing test needs `CREATE` anywhere.
-- Each refused input above is refused with the message, and nothing changes.
+- Each refused input above is refused with the message, and nothing changes, through both
+  buttons.
+- Parser cases: a comment that contains `;`, and a string literal that contains `; DROP TABLE`,
+  are accepted as one query. Two real statements are refused. A CTE that holds DML is refused.
+- Policy refusals, through both buttons: a learner macro, `nextval`, `query()`, `query_table()`,
+  `read_parquet` and `read_csv` on a local path and on an `https://` URL.
+- Reachability refusals: `_base.trips_raw`, a table in each `_ref<N>` (including, on floor 2,
+  `SELECT * FROM _ref3.trips`, which today returns the full correct answer), each learner schema,
+  `tutor`, `main`, `temp`, `system`, and an attached database. Each is tried at the top level, in a
+  subquery and inside a CTE.
 - Isolation tests:
   - A Scratch table `trips_clean` that holds the reference result does not make an empty or wrong
     answer pass.
@@ -140,17 +167,29 @@ green item. **Stop for Claude's review after R0 and after R1.** Then R2 to R4 an
   - C035 `QUALIFY`: untaught.
   - `CASE_WHEN`: not in the graph; textbook issue vishalsachdev/badm554-textbook#97.
 - Each `pack.json` declares:
-  - `module`: the course module the floor follows, for example `M7`.
+  - `module`: the course module the floor follows. Floors 1 to 3 use `M7` (kickoff: the floors
+    teach M7 validation skills).
   - `concepts`: the graph ids, or override ids, that its learner-facing content and its
     `reference.sql` need.
-  - `refreshes`: the concepts its own refreshers teach.
+  - `refreshes`: the concepts its own refreshers teach. Each entry names a refresher lesson in
+    the same pack, and that lesson's runnable example must contain the concept, as found by the
+    same detector. Listing an id is never enough.
 - **The gate test.** For each pack, every declared concept must pass one of two rules:
   - It is taught (a `TaughtIn` module at or before the pack's `module`, and not overridden).
   - It is in the pack's `refreshes`.
 - A detector scans the pack's learner-facing SQL (refresher examples, guide SQL, hint outlines)
-  and its `reference.sql`. It maps keywords to concepts: `QUALIFY` to C035, `CREATE TABLE` to C053,
-  `CASE WHEN` to `CASE_WHEN`. It fails when a detected concept is not declared. Extend the map as
-  needed. Review will check it for false passes.
+  and its `reference.sql`. It fails when a detected concept is not declared. It uses DuckDB's
+  parser where the SQL parses, and otherwise a tokenizer that skips comments and string literals,
+  so `CASE /* note */ WHEN`, lower case and line breaks are all found. Minimum coverage, each
+  mapped to a graph id from the snapshot or to an override with a reason:
+  - `CASE`; `QUALIFY` (C035); `CREATE TABLE` (C053);
+  - window functions and `OVER` (C025); `ROW_NUMBER`, `RANK`, `DENSE_RANK` (C028); `WITH` (C033);
+    a window inside a CTE (C034);
+  - `SELECT DISTINCT` (not in the graph per the 10-19 audit: an override unless a lesson
+    teaches it); `COUNT(DISTINCT ...)`;
+  - `LEFT`, `RIGHT` and `FULL` joins; `GROUP BY`; `HAVING`.
+  Every construct used anywhere in floors 1 to 3 must be covered. Review checks the map for
+  false passes.
 - **`CASE WHEN` refreshers.** Floors 2 and 3 each get a short refresher: a two-to-five-line runnable
   example on a tiny table, one `CASE WHEN ... THEN ... ELSE ... END` column, and the rule that the
   first true branch wins. Each floor has its own refresher, because a floor opened directly must
@@ -162,7 +201,10 @@ green item. **Stop for Claude's review after R0 and after R1.** Then R2 to R4 an
 - Fixture packs that must fail:
   - one with `QUALIFY` in a hint outline;
   - one with `CASE WHEN` in its reference and no refresher;
-  - one that declares a concept taught after its `module`.
+  - one that declares a concept taught after its `module`;
+  - one whose reference uses `ROW_NUMBER() OVER (...)` and does not declare it (marked `M2`);
+  - one that lists `CASE_WHEN` in `refreshes` with no matching lesson;
+  - one that lists `CASE_WHEN` in `refreshes` and points to a lesson without `CASE`.
 - A fixture pack that must pass: the same `CASE WHEN` pack with a refresher that lists it.
 - The detector finds each keyword in each scanned place (positive controls), so a pass is not an
   empty scan.
@@ -184,10 +226,13 @@ green item. **Stop for Claude's review after R0 and after R1.** Then R2 to R4 an
 
 - Three failed checks on the same rule show rungs 1, 2 and 3 in order. A fourth stays at 3.
 - Restart floor resets to rung 1. The ladder works with `TUTOR_OFF=1`.
-- For each rung-3 outline, two checks:
-  - With the blanks removed or filled with placeholder names, submitted as the answer, it fails
-    the check.
-  - On floor 1, it does not contain all six key columns.
+- For each rung-3 outline, build every single-token completion: fill each blank with any one
+  column of the floor's given tables, or with any one number from the task and hints, and also
+  remove each clause that holds a blank (for example a `LIMIT ___`). Every completion that runs
+  must fail the check. At least one completion must run without a syntax or unknown-name error;
+  otherwise the test fails as inconclusive. A syntax error never counts as evidence.
+- The whole displayed rung text, not only the outline, never contains the full key (on floor 1,
+  all six key columns).
 - The outlines pass the R3 gate.
 
 ## R5: 2.4 error help and 2.5 query history
