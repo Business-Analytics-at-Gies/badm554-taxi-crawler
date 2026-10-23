@@ -1,60 +1,38 @@
-import { learner, ref } from '/game/db/names.js';
 import { fmt, makeRule, wantColumns, columnsOf, columnReport, exactDiff, breakdown } from '/game/db/check-helpers.js';
 
-export async function check(db, { pack }) {
-  const S = learner(pack.id);
-  const out = [];
-  const R = {
-    clean: makeRule('clean_exists', 'trips_clean exists', 'Create a table named trips_clean on this floor.'),
-    quar: makeRule('quarantine_exists', 'quarantine exists', 'Do not delete what you cannot explain: failing rows go to a table named quarantine.'),
-    cols: makeRule('columns', 'Columns: trips_clean has the columns of trips; quarantine has them plus reason', 'Keep every column of trips in both tables; quarantine adds one column, reason.'),
-    overlap: makeRule('no_overlap', 'No row_id is in both tables', 'A trip goes to trips_clean or to quarantine, never both.'),
-    all: makeRule('partition', 'Together the two tables hold every row_id of trips exactly once', 'Clean plus quarantine should equal the rows in: count all three.'),
-    unchanged: makeRule('unchanged', 'Every original value is unchanged in both output tables', 'Keep every value of trips unchanged in trips_clean and quarantine; compare money to cents, all other values and timestamps exactly.'),
-    reasons: makeRule('reasons', 'quarantine has the right rows, each with the first rule it fails', 'Rules in order: negative_fare, time_travel, outside_january, zero_distance_high_fare. A row gets the first one it fails.'),
+export async function check(db, { pack, learner: S, ref: R }) {
+  const rules = {
+    exists: makeRule('exists', 'The answer has a result', 'Write a query in the Answer box, then press Check floor.'),
+    columns: makeRule('columns', 'Every column of trips, plus reason', 'Keep every original column and add reason; use NULL for a clean trip.'),
+    partition: makeRule('partition', 'Every source trip appears exactly once', 'Keep clean and bad trips in the same result, with no missing or repeated rows.'),
+    unchanged: makeRule('unchanged', 'Every original value stays unchanged', 'Compare money to cents and all other values and timestamps exactly.'),
+    reasons: makeRule('reasons', 'Each trip has the first rule it breaks, or NULL', 'Rules in order: negative_fare, time_travel, outside_january, zero_distance_high_fare.'),
   };
-  const want = await wantColumns(db, ref(pack.id), 'trips');
-  const wantQ = [...want, { name: 'reason', type: 'VARCHAR' }];
-  const hc = await columnsOf(db, S, 'trips_clean');
-  const hq = await columnsOf(db, S, 'quarantine');
-  const expIn = Number(await db.one(`SELECT system.main.count(*) FROM ${ref(pack.id)}.trips`));
-  const expC = Number(await db.one(`SELECT system.main.count(*) FROM ${ref(pack.id)}.trips_clean`));
-  const expQ = Number(await db.one(`SELECT system.main.count(*) FROM ${ref(pack.id)}.quarantine`));
-  const expReasons = await breakdown(db, `${ref(pack.id)}.quarantine`, 'reason');
-  out.push(hc ? R.clean.ok('a table named trips_clean', 'found') : R.clean.fail('a table named trips_clean', 'not found'));
-  out.push(hq ? R.quar.ok('a table named quarantine', 'found') : R.quar.fail('a table named quarantine', 'not found'));
-  const partText = `${fmt(expC)} + ${fmt(expQ)} = ${fmt(expIn)}, each row_id once`;
-  if (!hc || !hq) return [...out, R.cols.skip('columns of trips; plus reason'), R.overlap.skip('0'), R.all.skip(partText), R.reasons.skip(expReasons), R.unchanged.skip('0 changed or extra rows')];
-  const c1 = columnReport(want, hc, { allowExtra: false });
-  const c2 = columnReport(wantQ, hq, { allowExtra: false });
-  const colsGot = c1.ok && c2.ok ? 'all columns match' : [c1.ok ? '' : `trips_clean: ${c1.got}`, c2.ok ? '' : `quarantine: ${c2.got}`].filter(Boolean).join('; ');
-  out.push(R.cols.of(c1.ok && c2.ok, `trips_clean: ${want.length} columns of trips; quarantine: the same plus reason`, colsGot));
-  const C = `${S}.trips_clean`;
-  const Q = `${S}.quarantine`;
-  if (!hc.has('row_id') || !hq.has('row_id')) return [...out, R.overlap.skip('0'), R.all.skip(partText), R.reasons.skip(expReasons), R.unchanged.skip('0 changed or extra rows')];
+  const want = await wantColumns(db, R, 'trips');
+  const have = await columnsOf(db, S, pack.outputs[0]);
+  const source = `${R}.trips`, reference = `${R}.${pack.outputs[0]}`, actual = `${S}.${pack.outputs[0]}`;
+  const count = Number(await db.one(`SELECT system.main.count(*) FROM ${source}`));
+  const reasons = await breakdown(db, reference, 'reason');
+  if (!have) return [rules.exists.fail('an answer result', 'missing'), rules.columns.skip('columns of trips plus reason'),
+    rules.partition.skip(`${fmt(count)} trips, each once`), rules.reasons.skip(reasons), rules.unchanged.skip('0 changed, missing or extra rows')];
+  const columns = columnReport([...want, { name: 'reason', type: 'VARCHAR' }], have, { allowExtra: false });
+  const out = [rules.exists.ok('an answer result', 'found'), rules.columns.of(columns.ok, 'columns of trips plus reason', columns.got)];
   const ids = want.filter(c => c.name === 'row_id');
-  const { overlap: both } = await exactDiff(db, ids, hc, C, { from: Q, columns: hq });
-  out.push(R.overlap.of(both === 0, '0 row_ids in both', `${fmt(both)} row_ids in both`));
-  const d = await exactDiff(db, ids, null, [{ from: C, columns: hc }, { from: Q, columns: hq }], `${ref(pack.id)}.trips`);
-  const nc = Number(await db.one(`SELECT system.main.count(*) FROM ${C}`));
-  const nq = Number(await db.one(`SELECT system.main.count(*) FROM ${Q}`));
-  out.push(R.all.of(d.onlyA === 0 && d.onlyB === 0, partText,
-    `${fmt(nc)} + ${fmt(nq)} = ${fmt(nc + nq)}; ${fmt(d.onlyB)} trips missing, ${fmt(d.onlyA)} extra or repeated`));
-  if (!hq.has('reason')) out.push(R.reasons.skip(expReasons));
+  if (!have.has('row_id')) out.push(rules.partition.skip(`${fmt(count)} trips, each once`));
   else {
-    const rc = [{ name: 'row_id', type: 'BIGINT' }, { name: 'reason', type: 'VARCHAR' }];
-    const dr = await exactDiff(db, rc, hq, Q, `${ref(pack.id)}.quarantine`);
-    const got = await breakdown(db, Q, hq.get('reason').name);
-    const bad = dr.onlyA + dr.onlyB;
-    out.push(R.reasons.of(bad === 0, expReasons, bad ? `${got} (${fmt(dr.onlyA)} rows wrong or extra, ${fmt(dr.onlyB)} missing)` : got));
+    const d = await exactDiff(db, ids, have, actual, source);
+    out.push(rules.partition.of(d.onlyA + d.onlyB === 0, `${fmt(count)} trips, each once`, `${fmt(d.onlyB)} missing, ${fmt(d.onlyA)} extra or repeated`));
   }
-  if (want.some(c => !hc.has(c.name) || !hq.has(c.name))) out.push(R.unchanged.skip('0 changed or extra rows'));
+  if (!have.has('row_id') || !have.has('reason')) out.push(rules.reasons.skip(reasons));
   else {
-    const clean = await exactDiff(db, want, hc, C, `${ref(pack.id)}.trips`);
-    const quarantine = await exactDiff(db, want, hq, Q, `${ref(pack.id)}.trips`);
-    const changed = clean.onlyA + quarantine.onlyA;
-    out.push(R.unchanged.of(changed === 0, '0 changed or extra rows',
-      `${fmt(clean.onlyA)} in trips_clean; ${fmt(quarantine.onlyA)} in quarantine`));
+    const d = await exactDiff(db, [...ids, { name: 'reason', type: 'VARCHAR' }], have, actual, reference);
+    const got = await breakdown(db, actual, have.get('reason').name);
+    out.push(rules.reasons.of(d.onlyA + d.onlyB === 0, reasons, `${got}; ${fmt(d.onlyA)} wrong or extra, ${fmt(d.onlyB)} missing`));
+  }
+  if (want.some(c => !have.has(c.name))) out.push(rules.unchanged.skip('0 changed, missing or extra rows'));
+  else {
+    const d = await exactDiff(db, want, have, actual, source);
+    out.push(rules.unchanged.of(d.onlyA + d.onlyB === 0, '0 changed, missing or extra rows', `${fmt(d.onlyA)} changed or extra, ${fmt(d.onlyB)} missing`));
   }
   return out;
 }

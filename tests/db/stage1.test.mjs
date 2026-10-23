@@ -7,7 +7,7 @@ import { SOLUTIONS } from './solutions.mjs';
 const HINT = 'You may have merged trips that are not rerun copies. Check whether their amounts differ.';
 const PILOT_COUNT_HINT = 'Count the rows before and after: one row should be left for each trip.';
 const KEY = 'vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount';
-let h;
+let h, answer;
 before(async () => {
   h = await openDb();
   assert.equal((await h.call('init')).ok, true);
@@ -21,13 +21,14 @@ after(async () => {
 });
 async function fresh() { assert.equal((await h.call('restartFloor', 1)).ok, true); }
 async function run(sql) {
-  const result = await h.call('query', sql);
+  answer = sql.trim().replace(/;$/, '');
+  const result = await h.call('queryAnswer', answer);
   assert.equal(result.error, undefined, `SQL must run before testing the check: ${result.error}`);
   return result;
 }
-async function count() { return (await run('SELECT count(*) FROM trips_clean')).rows[0][0]; }
+async function count() { return (await h.call('queryAnswer', `WITH trips_clean AS (${answer}) SELECT count(*) FROM trips_clean`)).rows[0][0]; }
 async function check() {
-  const result = await h.call('check', 1);
+  const result = await h.call('check', 1, answer);
   assert.equal(result.error, undefined);
   assert.ok(result.rules.length > 0, 'the check actually evaluated the floor');
   return result;
@@ -39,7 +40,7 @@ describe('1.2 hint boundaries on whole, unchanged learner rows', () => {
     test(`${rows.toLocaleString('en-US')} rows: ${wantHint ? 'adds' : 'omits'} the possible-merge hint`, async () => {
       await fresh();
       // These are reference rows with some trips removed, not evidence that the key was wrong.
-      await run(`CREATE TABLE trips_clean AS SELECT * FROM trips_raw
+      await run(`SELECT * FROM trips_raw
         QUALIFY row_number() OVER (PARTITION BY ${KEY} ORDER BY row_id) = 1
         ORDER BY row_id LIMIT ${rows}`);
       assert.equal(await count(), rows);
@@ -76,7 +77,7 @@ describe('1.2 approved data-check variants', () => {
   ]) {
     test(`a whole row per key ${name} still passes with 7,171 rows and no hint`, async () => {
       await fresh();
-      await run(`CREATE TABLE trips_clean AS SELECT * FROM trips_raw
+      await run(`SELECT * FROM trips_raw
         QUALIFY row_number() OVER (PARTITION BY ${key} ORDER BY row_id) = 1`);
       assert.equal(await count(), 7171);
       const result = await check();
@@ -87,7 +88,7 @@ describe('1.2 approved data-check variants', () => {
 
   test('the key without total_amount keeps 7,170 rows, fails and gets the possible-merge hint', async () => {
     await fresh();
-    await run(`CREATE TABLE trips_clean AS SELECT * FROM trips_raw
+    await run(`SELECT * FROM trips_raw
       QUALIFY row_number() OVER (PARTITION BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id ORDER BY row_id) = 1`);
     assert.equal(await count(), 7170);
     const result = await check();
@@ -98,7 +99,7 @@ describe('1.2 approved data-check variants', () => {
 
   test('DISTINCT * EXCLUDE (row_id, loaded_at) has 7,171 rows but still fails for missing columns', async () => {
     await fresh();
-    await run('CREATE TABLE trips_clean AS SELECT DISTINCT * EXCLUDE (row_id, loaded_at) FROM trips_raw');
+    await run('SELECT DISTINCT * EXCLUDE (row_id, loaded_at) FROM trips_raw');
     assert.equal(await count(), 7171);
     const result = await check();
     assert.equal(result.pass, false);

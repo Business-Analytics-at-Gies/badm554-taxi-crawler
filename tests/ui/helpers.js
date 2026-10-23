@@ -1,8 +1,7 @@
 import { expect } from '@playwright/test';
 
-export const FLOOR1_REFERENCE = `CREATE OR REPLACE TABLE trips_clean AS
-SELECT * FROM trips_raw
-QUALIFY row_number() OVER (PARTITION BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount ORDER BY row_id) = 1;`;
+import { ANSWERS } from '../answer-fixtures.mjs';
+export const FLOOR1_REFERENCE = ANSWERS[1];
 
 export const narrow = page => page.viewportSize().width < 900;
 
@@ -36,6 +35,13 @@ export async function openFloor(page, n) {
 export async function runSql(frame, sql) {
   await frame.locator('#sql-input').fill(sql);
   await frame.locator('#run-btn').click();
+  await expect(frame.locator('#result-status')).not.toHaveText(/Running/);
+}
+
+export async function runAnswer(frame, sql) {
+  await frame.locator('#answer-input').fill(sql);
+  await frame.locator('#run-answer-btn').click();
+  await expect(frame.locator('#run-answer-btn')).toBeEnabled();
   await expect(frame.locator('#result-status')).not.toHaveText(/Running/);
 }
 

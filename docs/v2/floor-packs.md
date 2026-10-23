@@ -129,3 +129,12 @@ The final narrow-screen check also verifies that the task panel's review links o
 and scroll to the requested refresher or About the data, without requiring a tab change.
 
 Items 2.4–2.5 retain their previous behavior until their own implementation steps.
+
+R1 makes each reference and solution one answer query. The trusted reference builder saves its
+result under the pack's output name; the learner never needs to save it. The answer engine
+uses the shared native SQL policy plus scoped given-table checks. Its SELECT-only workers have
+pristine given tables and no learner, tutor or reference schemas. A separate trusted worker
+compares the exact Arrow result in its hidden answers schema through the pack checker context.
+The hidden results are unreachable by Scratch, tutor SQL and quiet inspection.
+Floor 3 has one output, trips_clean, including reason; its solutions.json contains cases and
+the legacy rule-id map. Other solution files remain arrays.

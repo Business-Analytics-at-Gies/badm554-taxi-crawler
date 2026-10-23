@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { FLOOR1_REFERENCE, resetMock, openFloor, runSql, askTutor, showTab, narrow, noHorizontalScroll, mockLog } from './helpers.js';
+import { FLOOR1_REFERENCE, resetMock, openFloor, runSql, runAnswer, askTutor, showTab, narrow, noHorizontalScroll, mockLog } from './helpers.js';
 
 test.beforeEach(async ({ request }) => { await resetMock(request); });
 
@@ -7,7 +7,7 @@ test.beforeEach(async ({ request }) => { await resetMock(request); });
 test('floor 1 code survives reload in the guide and the saved receipt list', async ({ page, request }, testInfo) => {
   await page.goto('/learn/');
   let frame = await openFloor(page, 1);
-  await runSql(frame, FLOOR1_REFERENCE);
+  await runAnswer(frame, FLOOR1_REFERENCE);
   await frame.locator('#check-btn').click();
   await expect(frame.locator('#receipt-code')).toHaveText(/^TAXI-1-[A-Z]{8}$/);
   const code = await frame.locator('#receipt-code').textContent();
@@ -54,7 +54,7 @@ test('malformed saved codes are ignored and unavailable code storage does not br
   page.on('pageerror', e => errors.push(e.message));
   await page.goto('/learn/');
   const frame = await openFloor(page, 1);
-  await runSql(frame, FLOOR1_REFERENCE);
+  await runAnswer(frame, FLOOR1_REFERENCE);
   await frame.locator('#check-btn').click();
   await expect(frame.locator('#receipt-code')).toHaveText(/^TAXI-1-[A-Z]{8}$/);
   await showTab(page, 'Guide');
@@ -80,6 +80,7 @@ test('a failed Check scrolls its result into view with nearest alignment', async
   });
   await page.goto('/learn/');
   const frame = await openFloor(page, 1);
+  await frame.locator('#answer-input').fill('SELECT * FROM trips_raw');
   await frame.locator('#check-btn').click();
   await expect(frame.locator('#check-result')).toContainText('Floor 1 does not pass yet.');
   const child = page.frame({ url: /\/game\// });

@@ -1,6 +1,6 @@
 // Thin path: dev login -> floor 1 -> one tutor tool (lens) -> receipt, at 1280px and 375px.
 import { test, expect } from '@playwright/test';
-import { FLOOR1_REFERENCE, resetMock, mockLog, openFloor, runSql, askTutor, noHorizontalScroll, narrow, showTab } from './helpers.js';
+import { FLOOR1_REFERENCE, resetMock, mockLog, openFloor, runSql, runAnswer, askTutor, noHorizontalScroll, narrow, showTab } from './helpers.js';
 
 test.beforeEach(async ({ request }) => { await resetMock(request); });
 
@@ -36,7 +36,7 @@ test('floor 1 end to end: query, tutor lens, check, receipt', async ({ page, req
   await expect(frame.locator('#map-summary')).toContainText('Lit: 5 rows ("Look at these trips")');
   await expect(frame.locator('#map circle.lit-mark')).toHaveCount(5);
 
-  await runSql(frame, FLOOR1_REFERENCE);
+  await runAnswer(frame, FLOOR1_REFERENCE);
   await frame.locator('#check-btn').click();
   await expect(frame.locator('#check-result')).toContainText('Floor 1 passes every rule.');
   const receipt = frame.locator('#receipt');
@@ -62,7 +62,7 @@ test('floor 1 end to end: query, tutor lens, check, receipt', async ({ page, req
 test('a wrong floor 1 answer does not pass and issues no code', async ({ page, request }) => {
   await page.goto('/learn/');
   const frame = await openFloor(page, 1);
-  await runSql(frame, 'CREATE OR REPLACE TABLE trips_clean AS SELECT DISTINCT * FROM trips_raw');
+  await runAnswer(frame, 'SELECT DISTINCT * FROM trips_raw');
   await frame.locator('#check-btn').click();
   await expect(frame.locator('#check-result')).toContainText('Floor 1 does not pass yet.');
   await expect(frame.locator('#check-result')).toContainText('Not yet:');

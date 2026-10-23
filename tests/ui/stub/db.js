@@ -88,17 +88,21 @@ export async function plant(kind, count) {
 }
 export async function unplant(row_ids) { plants = plants.filter(id => !row_ids.includes(id)); emit('plant', { row_ids: [] }); return { ok: true }; }
 export async function undoExperiments() { plants = []; emit('plant', { row_ids: [] }); return { ok: true }; }
-export async function check(n) {
-  plants = [];
-  const w = work[n] || {};
-  const need = n === 3 ? ['trips_clean', 'quarantine'] : ['trips_clean'];
-  const rules = need.flatMap(name => [
-    { rule: `${name} exists`, ok: !!w[name], expected: 'a table', got: w[name] ? 'a table' : 'missing', hint: `Create a table named ${name}.` },
-    ...(w[name] ? [{ rule: `${name} rows`, ok: w[name].good, expected: name === 'quarantine' ? 216 : n === 3 ? 6955 : 7171, got: w[name].rows, hint: 'Count the rows before and after.' }] : []),
-  ]);
-  const result = { pass: rules.every(r => r.ok), rules };
-  emit('check', { floor: n, result });
-  return result;
+const policyError = 'Your answer is one query: SELECT, or WITH ... SELECT. Use Scratch for anything else.';
+const answerGood = (n, sql) => n === 1 ? /row_number|loaded_at\s*=/i.test(sql) && !/distinct\s+\*/i.test(sql) : n === 2 ? /left\s+join/i.test(sql) : /reason/i.test(sql);
+export async function queryAnswer(sql) {
+  if (!sql.trim()) return { error: policyError, refused: true };
+  const good = answerGood(floor, sql);
+  const rowCount = good ? 7171 : 7345;
+  const r = { columns: COLS, rows: [fakeRow(1)], rowCount, truncated: true, ms: 0 };
+  lastQueries = [...lastQueries, { source: 'answer', sql, rowCount, error: null }].slice(-3);
+  emit('query', { result: r }); return r;
+}
+export async function check(n, sql = '') {
+  if (!sql.trim()) return { pass: false, rules: [], error: policyError, refused: true };
+  const ok = answerGood(n, sql);
+  const result = { pass: ok, rules: [{ id: 'answer', rule: 'Answer query', ok, expected: 'the correct rows', got: ok ? 'the correct rows' : 'different rows', hint: 'Count the rows before and after.' }] };
+  emit('check', { floor: n, result }); return result;
 }
 export async function restartFloor(n) { work[n] = {}; plants = []; lastQueries = []; emit('restart', { floor: n }); return { ok: true }; }
 export async function cancel() { cancelRun?.(); return { ok: true }; }

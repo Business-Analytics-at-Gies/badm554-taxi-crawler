@@ -6,13 +6,12 @@
     "zones": "_base.zones"
   },
   "outputs": [
-    "trips_clean",
-    "quarantine"
+    "trips_clean"
   ],
   "title": "Floor 3: Impossible rides",
-  "task": "Create two tables from trips. Test the rules in this order; a row gets the first reason it fails:\n  1. 'negative_fare': fare_amount < 0\n  2. 'time_travel': dropoff_at < pickup_at\n  3. 'outside_january': pickup_at before 2024-01-01, or on or after 2024-02-01\n  4. 'zero_distance_high_fare': trip_distance = 0 and fare_amount >= 50\n- quarantine: the failing rows, every column of trips, plus reason\n- trips_clean: the other rows, with the columns of trips\nEvery original value of trips must be unchanged in both trips_clean and quarantine: non-money values and timestamps exactly, and money to cents.",
+  "task": "Return every trip once in your Answer query, with a reason column. Test the rules in this order; a row gets the first reason it fails:\n  1. 'negative_fare': fare_amount < 0\n  2. 'time_travel': dropoff_at < pickup_at\n  3. 'outside_january': pickup_at before 2024-01-01, or on or after 2024-02-01\n  4. 'zero_distance_high_fare': trip_distance = 0 and fare_amount >= 50\nUse NULL as the reason for a clean trip. Keep every original column.\nEvery original value of trips must be unchanged in your answer: non-money values and timestamps exactly, and money to cents.",
   "dirt": "SELECT row_id, pu_location_id, do_location_id FROM trips\nWHERE fare_amount < 0 OR dropoff_at < pickup_at OR pickup_at < TIMESTAMP '2024-01-01' OR pickup_at >= TIMESTAMP '2024-02-01'\n   OR (trip_distance = 0 AND fare_amount >= 50)",
-  "guideTask": "move the failing rows to a table quarantine, with a reason, and keep the other rows in trips_clean.",
+  "guideTask": "return every trip once, with its first failing reason, or NULL for a clean trip.",
   "card": "Some rides cannot have happened.",
   "context": "The depot must explain rides with impossible measurements before using them in a report. trips holds 7,171 trips with zone names and zone_flag; zones is the location lookup. Separating questionable rows with a reason preserves the evidence and leaves a clean report that reconciles to the input.",
   "refresher": [
@@ -27,9 +26,9 @@
       "sql": "WITH rides(fare, miles) AS (VALUES (-2, 0), (10, 2))\nSELECT *, CASE WHEN fare < 0 THEN 'negative'\nWHEN miles = 0 THEN 'no_distance' END AS reason\nFROM rides;"
     },
     {
-      "title": "Save a partition without deleting evidence",
-      "text": "CREATE OR REPLACE TABLE ... AS saves a query. Put failing rows in one table and the others in another. A subquery with NOT IN can keep ids absent from a non-NULL id list. COUNT(*) checks that the two tables reconcile; GROUP BY and HAVING can reveal repeated ids.",
-      "sql": "WITH checked(id, reason) AS (VALUES (1, 'negative'), (2, NULL))\nSELECT * FROM checked WHERE id NOT IN\n(SELECT id FROM checked WHERE reason IS NOT NULL);"
+      "title": "Keep every trip and explain its status",
+      "text": "Return clean and bad trips together. A NULL reason means the trip is clean; a non-NULL reason records the first rule it breaks. COUNT(*) checks that every trip stays, and GROUP BY with HAVING can reveal repeated ids.",
+      "sql": "WITH checked(id, reason) AS (VALUES (1, 'negative'), (2, NULL))\nSELECT * FROM checked;"
     },
     {
       "title": "Check counts by reason",
@@ -55,7 +54,7 @@
       "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M2/I4/"
     }
   ],
-  "summary": "3. Impossible rides: negative fares, drop-off before pick-up, pick-ups outside January, zero distance with a fare of $50 or more. Move failing rows to a quarantine table with the first reason they fail; do not delete. 6,955 clean + 216 quarantined = 7,171.",
+  "summary": "Every trip appears once, unchanged, with reason NULL for clean trips or the first failing rule. Keep the 6,955 clean trips and 216 bad trips in one result.",
   "map": {
     "label": "impossible rides (red dot)",
     "color": "#b91c1c",
@@ -82,13 +81,11 @@
     }
   },
   "tables": {},
-  "rulesText": "## Floor 3: Impossible rides (range checks and quarantine)\n\n- **Tables given:** `trips` (floor 2's reference output, 7,171 rows, with `zone_flag`), `zones`.\n- **The dirt (all real):** negative fares, drop-off before pick-up, pick-ups outside January,\n  zero distance with a fare of $50 or more.\n- **Rules, in this order; a row gets the first `reason` it fails:**\n  1. `'negative_fare'`: `fare_amount < 0`\n  2. `'time_travel'`: `dropoff_at < pickup_at`\n  3. `'outside_january'`: `pickup_at < TIMESTAMP '2024-01-01'` or `pickup_at >= TIMESTAMP '2024-02-01'`\n  4. `'zero_distance_high_fare'`: `trip_distance = 0 AND fare_amount >= 50`\n  None of these four columns has a NULL in the data (checked); a NULL fails no rule.\n  `zone_flag` is not a quarantine reason.\n- **Task:** create `quarantine` (the failing rows, every column of `trips`, plus `reason`) and\n  `trips_clean` (the other rows, the columns of `trips`).\n- **Expected:** 7,171 in; 6,955 clean; 216 quarantined (negative_fare 132, zero_distance_high_fare\n  47, time_travel 20, outside_january 17). One row fails two rules; it appears once.\n- **Pass:** the two tables share no `row_id`; together they hold exactly the 7,171 `row_id` values of\n  `trips`; the multiset of `(row_id, reason)` in `quarantine` equals the reference\n  `data/reference/floor3.sql`; columns as above. Every original value of `trips` is unchanged in both output tables: non-money values and timestamps exactly, and money to cents.\n- **Aha line:** do not delete what you cannot explain. Clean plus quarantine equals raw: 6,955 + 216 = 7,171.\n\n",
+  "rulesText": "## Floor 3: Impossible rides (range checks and quarantine)\n\n- **Tables given:** `trips` (floor 2's reference output, 7,171 rows, with `zone_flag`), `zones`.\n- **The dirt (all real):** negative fares, drop-off before pick-up, pick-ups outside January,\n  zero distance with a fare of $50 or more.\n- **Rules, in this order; a row gets the first `reason` it fails:**\n  1. `'negative_fare'`: `fare_amount < 0`\n  2. `'time_travel'`: `dropoff_at < pickup_at`\n  3. `'outside_january'`: `pickup_at < TIMESTAMP '2024-01-01'` or `pickup_at >= TIMESTAMP '2024-02-01'`\n  4. `'zero_distance_high_fare'`: `trip_distance = 0 AND fare_amount >= 50`\n  None of these four columns has a NULL in the data (checked); a NULL fails no rule.\n  `zone_flag` is not a quarantine reason.\n- **Task:** return every trip once, with every column of `trips` plus `reason`.\n  A clean trip has a NULL reason; a bad trip has the first reason it fails.\n- **Expected:** 7,171 in; 6,955 clean; 216 quarantined (negative_fare 132, zero_distance_high_fare\n  47, time_travel 20, outside_january 17). One row fails two rules; it appears once.\n- **Pass:** the answer contains exactly the 7,171 original trips, each row_id once,\n  with the expected reason (including NULL for clean trips). Keep every source column\n  and value: non-money values and timestamps exactly, and money to cents.\n- **Aha line:** do not delete what you cannot explain. Clean plus quarantine equals raw: 6,955 + 216 = 7,171.\n\n",
   "emblem": "/learn/img/floor3.svg",
   "ruleIds": [
-    "clean_exists",
-    "quarantine_exists",
+    "exists",
     "columns",
-    "no_overlap",
     "partition",
     "reasons",
     "unchanged"
@@ -98,25 +95,33 @@
     {
       "id": "task-panel",
       "levels": [
-        "The task panel above Your SQL holds the full rules and a checklist for trips_clean and quarantine. Open it before writing your query; it starts collapsed on mobile. The checklist says whether each table exists and counts its rows. Exists does not mean correct. SQL refresher and About the data links beside it open the guide in a new tab.",
-        "Use the task panel checklist after each Run: an empty trips_clean and quarantine table still exists with zero rows. Replacing or dropping a table updates the count or marks it missing. Use Check this floor to test its rules. The panel remembers your collapse choice in the page address.",
-        "After CREATE OR REPLACE TABLE, compare the task panel checklist counts with your own SELECT count(*) queries on trips_clean and quarantine. The checklist reports presence and size only; the full rules in the task panel explain what Check this floor will test."
+        "The task panel above Scratch holds the full rules and a checklist for Answer. Open it before writing your query; it starts collapsed on mobile. The checklist shows whether Answer has been run and its last row count. SQL refresher and About the data links beside it open the guide in a new tab.",
+        "Use the task panel checklist after each Run answer: an empty Answer result shows zero rows. Scratch table changes never count as an Answer run. Check floor grades your current Answer query; a row count alone does not mean correct. The panel remembers your collapse choice in the page address.",
+        "The task panel checklist starts at Answer: not run yet, then reports Answer: N rows (last run). It preserves that last-run count while you edit Answer or use Scratch. Compare it with the full rules; Check floor evaluates the current query independently of the last run."
       ]
     },
     {
       "id": "table-columns",
       "levels": [
-        "Under Tables above Your SQL, open a table chip to see its columns and types. Start with trips to find the available names before writing a query. Opening a chip leaves your SQL and Result alone; Enter or Space opens and closes it from the keyboard.",
-        "The columns and types describe the table on the active floor, including tables you create. When you replace a table, an open chip refreshes its column view. After switching floors, open the new floor\u2019s chip to inspect that floor\u2019s columns and types.",
-        "Use the table chip\u2019s columns and types to choose names for SELECT, WHERE and joins. The column view reads the table quietly: it adds no query to your history or the tutor\u2019s recent queries and never replaces unfinished SQL."
+        "Under Tables above Scratch, open a table chip to see its columns and types. Start with trips to find the available names before writing a query. Opening a chip leaves your SQL and Result alone; Enter or Space opens and closes it from the keyboard.",
+        "The columns and types describe the table on the active floor, including tables you create. When you replace a table, an open chip refreshes its column view. After switching floors, open the new floor’s chip to inspect that floor’s columns and types.",
+        "Use the table chip’s columns and types to choose names for SELECT, WHERE and joins. The column view reads the table quietly: it adds no query to your history or the tutor’s recent queries and never replaces unfinished SQL."
       ]
     },
     {
       "id": "table-preview",
       "levels": [
-        "Choose Preview beside any table chip under Tables to see its first 10 rows in a separate panel beside the console, or below it on a narrow screen. Start with trips to see what a row holds. Preview leaves Your SQL, Result and query records alone; Close preview takes you back to the chip.",
+        "Choose Preview beside any table chip under Tables to see its first 10 rows in a separate panel beside the console, or below it on a narrow screen. Start with trips to see what a row holds. Preview leaves Scratch, Result and query records alone; Close preview takes you back to the chip.",
         "Preview shows up to 10 rows from the table on this floor, including your own outputs. An empty table still shows its column names. Preview refreshes after a replacement and closes when you drop its table or change floors. The panel scrolls sideways for wide rows on a phone.",
         "Preview is a quiet SELECT * with LIMIT 10, without a guaranteed sort order. It does not add a run to either query record. When a transaction is open, Preview explains that you must COMMIT or ROLLBACK before reading rows; it shows columns without running row expressions or changing your transaction."
+      ]
+    },
+    {
+      "id": "answer",
+      "levels": [
+        "Use Scratch to explore the given tables or make your own tables. Put one SELECT or WITH query in Answer. Run answer shows its rows in Result; Check floor grades only that query against the original given tables. You do not need to save a table.",
+        "Answer uses only this floor’s original given tables, even if you change or drop a table in Scratch. Check floor leaves both boxes, Scratch and Result alone. The task checklist says Answer: not run yet, then shows the row count from your last Run answer; it does not say the answer is correct.",
+        "Run answer and Check floor accept the same single SELECT or WITH query. Use Scratch for other statements. Answer text is saved separately for each floor and survives reload, floor switches and Restart floor. Run answer adds an answer entry to both query records; Check floor adds no run."
       ]
     }
   ]

@@ -5,7 +5,7 @@
       <h3 id="h-f3-task">Impossible rides</h3>
       {{context}}
       {{refresher}}
-      <p>Keep every original value of <code>trips</code> unchanged in both <code>trips_clean</code> and <code>quarantine</code>: non-money values and timestamps exactly, and money to cents.</p>
+      <p>Keep every original value of <code>trips</code> unchanged in your answer: non-money values and timestamps exactly, and money to cents.</p>
       <div class="lv" data-lv="1">
         <p>Some rides in the feed cannot have happened: a negative fare, a drop-off before the pick-up, a pick-up outside January, or a trip of zero miles with a big fare. These are real rows, as TLC published them.</p>
         {{task}}
@@ -13,7 +13,7 @@
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
         <p class="value-equality">The check compares values, not formatting: 1.10 and 1.1 are the same, and money is compared to the cent.</p>
-        <p>You get <code>trips</code> (zone labels already added, 7,171 rows, with <code>zone_flag</code>) and <code>zones</code>. <code>quarantine</code> has every column of <code>trips</code> plus <code>reason</code>. <code>trips_clean</code> has the columns of <code>trips</code>.</p>
+        <p>You get <code>trips</code> (zone labels already added, 7,171 rows, with <code>zone_flag</code>) and <code>zones</code>. Your answer has every column of <code>trips</code> plus <code>reason</code>. A clean trip has a NULL reason; a bad trip has the first reason it fails.</p>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
@@ -52,7 +52,7 @@ FROM trips;</code></pre>
     <article class="slide" id="f3-first" data-title="The first rule wins" aria-labelledby="h-f3-first">
       <h3 id="h-f3-first">The first rule wins</h3>
       <div class="lv" data-lv="1">
-        <p>One row fails two rules. It goes to quarantine once, with the first reason it fails.</p>
+        <p>One row fails two rules. It appears once in your answer, with the first reason it fails.</p>
       </div>
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
@@ -71,22 +71,18 @@ END AS reason  -- NULL: the row passes every rule</code></pre>
     <article class="slide" id="f3-quarantine" data-title="Quarantine, do not delete" aria-labelledby="h-f3-quarantine">
       <h3 id="h-f3-quarantine">Quarantine, do not delete</h3>
       <div class="lv" data-lv="1">
-        <p>Do not delete what you cannot explain. A quarantine table keeps the failing rows and the reason, so someone can check them later.</p>
+        <p>Do not delete what you cannot explain. Keep the failing rows in your answer with their reason, so someone can check them later.</p>
       </div>
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
-        <p>A <code>DELETE</code> leaves no record of what was removed or why. With a quarantine table, every row is in exactly one place: <code>trips_clean</code> or <code>quarantine</code>.</p>
+        <p>A <code>DELETE</code> leaves no record of what was removed or why. In your answer, every row appears once. A NULL reason marks a clean trip; a non-NULL reason marks a bad trip.</p>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
-        <pre><code>CREATE OR REPLACE TABLE quarantine AS
-SELECT *, /* your CASE */ AS reason
-FROM trips
-WHERE /* the row fails a rule */;
-
-CREATE OR REPLACE TABLE trips_clean AS
-SELECT * FROM trips
-WHERE row_id NOT IN (SELECT row_id FROM quarantine);</code></pre>
+        <pre><code>WITH checked AS (
+  SELECT *, /* your CASE */ AS reason FROM trips
+)
+SELECT * FROM checked;</code></pre>
       </div>
     </article>
     <article class="slide" id="f3-reconcile" data-title="Clean plus quarantine equals raw" aria-labelledby="h-f3-reconcile">
@@ -97,13 +93,14 @@ WHERE row_id NOT IN (SELECT row_id FROM quarantine);</code></pre>
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
         <p>By reason: negative_fare 132, zero_distance_high_fare 47, time_travel 20, outside_january 17.</p>
-        <p>The check passes when the two tables share no <code>row_id</code>, together hold all 7,171 <code>row_id</code> values of <code>trips</code>, and <code>quarantine</code> has the expected <code>(row_id, reason)</code> pairs.</p>
+        <p>The check passes when the answer holds every original trip exactly once, keeps its values, and has the expected <code>(row_id, reason)</code> pairs, including NULL for clean trips.</p>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
-        <pre><code>SELECT (SELECT count(*) FROM trips_clean) AS clean,
-       (SELECT count(*) FROM quarantine)  AS quarantined,
-       (SELECT count(*) FROM trips)       AS raw;</code></pre>
+        <pre><code>WITH answer AS (/* your answer query */)
+SELECT count(*) FILTER (WHERE reason IS NULL) AS clean,
+       count(*) FILTER (WHERE reason IS NOT NULL) AS bad,
+       count(*) AS total FROM answer;</code></pre>
       </div>
     </article>
     <p class="room-play js-only"><button type="button" class="play" data-floor="3">Play this floor</button></p>

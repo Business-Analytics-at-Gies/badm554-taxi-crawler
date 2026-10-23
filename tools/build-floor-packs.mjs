@@ -58,7 +58,8 @@ export async function buildFloorPacks({ extraPacks = [], write = false } = {}) {
       if (!contents[name].trim()) throw new Error(`Floor ${pack.id}: empty ${name}`);
       files.set(`${path}/${name}`, contents[name]);
     }
-    pack.solutions = JSON.parse(contents['solutions.json']);
+    const solutions = JSON.parse(contents['solutions.json']);
+    pack.solutions = Array.isArray(solutions) ? solutions : solutions.cases;
     if (!pack.solutions.some(s => !s.fails.length) || !pack.solutions.some(s => s.fails.length)) throw new Error(`Floor ${pack.id}: valid and wrong solutions required`);
     pack.reference = `/floors/floor${pack.id}/reference.sql`;
     pack.check = `/floors/floor${pack.id}/check.js`;

@@ -99,7 +99,7 @@ describe('query', () => {
   });
   test('a query past its timeout is stopped without a worker restart', async () => {
     await fresh(1);
-    await q(SOLUTIONS[1][0].sql);
+    await q(`CREATE TABLE trips_clean AS ${SOLUTIONS[1][0].sql}`);
     await events();
     const t0 = Date.now();
     const r = await q(HEAVY, { timeoutMs: 800 });
@@ -121,7 +121,7 @@ describe('query', () => {
   test('a query that ignores cancel is killed: the worker restarts and replays the floor', async () => {
     await fresh(2);
     await fresh(1);
-    await q(SOLUTIONS[1][0].sql);
+    await q(`CREATE TABLE trips_clean AS ${SOLUTIONS[1][0].sql}`);
     await q('CREATE TABLE notes AS SELECT 1 AS n; INSERT INTO notes VALUES (2)');
     await q('SELECT count(*) FROM trips_raw');
     await h.call('plant', 'duplicate', 2);
@@ -138,7 +138,7 @@ describe('query', () => {
     assert.deepEqual((await h.call('state')).plants, [], 'plants are dropped on restart');
     assert.deepEqual((await q('SELECT count(*) FROM trips_raw')).rows, [[7345]]);
     assert.deepEqual((await tq('SELECT count(*) FROM trips_raw')).rows, [[7345]]);
-    assert.equal((await h.call('check', 1)).pass, true);
+    assert.equal((await h.call('check', 1, SOLUTIONS[1][0].sql)).pass, true);
     assert.match((await q("SELECT * FROM read_csv('http://127.0.0.1:9/x.csv')")).error, /disabled by configuration/, 'the new worker is locked down too');
   });
 });
@@ -156,7 +156,7 @@ describe("tutor's copy (tutorQuery)", () => {
   });
   test("cannot see the learner's own tables", async () => {
     await fresh(1);
-    await q(SOLUTIONS[1][0].sql);
+    await q(`CREATE TABLE trips_clean AS ${SOLUTIONS[1][0].sql}`);
     assert.match((await tq('SELECT count(*) FROM trips_clean')).error, /does not exist/);
     for (const sql of ['SELECT count(*) FROM floor1.trips_clean', 'SELECT * FROM "floor1"."trips_raw"', 'SELECT * FROM memory.floor1.trips_raw',
       'SELECT * FROM _ref1.trips_clean', "SELECT * FROM query('SELECT * FROM floor1.trips_clean')", "FROM query_table('floor1.trips_clean')"]) {
@@ -256,19 +256,19 @@ describe('plants', () => {
     assert.deepEqual((await tq('SELECT count(*) FROM trips_raw')).rows, [[7345]]);
     assert.deepEqual((await q('SELECT count(*) FROM mine')).rows, [[7347]], "the learner's own table keeps what it copied");
   });
-  test('check removes plants first; a solution built before the undo passes', async () => {
+  test('check leaves plants alone; an answer is graded against pristine data', async () => {
     await fresh(1);
     await h.call('plant', 'duplicate', 4);
-    await q(SOLUTIONS[1][0].sql);
-    const r = await h.call('check', 1);
+    await q(`CREATE TABLE trips_clean AS ${SOLUTIONS[1][0].sql}`);
+    const r = await h.call('check', 1, SOLUTIONS[1][0].sql);
     assert.equal(r.pass, true);
-    assert.deepEqual((await h.call('state')).plants, []);
+    assert.equal((await h.call('state')).plants.length, 4);
   });
-  test('a learner table that kept planted rows fails, and the check says why', async () => {
+  test('an answer that includes planted row ids fails, and the check says why', async () => {
     await fresh(1);
     await h.call('plant', 'negative_fare', 2);
-    await q(SOLUTIONS[1][0].sql);
-    const r = await h.call('check', 1);
+    await q(`CREATE TABLE trips_clean AS ${SOLUTIONS[1][0].sql}`);
+    const r = await h.call('check', 1, `WITH reference AS (${SOLUTIONS[1][0].sql.trim().replace(/;$/, '')}) SELECT * FROM reference UNION ALL SELECT * REPLACE (900000 + row_number() OVER () AS row_id) FROM (SELECT * FROM reference LIMIT 2)`);
     assert.equal(r.pass, false);
     assert.match(r.rules.find((x) => x.id === 'unchanged').got, /2 rows .*planted by the tutor/);
   });
@@ -289,7 +289,7 @@ describe('state and events', () => {
     for (const i of [1, 2, 3, 4]) await q(`SELECT ${i}`);
     await q(`SELECT '${'y'.repeat(1500)}'`);
     await q('SELECT * FROM nope');
-    await h.call('check', 2);
+    await h.call('check', 2, 'SELECT * FROM trips');
     const s = await h.call('state');
     assert.equal(s.floor, 2);
     assert.deepEqual(s.tables, [{ name: 'trips', rows: 7171 }, { name: 'zones', rows: 265 }]);
@@ -299,7 +299,7 @@ describe('state and events', () => {
     assert.equal(s.lastQueries[2].rowCount, null);
     assert.match(s.lastQueries[2].error, /does not exist/);
     assert.equal(s.lastCheck.pass, false);
-    assert.ok(s.lastCheck.failed.includes('exists'));
+    assert.ok(s.lastCheck.failed.includes('columns'));
     const types = (await events()).map((e) => e.type);
     assert.deepEqual(types.filter((t) => t !== 'query'), ['check']);
     assert.equal(types.filter((t) => t === 'query').length, 6);

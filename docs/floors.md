@@ -116,3 +116,17 @@ the fix. A learner can cheat by reading the served reference SQL; accepted for t
 - 2026-10-16 16:45 CDT: frozen (Claude, from the counts above).
 - 2026-10-16 17:35 CDT: floor 2 wrong solution (d) replaced. The old one ('unmatched' tested after 'unknown') equals the reference on this data, because no trip has both an unmatched id and 264/265 (found by crew-devin's test). The new (d) differs on 15 rows (checked with DuckDB).
 - 2026-10-18: v2 stage 1, items 1.1 and 1.2 (approved in `docs/v2/plan-as-approved.md`). The guide and game task now explain that a trip key is the set of columns that together identify one trip, that trips differing in any amount are different trips, and that `row_id` and `loaded_at` describe the load, not the trip. The task does not name the six key columns; the higher-detail guide and check hint still do. Floor 1 adds the possible-merge hint when `trips_clean` has 6,998 through 7,170 rows: "You may have merged trips that are not rerun copies. Check whether their amounts differ." The wording stays a possibility because removing trips can produce the same count. Pass rules, expected counts, and the pilot hint for `DISTINCT *` are unchanged.
+
+## v2 change log — 2026-10-23: R1 answer-query grading
+
+Check floor now grades one SELECT or WITH query in Answer against pristine given tables.
+Scratch is for exploration; its saved tables and mutations never supply or change a check.
+Run answer displays and records a run; Check floor preserves Scratch, both boxes, Result and
+the query records. Answer text is saved separately for each floor and survives Restart floor.
+
+Floor 3 returns every trip exactly once, retaining every source column and adding reason.
+Clean trips have a NULL reason; bad trips have the first failing rule, in the original order.
+Counts remain 7,171 total: 6,955 clean and 216 bad (negative_fare 132,
+zero_distance_high_fare 47, time_travel 20, outside_january 17).
+The former two-output rule ids map to the single-result ids in floor3/solutions.json.
+All other pass rules, expected values and counts remain unchanged.

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { resetMock, openFloor, showTab, runSql, noHorizontalScroll } from './helpers.js';
+import { resetMock, openFloor, showTab, runSql, runAnswer, noHorizontalScroll } from './helpers.js';
 
 test.beforeEach(async ({ request }) => resetMock(request));
 
@@ -78,30 +78,32 @@ for (const [name, target] of [['SQL refresher', '#f3-refresher'], ['About the da
   });
 }
 
-// Catches cached counts, empty-table confusion, and floor/restart state leaking into the checklist.
-test('2.1 checklist follows empty, replaced, dropped, returned and restarted outputs', async ({ page }) => {
+// Scratch table changes never count as an answer run. Counts belong to each floor's last run.
+test('2.1 answer checklist follows runs, Scratch changes, floor switches and restart', async ({ page }) => {
   test.skip(!process.env.DB_SITE, 'counts require the real learner database');
-  await ready(page);
-  await openTask(page);
-  const row = page.locator('#task-checklist li').filter({ hasText: 'quarantine' });
-  await expect(page.locator('#task-checklist li')).toHaveCount(2);
-  await expect(row).toHaveText('quarantine: missing');
+  await ready(page); await openTask(page);
+  const row = page.locator('#task-checklist');
+  await expect(row.locator('li')).toHaveCount(1);
+  await expect(row).toHaveText('Answer: not run yet');
   await runSql(page, 'CREATE TABLE quarantine AS SELECT * FROM trips LIMIT 0');
-  await expect(row).toHaveText('quarantine: exists · 0 rows');
+  await expect(row).toHaveText('Answer: not run yet');
+  await runAnswer(page, 'SELECT * FROM trips LIMIT 0');
+  await expect(row).toHaveText('Answer: 0 rows (last run)');
   await runSql(page, 'CREATE OR REPLACE TABLE quarantine AS SELECT * FROM trips LIMIT 3');
-  await expect(row).toHaveText('quarantine: exists · 3 rows');
+  await expect(row).toHaveText('Answer: 0 rows (last run)');
+  await runAnswer(page, 'SELECT * FROM trips LIMIT 3');
+  await expect(row).toHaveText('Answer: 3 rows (last run)');
   await page.getByRole('button', { name: 'Floor 2', exact: true }).click();
   await expect(page.locator('#engine-status')).toHaveText('Floor 2 is ready.');
-  await expect(page.locator('#task-checklist li')).toHaveCount(1);
+  await expect(row).toHaveText('Answer: not run yet');
   await page.getByRole('button', { name: 'Floor 3', exact: true }).click();
-  await expect(row).toHaveText('quarantine: exists · 3 rows');
+  await expect(row).toHaveText('Answer: 3 rows (last run)');
   await runSql(page, 'DROP TABLE quarantine');
-  await expect(row).toHaveText('quarantine: missing');
-  await runSql(page, 'CREATE TABLE quarantine AS SELECT * FROM trips LIMIT 1');
-  page.once('dialog', d => d.accept());
+  await expect(row).toHaveText('Answer: 3 rows (last run)');
+  page.once('dialog', dialog => dialog.accept());
   await page.locator('#restart-btn').click();
-  await expect(row).toHaveText('quarantine: missing');
-  await expect(page.locator('#task-checklist')).not.toContainText(/correct|pass/i);
+  await expect(row).toHaveText('Answer: not run yet');
+  await expect(row).not.toContainText(/correct|pass/i);
 });
 
 // Catches an iframe-only saved setting or an initial mobile default overwriting an explicit choice.

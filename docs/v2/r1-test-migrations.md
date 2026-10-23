@@ -1,0 +1,900 @@
+# R1 test migrations
+
+Created: 2026-10-23
+Last Updated: 2026-10-23
+
+This inventory lists the migrated tests and generated cases, including unchanged control cases in their affected families. Each entry keeps its prior pass/fail expectation, with one answer query replacing saved-table grading. The solution names and failure sets remain independent oracles; floor 3 uses the reviewed mapping in its solutions.json. Source-comparison helper tests still use local fixture tables because they test value equality directly, rather than floor grading.
+
+Exceptions required by R1: a saved Scratch table no longer counts; Check no longer removes plants or commits Scratch; last-check feedback concerns answer columns rather than missing Scratch outputs; floor 3 returns all trips with reason. Recovery tests account for independent answer workers while retaining their response-time bounds.
+
+The generated equality families retain separate clean-trip and bad-trip coverage on floor 3. Their literal boundary and precision expectations are unchanged. UI entries run at both 1280 px and 375 px, except the existing desktop keyboard-only test and the WebKit touch project.
+
+## Migrated tests
+
+- tests/db/engine.test.mjs — query / a query that ignores cancel is killed: the worker restarts and replays the floor
+- tests/db/engine.test.mjs — plants / check leaves plants alone; an answer is graded against pristine data
+- tests/db/engine.test.mjs — plants / an answer that includes planted row ids fails, and the check says why
+- tests/db/engine.test.mjs — state and events / state: floor, tables with row counts, the last three queries cut to 1,000 characters, last check
+- tests/db/floors.test.mjs — floor 1 solutions / valid (a): the reference (first load survives)
+- tests/db/floors.test.mjs — floor 1 solutions / valid (b): the reference with ORDER BY row_id DESC (second copy survives)
+- tests/db/floors.test.mjs — floor 1 solutions / valid (c): keep the first load by loaded_at
+- tests/db/floors.test.mjs — floor 1 solutions / valid (extra): same rows, different physical order and column order
+- tests/db/floors.test.mjs — floor 1 solutions / wrong (a): SELECT DISTINCT * keeps all 7,345 rows
+- tests/db/floors.test.mjs — floor 1 solutions / wrong (b): DISTINCT on the key columns only (columns missing)
+- tests/db/floors.test.mjs — floor 1 solutions / wrong (c): keep only keys that occur once (drops both copies: 6,997 rows)
+- tests/db/floors.test.mjs — floor 1 solutions / wrong (d): GROUP BY the key with sum(total_amount) (revenue column, others missing)
+- tests/db/floors.test.mjs — floor 1 solutions / wrong (d, all columns kept): GROUP BY the key with sums: 7,171 rows and keys, but 174 rows changed
+- tests/db/floors.test.mjs — floor 1 solutions / wrong (review focus): drop one row and repeat another, so the row count is right
+- tests/db/floors.test.mjs — floor 2 solutions / valid (a): the reference
+- tests/db/floors.test.mjs — floor 2 solutions / valid (b): correlated subqueries for the names, CASE tests a NULL name first
+- tests/db/floors.test.mjs — floor 2 solutions / wrong (a): inner joins (7,146 rows)
+- tests/db/floors.test.mjs — floor 2 solutions / wrong (b): 265 flagged 'unknown'
+- tests/db/floors.test.mjs — floor 2 solutions / wrong (c): only the pick-up side checked
+- tests/db/floors.test.mjs — floor 2 solutions / wrong (d): 'unmatched' only when an id IS NULL (misses the 15 drop-off ids of 0)
+- tests/db/floors.test.mjs — floor 3 solutions / valid (a): the reference
+- tests/db/floors.test.mjs — floor 3 solutions / valid (b): UNION ALL of exclusive rules, clean trips as an anti-join
+- tests/db/floors.test.mjs — floor 3 solutions / wrong (a): remove the failing rows and their reasons
+- tests/db/floors.test.mjs — floor 3 solutions / wrong (b): UNION ALL of the four rules with no exclusion (217 bad rows)
+- tests/db/floors.test.mjs — floor 3 solutions / wrong (c): January tested as pickup_at <= TIMESTAMP '2024-01-31' (loses January 31)
+- tests/db/floors.test.mjs — floor 3 solutions / wrong (d): the last failing rule as the reason instead of the first
+- tests/db/floors.test.mjs — solution texts are real variants / every derived wrong or valid solution differs from its reference
+- tests/db/floors.test.mjs — reference counts match docs/floors.md (from the DuckDB CLI) / floor 1: 7,345 in, 7,171 out; revenue 197,977.97 in, 193,403.10 out
+- tests/db/floors.test.mjs — reference counts match docs/floors.md (from the DuckDB CLI) / floor 2: 7,171 in and out; ok 6,962, unknown 110, outside_nyc 74, unmatched 25; an inner join keeps 7,146
+- tests/db/floors.test.mjs — reference counts match docs/floors.md (from the DuckDB CLI) / floor 3: 6,955 clean + 216 quarantined = 7,171; reasons 132 / 47 / 20 / 17; one row fails two rules
+- tests/db/floors.test.mjs — check details / a check names the expected and actual counts, and a hint, for a failing rule
+- tests/db/floors.test.mjs — check details / floor 2 flags rule reports the flag counts both ways
+- tests/db/floors.test.mjs — check details / learner work survives switching floors and is gone after restartFloor
+- tests/db/floors.test.mjs — check details / floor 2 starts from the reference floor 1 output even when floor 1 was solved wrongly
+- tests/db/floors.test.mjs — check details / a check of a learner table with text in a number column fails cleanly, without an error
+- tests/db/floors.test.mjs — check details / money is compared to the cent: a DECIMAL(10,2) copy of total_amount still passes
+- tests/db/rerun-sql-r3.test.mjs — review reproduction: continued E string passes pilot and all seven Rerun runs
+- tests/db/rerun-sql-review.test.mjs — native parser and pilot console/check: nested block comments
+- tests/db/rerun-sql-review.test.mjs — native parser and pilot console/check: E-string escaped quote
+- tests/db/rerun-sql-review.test.mjs — native parser and pilot console/check: lowercase E-string escapes and doubled quotes
+- tests/db/rerun-sql-review.test.mjs — native parser and pilot console/check: plain string with literal backslash
+- tests/db/rerun-sql-review.test.mjs — native parser and pilot console/check: plain string ending in a literal backslash
+- tests/db/rerun-sql-review.test.mjs — native parser and pilot console/check: untagged dollar string
+- tests/db/rerun-sql-review.test.mjs — native parser and pilot console/check: tagged dollar string with different inner tag
+- tests/db/rerun-sql-review.test.mjs — native parser and pilot console/check: long dollar tag
+- tests/db/rerun-sql-review.test.mjs — native parser and pilot console/check: Unicode dollar tag
+- tests/db/rerun-sql-review.test.mjs — native parser and pilot console/check: CR terminates a line comment
+- tests/db/rerun-sql-review.test.mjs — native parser and pilot console/check: dollar markers within an unquoted identifier
+- tests/db/rerun-sql-review.test.mjs — native parser and pilot console/check: quoted identifiers and doubled identifier quotes
+- tests/db/stage0-review.test.mjs — P1: floor checks cannot be fooled through information_schema catalog macros
+- tests/db/stage0-review.test.mjs — P1 audit: floor checks ignore learner replacements for count and round
+- tests/db/stage1.test.mjs — 1.2 hint boundaries on whole, unchanged learner rows / 6,997 rows: omits the possible-merge hint
+- tests/db/stage1.test.mjs — 1.2 hint boundaries on whole, unchanged learner rows / 6,998 rows: adds the possible-merge hint
+- tests/db/stage1.test.mjs — 1.2 hint boundaries on whole, unchanged learner rows / 7,170 rows: adds the possible-merge hint
+- tests/db/stage1.test.mjs — 1.2 hint boundaries on whole, unchanged learner rows / 7,171 rows: omits the possible-merge hint
+- tests/db/stage1.test.mjs — 1.2 existing valid and wrong floor-1 solutions retain their pass rules / valid (a): the reference (first load survives): no possible-merge hint
+- tests/db/stage1.test.mjs — 1.2 existing valid and wrong floor-1 solutions retain their pass rules / valid (b): the reference with ORDER BY row_id DESC (second copy survives): no possible-merge hint
+- tests/db/stage1.test.mjs — 1.2 existing valid and wrong floor-1 solutions retain their pass rules / valid (c): keep the first load by loaded_at: no possible-merge hint
+- tests/db/stage1.test.mjs — 1.2 existing valid and wrong floor-1 solutions retain their pass rules / valid (extra): same rows, different physical order and column order: no possible-merge hint
+- tests/db/stage1.test.mjs — 1.2 existing valid and wrong floor-1 solutions retain their pass rules / wrong (a): SELECT DISTINCT * keeps all 7,345 rows: no possible-merge hint
+- tests/db/stage1.test.mjs — 1.2 existing valid and wrong floor-1 solutions retain their pass rules / wrong (b): DISTINCT on the key columns only (columns missing): no possible-merge hint
+- tests/db/stage1.test.mjs — 1.2 existing valid and wrong floor-1 solutions retain their pass rules / wrong (c): keep only keys that occur once (drops both copies: 6,997 rows): no possible-merge hint
+- tests/db/stage1.test.mjs — 1.2 existing valid and wrong floor-1 solutions retain their pass rules / wrong (d): GROUP BY the key with sum(total_amount) (revenue column, others missing): no possible-merge hint
+- tests/db/stage1.test.mjs — 1.2 existing valid and wrong floor-1 solutions retain their pass rules / wrong (d, all columns kept): GROUP BY the key with sums: 7,171 rows and keys, but 174 rows changed: no possible-merge hint
+- tests/db/stage1.test.mjs — 1.2 existing valid and wrong floor-1 solutions retain their pass rules / wrong (review focus): drop one row and repeat another, so the row count is right: no possible-merge hint
+- tests/db/stage1.test.mjs — 1.2 approved data-check variants / a whole row per key without vendor_id still passes with 7,171 rows and no hint
+- tests/db/stage1.test.mjs — 1.2 approved data-check variants / a whole row per key without both location ids still passes with 7,171 rows and no hint
+- tests/db/stage1.test.mjs — 1.2 approved data-check variants / the key without total_amount keeps 7,170 rows, fails and gets the possible-merge hint
+- tests/db/stage1.test.mjs — 1.2 approved data-check variants / DISTINCT * EXCLUDE (row_id, loaded_at) has 7,171 rows but still fails for missing columns
+- tests/db/stage2-packs.test.mjs — floor packs own the existing solutions and can load and check a fourth floor without engine edits
+- tests/db/stage2-packs.test.mjs — floor 1 rejects changed non-money values exactly and still accepts cent-equivalent money
+- tests/db/stage2-review.test.mjs — R1: floor 3 preserves all input values in clean and bad trips / clean trips: changed distance fails unchanged-values rule
+- tests/db/stage2-review.test.mjs — R1: floor 3 preserves all input values in clean and bad trips / clean trips: changed microsecond timestamp fails unchanged-values rule
+- tests/db/stage2-review.test.mjs — R1: floor 3 preserves all input values in clean and bad trips / clean trips: changed fractional row id fails unchanged-values rule
+- tests/db/stage2-review.test.mjs — R1: floor 3 preserves all input values in clean and bad trips / clean trips: changed changed money fails unchanged-values rule
+- tests/db/stage2-review.test.mjs — R1: floor 3 preserves all input values in clean and bad trips / clean trips: cent-equivalent money still passes
+- tests/db/stage2-review.test.mjs — R1: floor 3 preserves all input values in clean and bad trips / bad trips: changed distance fails unchanged-values rule
+- tests/db/stage2-review.test.mjs — R1: floor 3 preserves all input values in clean and bad trips / bad trips: changed microsecond timestamp fails unchanged-values rule
+- tests/db/stage2-review.test.mjs — R1: floor 3 preserves all input values in clean and bad trips / bad trips: changed fractional row id fails unchanged-values rule
+- tests/db/stage2-review.test.mjs — R1: floor 3 preserves all input values in clean and bad trips / bad trips: changed changed money fails unchanged-values rule
+- tests/db/stage2-review.test.mjs — R1: floor 3 preserves all input values in clean and bad trips / bad trips: cent-equivalent money still passes
+- tests/db/stage2-review.test.mjs — R2: numeric representations compare by value without losing digits / floor 1: decimal distances equal the original doubles; extra digits fail
+- tests/db/stage2-review.test.mjs — R2: numeric representations compare by value without losing digits / floor 1: a real fractional distance change fails
+- tests/db/stage2-review.test.mjs — R2: numeric representations compare by value without losing digits / floor 2: decimal distances equal the original doubles; extra digits fail
+- tests/db/stage2-review.test.mjs — R2: numeric representations compare by value without losing digits / floor 2: a real fractional distance change fails
+- tests/db/stage2-review.test.mjs — R2: numeric representations compare by value without losing digits / floor 3: decimal distances equal the original doubles; extra digits fail
+- tests/db/stage2-review.test.mjs — R2: numeric representations compare by value without losing digits / floor 3: a real fractional distance change fails
+- tests/db/stage2-review.test.mjs — R3: numeric text keeps the old accepted conversions without hiding changes / floor 1: unchanged fare_amount as numeric text passes; changed text fails
+- tests/db/stage2-review.test.mjs — R3: numeric text keeps the old accepted conversions without hiding changes / floor 1: unchanged row_id as numeric text passes; changed text fails
+- tests/db/stage2-review.test.mjs — R3: numeric text keeps the old accepted conversions without hiding changes / floor 1: unchanged trip_distance as numeric text passes; changed text fails
+- tests/db/stage2-review.test.mjs — R3: numeric text keeps the old accepted conversions without hiding changes / floor 1: text money rounds to cents without losing boundary digits
+- tests/db/stage2-review.test.mjs — R3: numeric text keeps the old accepted conversions without hiding changes / floor 1: malformed numeric text fails cleanly
+- tests/db/stage2-review.test.mjs — R3: numeric text keeps the old accepted conversions without hiding changes / floor 2: unchanged fare_amount as numeric text passes; changed text fails
+- tests/db/stage2-review.test.mjs — R3: numeric text keeps the old accepted conversions without hiding changes / floor 2: unchanged row_id as numeric text passes; changed text fails
+- tests/db/stage2-review.test.mjs — R3: numeric text keeps the old accepted conversions without hiding changes / floor 2: unchanged trip_distance as numeric text passes; changed text fails
+- tests/db/stage2-review.test.mjs — R3: numeric text keeps the old accepted conversions without hiding changes / floor 2: text money rounds to cents without losing boundary digits
+- tests/db/stage2-review.test.mjs — R3: numeric text keeps the old accepted conversions without hiding changes / floor 2: malformed numeric text fails cleanly
+- tests/db/stage2-review.test.mjs — R3: numeric text keeps the old accepted conversions without hiding changes / floor 3: unchanged fare_amount as numeric text passes; changed text fails
+- tests/db/stage2-review.test.mjs — R3: numeric text keeps the old accepted conversions without hiding changes / floor 3: unchanged row_id as numeric text passes; changed text fails
+- tests/db/stage2-review.test.mjs — R3: numeric text keeps the old accepted conversions without hiding changes / floor 3: unchanged trip_distance as numeric text passes; changed text fails
+- tests/db/stage2-review.test.mjs — R3: numeric text keeps the old accepted conversions without hiding changes / floor 3: text money rounds to cents without losing boundary digits
+- tests/db/stage2-review.test.mjs — R3: numeric text keeps the old accepted conversions without hiding changes / floor 3: malformed numeric text fails cleanly
+- tests/db/stage2-review.test.mjs — R3: numeric text keeps the old accepted conversions without hiding changes / floor 3: numeric text in bad trips also preserves values
+- tests/db/tutor-failure.test.mjs — Tutor failure: check finishes with a broken tutor
+- tests/db/tutor-failure.test.mjs — Tutor failure: check finishes with an unresponsive tutor
+- tests/db/stage2-equality.test.mjs — review reproduction: floor 4 rejects a DECIMAL change lost by SQL set comparison
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].row_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].row_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].row_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].row_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].row_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].row_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].vendor_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].vendor_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].vendor_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].vendor_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].vendor_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].vendor_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].pickup_at / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].pickup_at / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].pickup_at / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].pickup_at / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].pickup_at / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].pickup_at / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].dropoff_at / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].dropoff_at / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].dropoff_at / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].dropoff_at / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].dropoff_at / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].dropoff_at / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].passenger_count / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].passenger_count / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].passenger_count / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].passenger_count / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].passenger_count / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].passenger_count / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].trip_distance / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].trip_distance / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].trip_distance / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].trip_distance / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].trip_distance / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].trip_distance / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].pu_location_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].pu_location_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].pu_location_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].pu_location_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].pu_location_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].pu_location_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].do_location_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].do_location_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].do_location_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].do_location_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].do_location_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].do_location_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].payment_type / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].payment_type / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].payment_type / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].payment_type / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].payment_type / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].payment_type / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].fare_amount / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].fare_amount / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].fare_amount / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].fare_amount / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].fare_amount / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].fare_amount / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].tip_amount / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].tip_amount / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].tip_amount / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].tip_amount / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].tip_amount / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].tip_amount / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].total_amount / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].total_amount / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].total_amount / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].total_amount / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].total_amount / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].total_amount / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].loaded_at / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].loaded_at / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].loaded_at / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].loaded_at / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].loaded_at / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack output columns x representations use the same equality / trips_clean [true].loaded_at / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].row_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].row_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].row_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].row_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].row_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].row_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].vendor_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].vendor_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].vendor_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].vendor_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].vendor_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].vendor_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pickup_at / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pickup_at / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pickup_at / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pickup_at / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pickup_at / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pickup_at / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].dropoff_at / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].dropoff_at / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].dropoff_at / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].dropoff_at / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].dropoff_at / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].dropoff_at / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].passenger_count / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].passenger_count / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].passenger_count / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].passenger_count / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].passenger_count / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].passenger_count / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].trip_distance / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].trip_distance / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].trip_distance / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].trip_distance / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].trip_distance / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].trip_distance / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pu_location_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pu_location_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pu_location_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pu_location_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pu_location_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pu_location_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].do_location_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].do_location_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].do_location_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].do_location_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].do_location_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].do_location_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].payment_type / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].payment_type / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].payment_type / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].payment_type / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].payment_type / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].payment_type / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].fare_amount / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].fare_amount / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].fare_amount / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].fare_amount / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].fare_amount / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].fare_amount / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].tip_amount / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].tip_amount / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].tip_amount / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].tip_amount / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].tip_amount / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].tip_amount / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].total_amount / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].total_amount / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].total_amount / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].total_amount / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].total_amount / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].total_amount / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].loaded_at / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].loaded_at / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].loaded_at / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].loaded_at / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].loaded_at / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].loaded_at / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pu_zone / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pu_zone / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pu_zone / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pu_zone / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pu_zone / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].pu_zone / VARCHAR with trailing zeros: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].do_zone / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].do_zone / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].do_zone / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].do_zone / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].do_zone / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].do_zone / VARCHAR with trailing zeros: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].zone_flag / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].zone_flag / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].zone_flag / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].zone_flag / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].zone_flag / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 2: pack output columns x representations use the same equality / trips_clean [true].zone_flag / VARCHAR with trailing zeros: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].row_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].row_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].row_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].row_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].row_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].row_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].vendor_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].vendor_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].vendor_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].vendor_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].vendor_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].vendor_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pickup_at / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pickup_at / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pickup_at / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pickup_at / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pickup_at / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pickup_at / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].dropoff_at / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].dropoff_at / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].dropoff_at / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].dropoff_at / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].dropoff_at / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].dropoff_at / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].passenger_count / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].passenger_count / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].passenger_count / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].passenger_count / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].passenger_count / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].passenger_count / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].trip_distance / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].trip_distance / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].trip_distance / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].trip_distance / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].trip_distance / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].trip_distance / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pu_location_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pu_location_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pu_location_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pu_location_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pu_location_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pu_location_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].do_location_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].do_location_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].do_location_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].do_location_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].do_location_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].do_location_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].payment_type / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].payment_type / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].payment_type / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].payment_type / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].payment_type / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].payment_type / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].fare_amount / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].fare_amount / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].fare_amount / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].fare_amount / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].fare_amount / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].fare_amount / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].tip_amount / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].tip_amount / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].tip_amount / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].tip_amount / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].tip_amount / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].tip_amount / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].total_amount / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].total_amount / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].total_amount / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].total_amount / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].total_amount / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].total_amount / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].loaded_at / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].loaded_at / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].loaded_at / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].loaded_at / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].loaded_at / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].loaded_at / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pu_zone / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pu_zone / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pu_zone / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pu_zone / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pu_zone / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].pu_zone / VARCHAR with trailing zeros: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].do_zone / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].do_zone / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].do_zone / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].do_zone / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].do_zone / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].do_zone / VARCHAR with trailing zeros: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].zone_flag / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].zone_flag / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].zone_flag / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].zone_flag / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].zone_flag / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NULL].zone_flag / VARCHAR with trailing zeros: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].row_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].row_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].row_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].row_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].row_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].row_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].vendor_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].vendor_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].vendor_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].vendor_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].vendor_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].vendor_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pickup_at / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pickup_at / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pickup_at / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pickup_at / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pickup_at / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pickup_at / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].dropoff_at / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].dropoff_at / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].dropoff_at / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].dropoff_at / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].dropoff_at / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].dropoff_at / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].passenger_count / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].passenger_count / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].passenger_count / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].passenger_count / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].passenger_count / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].passenger_count / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].trip_distance / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].trip_distance / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].trip_distance / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].trip_distance / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].trip_distance / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].trip_distance / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pu_location_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pu_location_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pu_location_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pu_location_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pu_location_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pu_location_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].do_location_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].do_location_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].do_location_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].do_location_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].do_location_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].do_location_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].payment_type / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].payment_type / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].payment_type / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].payment_type / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].payment_type / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].payment_type / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].fare_amount / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].fare_amount / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].fare_amount / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].fare_amount / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].fare_amount / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].fare_amount / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].tip_amount / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].tip_amount / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].tip_amount / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].tip_amount / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].tip_amount / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].tip_amount / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].total_amount / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].total_amount / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].total_amount / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].total_amount / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].total_amount / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].total_amount / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].loaded_at / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].loaded_at / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].loaded_at / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].loaded_at / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].loaded_at / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].loaded_at / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pu_zone / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pu_zone / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pu_zone / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pu_zone / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pu_zone / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].pu_zone / VARCHAR with trailing zeros: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].do_zone / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].do_zone / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].do_zone / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].do_zone / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].do_zone / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].do_zone / VARCHAR with trailing zeros: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].zone_flag / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].zone_flag / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].zone_flag / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].zone_flag / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].zone_flag / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].zone_flag / VARCHAR with trailing zeros: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].reason / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].reason / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].reason / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].reason / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].reason / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 3: pack output columns x representations use the same equality / trips_clean [reason IS NOT NULL].reason / VARCHAR with trailing zeros: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].row_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].row_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].row_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].row_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].row_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].row_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].vendor_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].vendor_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].vendor_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].vendor_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].vendor_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].vendor_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].pickup_at / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].pickup_at / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].pickup_at / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].pickup_at / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].pickup_at / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].pickup_at / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].dropoff_at / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].dropoff_at / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].dropoff_at / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].dropoff_at / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].dropoff_at / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].dropoff_at / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].passenger_count / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].passenger_count / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].passenger_count / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].passenger_count / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].passenger_count / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].passenger_count / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].trip_distance / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].trip_distance / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].trip_distance / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].trip_distance / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].trip_distance / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].trip_distance / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].pu_location_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].pu_location_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].pu_location_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].pu_location_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].pu_location_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].pu_location_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].do_location_id / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].do_location_id / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].do_location_id / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].do_location_id / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].do_location_id / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].do_location_id / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].payment_type / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].payment_type / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].payment_type / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].payment_type / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].payment_type / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].payment_type / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].fare_amount / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].fare_amount / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].fare_amount / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].fare_amount / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].fare_amount / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].fare_amount / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].tip_amount / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].tip_amount / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].tip_amount / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].tip_amount / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].tip_amount / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].tip_amount / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].total_amount / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].total_amount / DOUBLE: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].total_amount / DECIMAL(18,2): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].total_amount / DECIMAL(38,20): equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].total_amount / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].total_amount / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].loaded_at / native: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].loaded_at / DOUBLE: incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].loaded_at / DECIMAL(18,2): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].loaded_at / DECIMAL(38,20): incompatible fails; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].loaded_at / VARCHAR: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 4: pack output columns x representations use the same equality / audit_sample [true].loaded_at / VARCHAR with trailing zeros: equivalent passes; change fails
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / native / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / native / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / native / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DOUBLE / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DOUBLE / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DOUBLE / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DECIMAL(18,2) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DECIMAL(18,2) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DECIMAL(18,2) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DECIMAL(38,20) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DECIMAL(38,20) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DECIMAL(38,20) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / VARCHAR / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / VARCHAR / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / VARCHAR / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / VARCHAR with trailing zeros / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / VARCHAR with trailing zeros / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].fare_amount / VARCHAR with trailing zeros / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / native / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / native / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / native / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DOUBLE / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DOUBLE / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DOUBLE / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DECIMAL(18,2) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DECIMAL(18,2) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DECIMAL(18,2) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DECIMAL(38,20) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DECIMAL(38,20) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DECIMAL(38,20) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / VARCHAR / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / VARCHAR / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / VARCHAR / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / VARCHAR with trailing zeros / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / VARCHAR with trailing zeros / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].tip_amount / VARCHAR with trailing zeros / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / native / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / native / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / native / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / DOUBLE / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / DOUBLE / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / DOUBLE / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / DECIMAL(18,2) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / DECIMAL(18,2) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / DECIMAL(18,2) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / DECIMAL(38,20) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / DECIMAL(38,20) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / DECIMAL(38,20) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / VARCHAR / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / VARCHAR / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / VARCHAR / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / VARCHAR with trailing zeros / below half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / VARCHAR with trailing zeros / at half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack money boundaries across every output and representation / trips_clean [true].total_amount / VARCHAR with trailing zeros / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / native / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / native / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / native / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DOUBLE / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DOUBLE / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DOUBLE / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DECIMAL(18,2) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DECIMAL(18,2) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DECIMAL(18,2) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DECIMAL(38,20) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DECIMAL(38,20) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / DECIMAL(38,20) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / VARCHAR / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / VARCHAR / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / VARCHAR / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / VARCHAR with trailing zeros / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / VARCHAR with trailing zeros / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].fare_amount / VARCHAR with trailing zeros / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / native / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / native / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / native / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DOUBLE / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DOUBLE / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DOUBLE / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DECIMAL(18,2) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DECIMAL(18,2) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DECIMAL(18,2) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DECIMAL(38,20) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DECIMAL(38,20) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / DECIMAL(38,20) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / VARCHAR / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / VARCHAR / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / VARCHAR / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / VARCHAR with trailing zeros / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / VARCHAR with trailing zeros / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].tip_amount / VARCHAR with trailing zeros / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / native / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / native / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / native / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / DOUBLE / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / DOUBLE / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / DOUBLE / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / DECIMAL(18,2) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / DECIMAL(18,2) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / DECIMAL(18,2) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / DECIMAL(38,20) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / DECIMAL(38,20) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / DECIMAL(38,20) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / VARCHAR / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / VARCHAR / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / VARCHAR / above half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / VARCHAR with trailing zeros / below half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / VARCHAR with trailing zeros / at half cent
+- tests/db/stage2-equality.test.mjs — floor 2: pack money boundaries across every output and representation / trips_clean [true].total_amount / VARCHAR with trailing zeros / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / native / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / native / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / native / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / DOUBLE / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / DOUBLE / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / DOUBLE / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / DECIMAL(18,2) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / DECIMAL(18,2) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / DECIMAL(18,2) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / DECIMAL(38,20) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / DECIMAL(38,20) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / DECIMAL(38,20) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / VARCHAR / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / VARCHAR / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / VARCHAR / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / VARCHAR with trailing zeros / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / VARCHAR with trailing zeros / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].fare_amount / VARCHAR with trailing zeros / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / native / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / native / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / native / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / DOUBLE / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / DOUBLE / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / DOUBLE / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / DECIMAL(18,2) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / DECIMAL(18,2) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / DECIMAL(18,2) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / DECIMAL(38,20) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / DECIMAL(38,20) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / DECIMAL(38,20) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / VARCHAR / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / VARCHAR / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / VARCHAR / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / VARCHAR with trailing zeros / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / VARCHAR with trailing zeros / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].tip_amount / VARCHAR with trailing zeros / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / native / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / native / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / native / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / DOUBLE / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / DOUBLE / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / DOUBLE / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / DECIMAL(18,2) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / DECIMAL(18,2) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / DECIMAL(18,2) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / DECIMAL(38,20) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / DECIMAL(38,20) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / DECIMAL(38,20) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / VARCHAR / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / VARCHAR / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / VARCHAR / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / VARCHAR with trailing zeros / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / VARCHAR with trailing zeros / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NULL].total_amount / VARCHAR with trailing zeros / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / native / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / native / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / native / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / DOUBLE / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / DOUBLE / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / DOUBLE / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / DECIMAL(18,2) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / DECIMAL(18,2) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / DECIMAL(18,2) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / DECIMAL(38,20) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / DECIMAL(38,20) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / DECIMAL(38,20) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / VARCHAR / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / VARCHAR / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / VARCHAR / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / VARCHAR with trailing zeros / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / VARCHAR with trailing zeros / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].fare_amount / VARCHAR with trailing zeros / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / native / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / native / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / native / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / DOUBLE / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / DOUBLE / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / DOUBLE / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / DECIMAL(18,2) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / DECIMAL(18,2) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / DECIMAL(18,2) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / DECIMAL(38,20) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / DECIMAL(38,20) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / DECIMAL(38,20) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / VARCHAR / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / VARCHAR / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / VARCHAR / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / VARCHAR with trailing zeros / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / VARCHAR with trailing zeros / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].tip_amount / VARCHAR with trailing zeros / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / native / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / native / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / native / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / DOUBLE / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / DOUBLE / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / DOUBLE / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / DECIMAL(18,2) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / DECIMAL(18,2) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / DECIMAL(18,2) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / DECIMAL(38,20) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / DECIMAL(38,20) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / DECIMAL(38,20) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / VARCHAR / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / VARCHAR / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / VARCHAR / above half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / VARCHAR with trailing zeros / below half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / VARCHAR with trailing zeros / at half cent
+- tests/db/stage2-equality.test.mjs — floor 3: pack money boundaries across every output and representation / trips_clean [reason IS NOT NULL].total_amount / VARCHAR with trailing zeros / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / native / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / native / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / native / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / DOUBLE / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / DOUBLE / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / DOUBLE / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / DECIMAL(18,2) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / DECIMAL(18,2) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / DECIMAL(18,2) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / DECIMAL(38,20) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / DECIMAL(38,20) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / DECIMAL(38,20) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / VARCHAR / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / VARCHAR / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / VARCHAR / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / VARCHAR with trailing zeros / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / VARCHAR with trailing zeros / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].fare_amount / VARCHAR with trailing zeros / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / native / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / native / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / native / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / DOUBLE / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / DOUBLE / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / DOUBLE / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / DECIMAL(18,2) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / DECIMAL(18,2) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / DECIMAL(18,2) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / DECIMAL(38,20) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / DECIMAL(38,20) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / DECIMAL(38,20) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / VARCHAR / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / VARCHAR / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / VARCHAR / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / VARCHAR with trailing zeros / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / VARCHAR with trailing zeros / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].tip_amount / VARCHAR with trailing zeros / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / native / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / native / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / native / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / DOUBLE / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / DOUBLE / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / DOUBLE / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / DECIMAL(18,2) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / DECIMAL(18,2) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / DECIMAL(18,2) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / DECIMAL(38,20) / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / DECIMAL(38,20) / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / DECIMAL(38,20) / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / VARCHAR / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / VARCHAR / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / VARCHAR / above half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / VARCHAR with trailing zeros / below half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / VARCHAR with trailing zeros / at half cent
+- tests/db/stage2-equality.test.mjs — floor 4: pack money boundaries across every output and representation / audit_sample [true].total_amount / VARCHAR with trailing zeros / above half cent
+- tests/db/stage2-equality.test.mjs — floor 1: pack accepts end-of-day timestamps and rejects invalid 24-hour values
+- tests/db/stage2-equality.test.mjs — floor 1: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [true]: 2024-01-31T24:00:00-06:00
+- tests/db/stage2-equality.test.mjs — floor 1: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [true]: 2024-01-31T24:00:00.000000000000-06:00
+- tests/db/stage2-equality.test.mjs — floor 1: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [true]: 2024-01-31T24:00:01-06:00
+- tests/db/stage2-equality.test.mjs — floor 1: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [true]: 2024-01-31T24:01:00-06:00
+- tests/db/stage2-equality.test.mjs — floor 1: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [true]: 2024-01-31T24:00:00.000000001-06:00
+- tests/db/stage2-equality.test.mjs — floor 1: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [true]: 2024-01-31T24:00:00.000000000001-06:00
+- tests/db/stage2-equality.test.mjs — floor 2: pack accepts end-of-day timestamps and rejects invalid 24-hour values
+- tests/db/stage2-equality.test.mjs — floor 2: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [true]: 2024-01-31T24:00:00-06:00
+- tests/db/stage2-equality.test.mjs — floor 2: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [true]: 2024-01-31T24:00:00.000000000000-06:00
+- tests/db/stage2-equality.test.mjs — floor 2: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [true]: 2024-01-31T24:00:01-06:00
+- tests/db/stage2-equality.test.mjs — floor 2: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [true]: 2024-01-31T24:01:00-06:00
+- tests/db/stage2-equality.test.mjs — floor 2: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [true]: 2024-01-31T24:00:00.000000001-06:00
+- tests/db/stage2-equality.test.mjs — floor 2: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [true]: 2024-01-31T24:00:00.000000000001-06:00
+- tests/db/stage2-equality.test.mjs — floor 3: pack accepts end-of-day timestamps and rejects invalid 24-hour values
+- tests/db/stage2-equality.test.mjs — floor 3: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [reason IS NULL]: 2024-01-31T24:00:00-06:00
+- tests/db/stage2-equality.test.mjs — floor 3: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [reason IS NULL]: 2024-01-31T24:00:00.000000000000-06:00
+- tests/db/stage2-equality.test.mjs — floor 3: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [reason IS NULL]: 2024-01-31T24:00:01-06:00
+- tests/db/stage2-equality.test.mjs — floor 3: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [reason IS NULL]: 2024-01-31T24:01:00-06:00
+- tests/db/stage2-equality.test.mjs — floor 3: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [reason IS NULL]: 2024-01-31T24:00:00.000000001-06:00
+- tests/db/stage2-equality.test.mjs — floor 3: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [reason IS NULL]: 2024-01-31T24:00:00.000000000001-06:00
+- tests/db/stage2-equality.test.mjs — floor 3: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [reason IS NOT NULL]: 2024-01-31T24:00:00-06:00
+- tests/db/stage2-equality.test.mjs — floor 3: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [reason IS NOT NULL]: 2024-01-31T24:00:00.000000000000-06:00
+- tests/db/stage2-equality.test.mjs — floor 3: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [reason IS NOT NULL]: 2024-01-31T24:00:01-06:00
+- tests/db/stage2-equality.test.mjs — floor 3: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [reason IS NOT NULL]: 2024-01-31T24:01:00-06:00
+- tests/db/stage2-equality.test.mjs — floor 3: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [reason IS NOT NULL]: 2024-01-31T24:00:00.000000001-06:00
+- tests/db/stage2-equality.test.mjs — floor 3: pack accepts end-of-day timestamps and rejects invalid 24-hour values / trips_clean [reason IS NOT NULL]: 2024-01-31T24:00:00.000000000001-06:00
+- tests/db/stage2-equality.test.mjs — floor 4: pack accepts end-of-day timestamps and rejects invalid 24-hour values
+- tests/db/stage2-equality.test.mjs — floor 4: pack accepts end-of-day timestamps and rejects invalid 24-hour values / audit_sample [true]: 2024-01-31T24:00:00-06:00
+- tests/db/stage2-equality.test.mjs — floor 4: pack accepts end-of-day timestamps and rejects invalid 24-hour values / audit_sample [true]: 2024-01-31T24:00:00.000000000000-06:00
+- tests/db/stage2-equality.test.mjs — floor 4: pack accepts end-of-day timestamps and rejects invalid 24-hour values / audit_sample [true]: 2024-01-31T24:00:01-06:00
+- tests/db/stage2-equality.test.mjs — floor 4: pack accepts end-of-day timestamps and rejects invalid 24-hour values / audit_sample [true]: 2024-01-31T24:01:00-06:00
+- tests/db/stage2-equality.test.mjs — floor 4: pack accepts end-of-day timestamps and rejects invalid 24-hour values / audit_sample [true]: 2024-01-31T24:00:00.000000001-06:00
+- tests/db/stage2-equality.test.mjs — floor 4: pack accepts end-of-day timestamps and rejects invalid 24-hour values / audit_sample [true]: 2024-01-31T24:00:00.000000000001-06:00
+- tests/db/stage2-equality.test.mjs — review reproduction: floor 1 row 1588 accepts the previous day at 24:00
+- tests/ui/floors.spec.js — floors 1-3 clear in order and the receipt lists three codes
+- tests/ui/keyboard.spec.js — floor 1 is playable with the keyboard only
+- tests/ui/stage1-jsoff.spec.js — guide without JavaScript › every floor has the complete approved task and rerun instruction
+- tests/ui/stage1-jsoff.spec.js — guide and game floor 1 wording match, with no duplicate guide endings
+- tests/ui/stage1.spec.js — 1.4 an uncleared floor has no empty code box after saving floors 1 and 3 and reloading
+- tests/ui/stage1.spec.js — 1.4 Copy all codes copies only floors 1 and 3 in floor order with no blank lines after reload
+- tests/ui/stage1.spec.js — 1.4 denied clipboard access shows a visible message and raises no error
+- tests/ui/stage1.spec.js — 1.4 Forget me clears every saved code from storage, guide and game after reload
+- tests/ui/stage1.spec.js — 1.4 saved codes never reach either page block, including selected guide and game receipts
+- tests/ui/stage2-packs.spec.js — a fourth test pack renders in the guide and game and passes its own check
+- tests/ui/stage2-task.spec.js — 2.1 answer checklist follows runs, Scratch changes, floor switches and restart
+- tests/ui/thin-path.spec.js — floor 1 end to end: query, tutor lens, check, receipt
+- tests/ui/thin-path.spec.js — a wrong floor 1 answer does not pass and issues no code
+- tests/ui/ux-review.spec.js — floor 1 code survives reload in the guide and the saved receipt list
+- tests/ui/ux-review.spec.js — malformed saved codes are ignored and unavailable code storage does not break clearing
+- tests/ui/ux-review.spec.js — a failed Check scrolls its result into view with nearest alignment
+- tests/ui/stage2-touch.spec.js — iPhone WebKit accepts a tap and typing in both SQL and tutor boxes
+- tests/ui/integration.real.js — real server: dev login, floor 1, tutor lens, check, receipt, same code twice

@@ -1,14 +1,13 @@
 import { BASE, learner, ref } from '/game/db/names.js';
 import { fmt, list, makeRule, wantColumns, columnsOf, columnReport, exactDiff, plantedNote } from '/game/db/check-helpers.js';
 
-export async function check(db, { pack, plantedEver }) {
+export async function check(db, { pack, plantedEver, learner: S }) {
   const TRIP_KEY = pack.tripKey;
-  const S = learner(pack.id);
   const out = [];
   const R = {
-    exists: makeRule('exists', 'trips_clean exists', 'Create a table named trips_clean on this floor.'),
-    cols: makeRule('columns', 'trips_clean has exactly the columns of trips_raw', 'Keep every column of trips_raw, in any order, and add none.'),
-    rows: makeRule('unchanged', 'Every row of trips_clean is an unchanged row of trips_raw', 'Rows must be copied from trips_raw as they are, and no row more often than it appears there.'),
+    exists: makeRule('exists', 'The answer has a result', 'Write a query in the Answer box, then press Check floor.'),
+    cols: makeRule('columns', 'The answer has exactly the columns of trips_raw', 'Keep every column of trips_raw, in any order, and add none.'),
+    rows: makeRule('unchanged', 'Every answer row is an unchanged row of trips_raw', 'Rows must be copied from trips_raw as they are, and no row more often than it appears there.'),
     count: makeRule('row_count', 'Row count', 'Count the rows before and after: one row should be left for each trip.'),
     keys: makeRule('trip_keys', 'One row per trip key', 'The trip key is vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount.'),
   };
@@ -19,10 +18,10 @@ export async function check(db, { pack, plantedEver }) {
   const { distinctB: expKeys } = await exactDiff(db, keyCols, null, `${ref(pack.id)}.trips_clean`, `${ref(pack.id)}.trips_clean`);
   const colsText = `${want.length} columns: ${list(want.map((c) => c.name))}`;
   if (!have) {
-    out.push(R.exists.fail('a table named trips_clean', 'not found'));
+    out.push(R.exists.fail('an answer result', 'not found'));
     return [...out, R.cols.skip(colsText), R.rows.skip('0 changed or extra rows'), R.count.skip(fmt(expRows)), R.keys.skip(`${fmt(expKeys)} trip keys`)];
   }
-  out.push(R.exists.ok('a table named trips_clean', 'found'));
+  out.push(R.exists.ok('an answer result', 'found'));
   const cr = columnReport(want, have, { allowExtra: false });
   out.push(R.cols.of(cr.ok, colsText, cr.got));
   const from = `${S}.trips_clean`;

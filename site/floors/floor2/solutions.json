@@ -2,12 +2,12 @@
   {
     "name": "valid (a): the reference",
     "fails": [],
-    "sql": "-- Floor 2 reference. Input: trips (floor 1's reference output). Keep every row; add zone names and a flag.\nCREATE OR REPLACE TABLE trips_clean AS\nSELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,\n       CASE WHEN pz.location_id IS NULL OR dz.location_id IS NULL THEN 'unmatched'\n            WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'\n            WHEN t.pu_location_id = 265 OR t.do_location_id = 265 THEN 'outside_nyc'\n            ELSE 'ok' END AS zone_flag\nFROM trips t\nLEFT JOIN zones pz ON pz.location_id = t.pu_location_id\nLEFT JOIN zones dz ON dz.location_id = t.do_location_id;\n"
+    "sql": "WITH answer AS (\nSELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,\n       CASE WHEN pz.location_id IS NULL OR dz.location_id IS NULL THEN 'unmatched'\n            WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'\n            WHEN t.pu_location_id = 265 OR t.do_location_id = 265 THEN 'outside_nyc'\n            ELSE 'ok' END AS zone_flag\nFROM trips t\nLEFT JOIN zones pz ON pz.location_id = t.pu_location_id\nLEFT JOIN zones dz ON dz.location_id = t.do_location_id\n) SELECT * FROM answer;\n"
   },
   {
     "name": "valid (b): correlated subqueries for the names, CASE tests a NULL name first",
     "fails": [],
-    "sql": "CREATE OR REPLACE TABLE trips_clean AS\n            SELECT *, CASE WHEN pu_zone IS NULL OR do_zone IS NULL THEN 'unmatched'\n                           WHEN pu_location_id = 264 OR do_location_id = 264 THEN 'unknown'\n                           WHEN pu_location_id = 265 OR do_location_id = 265 THEN 'outside_nyc'\n                           ELSE 'ok' END AS zone_flag\n            FROM (SELECT t.*, (SELECT z.zone FROM zones z WHERE z.location_id = t.pu_location_id) AS pu_zone,\n                              (SELECT z.zone FROM zones z WHERE z.location_id = t.do_location_id) AS do_zone\n                  FROM trips t)"
+    "sql": "SELECT *, CASE WHEN pu_zone IS NULL OR do_zone IS NULL THEN 'unmatched'\n                           WHEN pu_location_id = 264 OR do_location_id = 264 THEN 'unknown'\n                           WHEN pu_location_id = 265 OR do_location_id = 265 THEN 'outside_nyc'\n                           ELSE 'ok' END AS zone_flag\n            FROM (SELECT t.*, (SELECT z.zone FROM zones z WHERE z.location_id = t.pu_location_id) AS pu_zone,\n                              (SELECT z.zone FROM zones z WHERE z.location_id = t.do_location_id) AS do_zone\n                  FROM trips t)"
   },
   {
     "name": "wrong (a): inner joins (7,146 rows)",
@@ -16,27 +16,27 @@
       "zone_flags",
       "unchanged"
     ],
-    "sql": "-- Floor 2 reference. Input: trips (floor 1's reference output). Keep every row; add zone names and a flag.\nCREATE OR REPLACE TABLE trips_clean AS\nSELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,\n       CASE WHEN pz.location_id IS NULL OR dz.location_id IS NULL THEN 'unmatched'\n            WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'\n            WHEN t.pu_location_id = 265 OR t.do_location_id = 265 THEN 'outside_nyc'\n            ELSE 'ok' END AS zone_flag\nFROM trips t\nJOIN zones pz ON pz.location_id = t.pu_location_id\nJOIN zones dz ON dz.location_id = t.do_location_id;\n"
+    "sql": "WITH answer AS (\nSELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,\n       CASE WHEN pz.location_id IS NULL OR dz.location_id IS NULL THEN 'unmatched'\n            WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'\n            WHEN t.pu_location_id = 265 OR t.do_location_id = 265 THEN 'outside_nyc'\n            ELSE 'ok' END AS zone_flag\nFROM trips t\nJOIN zones pz ON pz.location_id = t.pu_location_id\nJOIN zones dz ON dz.location_id = t.do_location_id\n) SELECT * FROM answer;\n"
   },
   {
     "name": "wrong (b): 265 flagged 'unknown'",
     "fails": [
       "zone_flags"
     ],
-    "sql": "-- Floor 2 reference. Input: trips (floor 1's reference output). Keep every row; add zone names and a flag.\nCREATE OR REPLACE TABLE trips_clean AS\nSELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,\n       CASE WHEN pz.location_id IS NULL OR dz.location_id IS NULL THEN 'unmatched'\n            WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'\n            WHEN t.pu_location_id = 265 OR t.do_location_id = 265 THEN 'unknown'\n            ELSE 'ok' END AS zone_flag\nFROM trips t\nLEFT JOIN zones pz ON pz.location_id = t.pu_location_id\nLEFT JOIN zones dz ON dz.location_id = t.do_location_id;\n"
+    "sql": "WITH answer AS (\nSELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,\n       CASE WHEN pz.location_id IS NULL OR dz.location_id IS NULL THEN 'unmatched'\n            WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'\n            WHEN t.pu_location_id = 265 OR t.do_location_id = 265 THEN 'unknown'\n            ELSE 'ok' END AS zone_flag\nFROM trips t\nLEFT JOIN zones pz ON pz.location_id = t.pu_location_id\nLEFT JOIN zones dz ON dz.location_id = t.do_location_id\n) SELECT * FROM answer;\n"
   },
   {
     "name": "wrong (c): only the pick-up side checked",
     "fails": [
       "zone_flags"
     ],
-    "sql": "CREATE OR REPLACE TABLE trips_clean AS\n            SELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,\n                   CASE WHEN pz.location_id IS NULL THEN 'unmatched'\n                        WHEN t.pu_location_id = 264 THEN 'unknown'\n                        WHEN t.pu_location_id = 265 THEN 'outside_nyc'\n                        ELSE 'ok' END AS zone_flag\n            FROM trips t LEFT JOIN zones pz ON pz.location_id = t.pu_location_id LEFT JOIN zones dz ON dz.location_id = t.do_location_id"
+    "sql": "SELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,\n                   CASE WHEN pz.location_id IS NULL THEN 'unmatched'\n                        WHEN t.pu_location_id = 264 THEN 'unknown'\n                        WHEN t.pu_location_id = 265 THEN 'outside_nyc'\n                        ELSE 'ok' END AS zone_flag\n            FROM trips t LEFT JOIN zones pz ON pz.location_id = t.pu_location_id LEFT JOIN zones dz ON dz.location_id = t.do_location_id"
   },
   {
     "name": "wrong (d): 'unmatched' only when an id IS NULL (misses the 15 drop-off ids of 0)",
     "fails": [
       "zone_flags"
     ],
-    "sql": "CREATE OR REPLACE TABLE trips_clean AS\n            SELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,\n                   CASE WHEN t.pu_location_id IS NULL OR t.do_location_id IS NULL THEN 'unmatched'\n                        WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'\n                        WHEN t.pu_location_id = 265 OR t.do_location_id = 265 THEN 'outside_nyc'\n                        ELSE 'ok' END AS zone_flag\n            FROM trips t LEFT JOIN zones pz ON pz.location_id = t.pu_location_id LEFT JOIN zones dz ON dz.location_id = t.do_location_id"
+    "sql": "SELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,\n                   CASE WHEN t.pu_location_id IS NULL OR t.do_location_id IS NULL THEN 'unmatched'\n                        WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'\n                        WHEN t.pu_location_id = 265 OR t.do_location_id = 265 THEN 'outside_nyc'\n                        ELSE 'ok' END AS zone_flag\n            FROM trips t LEFT JOIN zones pz ON pz.location_id = t.pu_location_id LEFT JOIN zones dz ON dz.location_id = t.do_location_id"
   }
 ]

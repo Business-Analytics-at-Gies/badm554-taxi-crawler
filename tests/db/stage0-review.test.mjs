@@ -1,3 +1,4 @@
+import { ANSWERS } from '../answer-fixtures.mjs';
 // Regression reproductions from stage 0 reviews; the original acceptance tests stay intact.
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test } from 'node:test';
@@ -64,19 +65,19 @@ test('P1: refreshTables cannot be fooled by main table and view catalog macros',
 });
 
 test('P1: floor checks cannot be fooled through information_schema catalog macros', async () => {
-  const baseline = await h.call('check', 1);
+  const baseline = await h.call('check', 1, ANSWERS[1]);
   await q(`CREATE MACRO main.duckdb_columns() AS TABLE SELECT 'forged' AS column_name, 'INTEGER' AS data_type;
     CREATE MACRO main.duckdb_tables() AS TABLE SELECT 'floor1' AS schema_name, 'trips_clean' AS table_name, false AS internal;`);
-  assert.deepEqual(await h.call('check', 1), baseline, 'catalog replacements do not alter or break check rules');
+  assert.deepEqual(await h.call('check', 1, ANSWERS[1]), baseline, 'catalog replacements do not alter or break check rules');
 });
 
 test('P1 audit: floor checks ignore learner replacements for count and round', async () => {
   await q(`CREATE TABLE trips_clean AS SELECT * REPLACE (total_amount + 1 AS total_amount) FROM _ref1.trips_clean;`);
-  const baseline = await h.call('check', 1);
+  const baseline = await h.call('check', 1, `WITH reference AS (${ANSWERS[1]}) SELECT * REPLACE (total_amount + 1 AS total_amount) FROM reference`);
   assert.equal(baseline.rules.find(r => r.id === 'unchanged').ok, false);
   await q(`CREATE MACRO main.count_star() AS 0;
     CREATE MACRO main.round(x, digits) AS 0.0;`);
-  assert.deepEqual(await h.call('check', 1), baseline, 'learner functions do not alter counts or hide changed amounts');
+  assert.deepEqual(await h.call('check', 1, `WITH reference AS (${ANSWERS[1]}) SELECT * REPLACE (total_amount + 1 AS total_amount) FROM reference`), baseline, 'learner functions do not alter counts or hide changed amounts');
 });
 
 test('P1 audit: planting ignores a learner replacement for hash', async () => {

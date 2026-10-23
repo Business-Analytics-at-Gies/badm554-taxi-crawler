@@ -4,6 +4,7 @@
 import { FLOOR_IDS, validFloor, floorError } from '../../floors/catalog.js';
 import * as duckdb from '../../vendor/duckdb/duckdb-browser.mjs';
 import { cleanError, nativeReadPolicy, nativeStatements } from './sql.js';
+import { answerPolicy } from './answer-policy.js';
 import {
   BASE, FLOORS, HIDDEN_SCHEMAS, PLANT_ID_START, PLANT_KINDS, TUTOR,
   checkFloor, floorSetupSql, learner, plantSelectSql, qs, referenceBuildSql,
@@ -22,6 +23,8 @@ const STOPPED = Symbol('stopped');
 
 let eng = null; // learner worker: { adb, sys, lc, parser, version, broken }
 let tutor = null; // lazily loaded independent worker: { adb, sys, tc, parser, broken }
+let answerTruth = null; // trusted references; never receives learner SQL
+const answerCopies = new Map(); // SELECT-only workers containing just pristine given tables
 let assets = null; // { parquet, csv, refSql, dataset }
 let initPromise = null;
 let current = null;
@@ -93,7 +96,7 @@ async function runAll(conn, statements) {
   for (const s of statements) for (const one of await nativeStatements(conn, s)) await conn.query(one);
 }
 
-async function startEngine(tutorFloor = null, created = () => {}) {
+async function startEngine(tutorFloor = null, created = () => {}, answerFloor = null) {
   const worker = new Worker(new URL('duckdb-browser-eh.worker.js', VENDOR));
   const adb = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
   const e = { adb, broken: false, closed: false,
@@ -106,7 +109,7 @@ async function startEngine(tutorFloor = null, created = () => {}) {
     if (e.closed) throw new Error('Tutor query stopped.');
     // queryPollingInterval: the worker yields every 50 ms so cancel can get in between. A query whose
     // single step runs long (a big cross join) cannot be cancelled; the hard kill restarts the worker.
-    await adb.open({ query: { castDecimalToDouble: true, queryPollingInterval: 50 } });
+    await adb.open({ query: { castDecimalToDouble: !answerFloor, queryPollingInterval: 50 } });
     e.sys = await adb.connect();
     await adb.registerFileBuffer('trips_raw.parquet', assets.parquet.slice());
     await adb.registerFileBuffer('taxi_zones.csv', assets.csv.slice());
@@ -126,6 +129,14 @@ async function startEngine(tutorFloor = null, created = () => {}) {
         ...floorSetupSql(tutorFloor, TUTOR),
         ...[BASE, ...FLOOR_IDS.map(n => `_ref${n}`)].map(s => `DROP SCHEMA ${s} CASCADE`),
         `SET schema = ${qs(TUTOR)}`,
+      ]);
+    }
+    if (answerFloor) {
+      await runAll(e.sys, [
+        ...Object.entries(FLOORS[answerFloor].given).map(([name, src]) => `CREATE TABLE main."${name}" AS FROM ${src}`),
+        ...[BASE, ...FLOOR_IDS.map(n => `_ref${n}`)].map(s => `DROP SCHEMA ${s} CASCADE`),
+        "SET schema = 'main'",
+        'CREATE SCHEMA answers',
       ]);
     }
     await adb.dropFile('trips_raw.parquet');
@@ -211,6 +222,7 @@ async function restartEngine(reason) {
 
 function kindOf(type) {
   const s = String(type);
+  if (s.startsWith('Decimal')) return { decimalScale: type.scale };
   if (s.startsWith('Timestamp')) return s.includes(',') ? 'tstz' : 'ts';
   if (s.startsWith('Date')) return 'date';
   return 'any';
@@ -221,6 +233,11 @@ const jsonSafe = (_k, v) => (typeof v === 'bigint' ? toNum(v) : v);
 
 function cell(v, kind) {
   if (v === null || v === undefined) return null;
+  if (typeof kind === 'object' && Number.isInteger(kind.decimalScale)) {
+    const value = v.toString(), sign = value.startsWith('-') ? '-' : '';
+    const digits = value.replace(/^-/, '').padStart(kind.decimalScale + 1, '0');
+    return cut(sign + (kind.decimalScale ? `${digits.slice(0, -kind.decimalScale)}.${digits.slice(-kind.decimalScale)}` : digits));
+  }
   if (typeof v === 'number') {
     if (kind === 'ts' || kind === 'tstz' || kind === 'date') {
       const d = new Date(v);
@@ -666,29 +683,72 @@ export function undoExperiments() {
   });
 }
 
-/** Check floor n's output tables against the reference. Removes plants first. */
-export function check(n) {
-  if (validFloor(n)) interruptTutor();
+// Execute and materialize only in a SELECT-only worker. Its given tables are pristine;
+// neither learner SQL nor tutor SQL ever executes in the separate trusted checker worker.
+async function answerResult(n, sql, timeoutMs = LIMITS.timeoutMs) {
+  let copy = answerCopies.get(n);
+  if (!copy || copy.broken) {
+    copy?.close();
+    copy = await startEngine(null, () => {}, n);
+    answerCopies.set(n, copy);
+  }
+  const policy = await answerPolicy(copy.parser, sql, Object.keys(FLOORS[n].given));
+  if (policy.error) return policy;
+  try {
+    const made = await execStatements(copy.lc, [`CREATE TABLE answers.result AS ${policy.sql}`], { maxRows: 0, timeoutMs });
+    if (made.error) {
+      if (made.hung || made.fatal) { copy.close(); answerCopies.delete(n); }
+      return made;
+    }
+    return { copy, table: await copy.sys.query('SELECT * FROM answers.result') };
+  } finally {
+    if (!copy.broken) await copy.sys.query('DROP TABLE IF EXISTS answers.result');
+  }
+}
+
+/** Run the Answer box, recording an ordinary run but leaving Scratch untouched. */
+export function queryAnswer(sql, { timeoutMs = LIMITS.timeoutMs } = {}) {
+  return serial(async () => {
+    if (!current) return empty({ ms: 0, error: 'No floor is loaded yet.' });
+    const n = current, start = performance.now();
+    let out;
+    try {
+      const result = await answerResult(n, sql, timeoutMs);
+      if (result.refused) return empty({ ms: 0, ...result });
+      if (result.error) out = empty({ error: result.error });
+      else out = await readAll({ schema: result.table.schema, async *[Symbol.asyncIterator]() { yield* result.table.batches; } }, LIMITS.learnerRows, {});
+    } catch (error) { out = empty({ error: msg(error) }); }
+    out.ms = Math.round(performance.now() - start);
+    const entry = { source: 'answer', sql: String(sql).slice(0, LIMITS.querySqlChars), rowCount: out.error ? null : out.rowCount, error: out.error ?? null };
+    floors[n].lastQueries = [...floors[n].lastQueries, entry].slice(-LIMITS.lastQueries);
+    floors[n].history = [...floors[n].history, { ...entry, sql: String(sql), ms: out.ms, at: new Date().toISOString() }].slice(-LIMITS.history);
+    emit('query', { floor: n, ...entry, ms: out.ms });
+    return out;
+  });
+}
+
+/** Grade one answer query. Scratch, its transaction, plants and records are never changed. */
+export function check(n, sql = '') {
   return serial(async () => {
     if (!validFloor(n)) return { pass: false, rules: [], error: floorError() };
     try {
       await ensure();
       if (!floors[n]) return { pass: false, rules: [], error: `Floor ${n} is not loaded yet.` };
-      if (current === n && plants.length) {
-        const ids = await removePlants(plants.map((p) => p.row_id));
-        await refreshTables();
-        emit('plant', { kind: null, row_ids: ids, removed: true, plants: [] });
+      const answer = await answerResult(n, sql);
+      if (answer.error) return { pass: false, rules: [], ...answer };
+      interruptTutor();
+      if (!answerTruth || answerTruth.broken) {
+        answerTruth?.close();
+        answerTruth = await startEngine();
       }
-      try { await eng.lc.query('COMMIT'); } catch { /* no open transaction */ }
-      const result = await checkFloor(checkDb, n, [...plantedEver[n]]);
-      lastCheck = { floor: n, pass: result.pass, failed: result.rules.filter((r) => !r.ok).map((r) => r.id) };
+      await runAll(answerTruth.sys, ['DROP SCHEMA IF EXISTS answers CASCADE', 'CREATE SCHEMA answers']);
+      await answerTruth.sys.insertArrowTable(answer.table, { schema: 'answers', name: FLOORS[n].outputs[0], create: true });
+      const rows = sql => connectionRows(answerTruth.sys, sql);
+      const result = await checkFloor({ rows, one: async sql => Object.values((await rows(sql))[0] ?? {})[0] ?? null }, n, [...plantedEver[n]], { learner: 'answers' });
+      lastCheck = { floor: n, pass: result.pass, failed: result.rules.filter(r => !r.ok).map(r => r.id) };
       emit('check', { floor: n, ...result });
       return result;
-    } catch (e) {
-      const result = { pass: false, rules: [], error: msg(e) };
-      emit('check', { floor: n, ...result });
-      return result;
-    }
+    } catch (error) { return { pass: false, rules: [], error: msg(error) }; }
   });
 }
 
@@ -713,6 +773,6 @@ export async function state() {
 }
 
 export default {
-  init, loadFloor, restartFloor, query, tutorQuery, lensRows, plant, unplant, undoExperiments, check,
+  init, loadFloor, restartFloor, query, queryAnswer, tutorQuery, lensRows, plant, unplant, undoExperiments, check,
   cancel, state, history, inspect, addEventListener, removeEventListener, LIMITS,
 };

@@ -5,12 +5,12 @@ const ending = 'Use CREATE OR REPLACE TABLE to run your SQL again without a DROP
 const tasks = [
   'Create trips_clean with exactly one row per trip key, and every column of trips_raw. A trip key is the set of columns that together identify one trip. Two trips that differ in any amount are different trips. row_id and loaded_at describe the load, not the trip.',
   'create trips_clean with every row of trips, plus three columns: pu_zone, do_zone and zone_flag.',
-  'move the failing rows to a table quarantine, with a reason, and keep the other rows in trips_clean.',
+  'return every trip once, with its first failing reason, or NULL for a clean trip.',
 ];
 const identifiers = [
   ['trips_clean', 'trips_raw', 'row_id', 'loaded_at'],
   ['trips_clean', 'trips', 'pu_zone', 'do_zone', 'zone_flag'],
-  ['quarantine', 'reason', 'trips_clean'],
+  ['reason'],
 ];
 const normalize = text => text.replace(/\s+/g, ' ').trim();
 

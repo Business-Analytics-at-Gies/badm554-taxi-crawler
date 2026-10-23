@@ -1,4 +1,4 @@
 [
-  { "name": "two unchanged trips", "sql": "CREATE OR REPLACE TABLE audit_sample AS SELECT * FROM trips ORDER BY row_id LIMIT 2", "fails": [] },
-  { "name": "one trip is not two", "sql": "CREATE OR REPLACE TABLE audit_sample AS SELECT * FROM trips ORDER BY row_id LIMIT 1", "fails": ["sample"] }
+  { "name": "two unchanged trips", "sql": "SELECT * FROM trips ORDER BY row_id LIMIT 2", "fails": [] },
+  { "name": "one trip is not two", "sql": "SELECT * FROM trips ORDER BY row_id LIMIT 1", "fails": ["sample"] }
 ]

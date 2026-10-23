@@ -1,6 +1,6 @@
 // Stage 1.1, 1.3 and 1.4 acceptance. playwright.config.js runs every case at 1280 and 375 px.
 import { test, expect } from '@playwright/test';
-import { resetMock, openFloor, runSql, showTab, askTutor, mockLog, noHorizontalScroll } from './helpers.js';
+import { resetMock, openFloor, runSql, runAnswer, showTab, askTutor, mockLog, noHorizontalScroll } from './helpers.js';
 
 const ENDING = 'Use CREATE OR REPLACE TABLE to run your SQL again without a DROP.';
 const KEY_COLUMNS = ['vendor_id', 'pickup_at', 'dropoff_at', 'pu_location_id', 'do_location_id', 'total_amount'];
@@ -64,7 +64,7 @@ async function saveFloorsOneAndThree(page, request) {
     }
     const response = await request.get(`/data/reference/floor${floor}.sql`);
     expect(response.ok()).toBe(true);
-    await runSql(frame, await response.text());
+    await runAnswer(frame, await response.text());
     await expect(frame.locator('#result-status')).not.toHaveText(/^Error/);
     await frame.locator('#check-btn').click();
     await expect(frame.locator('#receipt-code')).toHaveText(new RegExp(`^TAXI-${floor}-[A-Z]{8}$`), { timeout: 30000 });

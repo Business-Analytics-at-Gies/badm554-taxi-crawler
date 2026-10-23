@@ -46,7 +46,7 @@ code { font-family: var(--mono); font-size: .9em; overflow-wrap: anywhere; }
   .g-main:has(> .g-preview:not([hidden])) { grid-template-columns: minmax(0, .85fr) minmax(0, 1.3fr) minmax(0, 1fr); }
 }
 .sql-label { display: block; font-weight: 600; margin-top: .5rem; font-size: .9rem; }
-#sql-input { width: 100%; font: 14px/1.4 var(--mono); padding: .45rem; border: 1px solid #6b7280; border-radius: 6px; resize: vertical; }
+#sql-input, #answer-input { width: 100%; font: 14px/1.4 var(--mono); padding: .45rem; border: 1px solid #6b7280; border-radius: 6px; resize: vertical; }
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin: .4rem 0; }
 .btn { background: var(--navy); color: #fff; border: 1px solid var(--navy); border-radius: 6px; padding: .35rem .85rem; font-weight: 600; }
 .btn-quiet { background: #fff; color: var(--navy); }

@@ -20,7 +20,7 @@ const continued=String.raw`CREATE OR REPLACE TABLE note AS SELECT E'one'
 test('review reproduction: continued E string passes pilot and all seven Rerun runs',async()=>{
  await h.call('loadFloor',1);await h.call('restartFloor',1);
  assert.equal((await h.call('query',continued+'\n'+pilot)).error,undefined);
- assert.equal((await h.call('check',1)).pass,true);
+ assert.equal((await h.call('check',1, pilot)).pass,true);
  const report=await h.page.evaluate(sql=>r.check(3,sql),continued+'\n'+reference);
  assert.equal(report.pass,true,JSON.stringify(report));assert.equal(report.runs.length,7);
 });

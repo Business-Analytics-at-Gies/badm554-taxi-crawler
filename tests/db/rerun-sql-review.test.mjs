@@ -40,7 +40,7 @@ for (const c of SQL_CASES) {
     const consoleResult = await h.call('query', `${c.sql}\n${pilotReference}`);
     assert.equal(consoleResult.error, undefined, consoleResult.error);
     assert.deepEqual((await h.call('query', c.statements.at(-1))).rows, [[c.value]]);
-    assert.equal((await h.call('check', 1)).pass, true);
+    assert.equal((await h.call('check', 1, pilotReference)).pass, true);
   });
   test(`Rerun check accepts all seven runs: ${c.name}`, async () => {
     const result = await h.page.evaluate(([helper, ref]) => rerun.check(3, `${helper}\n${ref}`), [c.sql, rerunReference]);

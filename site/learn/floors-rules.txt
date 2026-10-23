@@ -41,11 +41,11 @@
   4. `'zero_distance_high_fare'`: `trip_distance = 0 AND fare_amount >= 50`
   None of these four columns has a NULL in the data (checked); a NULL fails no rule.
   `zone_flag` is not a quarantine reason.
-- **Task:** create `quarantine` (the failing rows, every column of `trips`, plus `reason`) and
-  `trips_clean` (the other rows, the columns of `trips`).
+- **Task:** return every trip once, with every column of `trips` plus `reason`.
+  A clean trip has a NULL reason; a bad trip has the first reason it fails.
 - **Expected:** 7,171 in; 6,955 clean; 216 quarantined (negative_fare 132, zero_distance_high_fare
   47, time_travel 20, outside_january 17). One row fails two rules; it appears once.
-- **Pass:** the two tables share no `row_id`; together they hold exactly the 7,171 `row_id` values of
-  `trips`; the multiset of `(row_id, reason)` in `quarantine` equals the reference
-  `data/reference/floor3.sql`; columns as above. Every original value of `trips` is unchanged in both output tables: non-money values and timestamps exactly, and money to cents.
+- **Pass:** the answer contains exactly the 7,171 original trips, each row_id once,
+  with the expected reason (including NULL for clean trips). Keep every source column
+  and value: non-money values and timestamps exactly, and money to cents.
 - **Aha line:** do not delete what you cannot explain. Clean plus quarantine equals raw: 6,955 + 216 = 7,171.

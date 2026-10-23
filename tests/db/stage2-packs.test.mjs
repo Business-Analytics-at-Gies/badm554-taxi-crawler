@@ -36,7 +36,7 @@ test('floor packs own the existing solutions and can load and check a fourth flo
     for (const solution of packs.find(p => p.id === 4).solutions) {
       await call('restartFloor', 4);
       assert.equal((await call('query', solution.sql)).error, undefined);
-      const check = await call('check', 4);
+      const check = await call('check', 4, solution.sql);
       assert.deepEqual(check.rules.filter(r => !r.ok).map(r => r.id), solution.fails);
     }
     await call('loadFloor', 1);
@@ -98,23 +98,18 @@ test('floor 1 rejects changed non-money values exactly and still accepts cent-eq
   try {
     await h.call('init');
     await h.call('loadFloor', 1);
+    const reference = SOLUTIONS[1][0].sql.trim().replace(/;$/, '');
     for (const mutation of ['trip_distance + 0.001', 'fractional DECIMAL vendor_id']) {
-      await h.call('restartFloor', 1);
+      let query;
       if (mutation.startsWith('fractional')) {
-        // Exact integral DECIMAL ids are unchanged; a tiny fractional addition is not.
-        await h.call('query', SOLUTIONS[1][0].sql);
-        await h.call('query', 'ALTER TABLE trips_clean ALTER vendor_id TYPE DECIMAL(38,20)');
-        assert.equal((await h.call('check', 1)).pass, true, 'integral DECIMAL ids retain their exact values');
-        await h.call('query', 'UPDATE trips_clean SET vendor_id = vendor_id + 0.00000000000000000001 WHERE row_id = (SELECT min(row_id) FROM trips_clean)');
-      } else {
-        assert.equal((await h.call('query', SOLUTIONS[1][0].sql.replace('SELECT * FROM trips_raw', `SELECT * REPLACE (${mutation} AS trip_distance) FROM trips_raw`))).error, undefined);
-      }
-      const result = await h.call('check', 1);
+        const base = `WITH original AS (${reference}) SELECT * REPLACE (CAST(vendor_id AS DECIMAL(38,20)) AS vendor_id) FROM original`;
+        assert.equal((await h.call('check', 1, base)).pass, true, 'integral DECIMAL ids retain their exact values');
+        query = `WITH original AS (${base}) SELECT * REPLACE (CASE WHEN row_id = (SELECT min(row_id) FROM original) THEN vendor_id + 0.00000000000000000001 ELSE vendor_id END AS vendor_id) FROM original`;
+      } else query = reference.replace('SELECT * FROM trips_raw', `SELECT * REPLACE (${mutation} AS trip_distance) FROM trips_raw`);
+      const result = await h.call('check', 1, query);
       assert.equal(result.pass, false, mutation);
       assert.equal(result.rules.find(r => r.id === 'unchanged').ok, false, mutation);
     }
-    await h.call('restartFloor', 1);
-    assert.equal((await h.call('query', SOLUTIONS[1][0].sql.replace('SELECT * FROM trips_raw', 'SELECT * REPLACE (CAST(total_amount AS DECIMAL(10,2)) AS total_amount) FROM trips_raw'))).error, undefined);
-    assert.equal((await h.call('check', 1)).pass, true);
+    assert.equal((await h.call('check', 1, reference.replace('SELECT * FROM trips_raw', 'SELECT * REPLACE (CAST(total_amount AS DECIMAL(10,2)) AS total_amount) FROM trips_raw'))).pass, true);
   } finally { await h.close(); }
 });

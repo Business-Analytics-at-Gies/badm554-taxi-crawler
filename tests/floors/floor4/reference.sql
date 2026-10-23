@@ -1,1 +1,1 @@
-CREATE OR REPLACE TABLE audit_sample AS SELECT * FROM trips ORDER BY row_id LIMIT 2;
+SELECT * FROM trips ORDER BY row_id LIMIT 2;

@@ -76,9 +76,9 @@ async function compareColumn(col) {
 }
 test('review reproduction: floor 4 rejects a DECIMAL change lost by SQL set comparison', async () => {
   await call('loadFloor', 4);
-  await run(packs.find(p => p.id === 4).solutions[0].sql);
+  await run(`CREATE OR REPLACE TABLE audit_sample AS ${packs.find(p => p.id === 4).solutions[0].sql}`);
   await run('ALTER TABLE audit_sample ALTER trip_distance TYPE DECIMAL(38,20); UPDATE audit_sample SET trip_distance = trip_distance + 0.00000000000000000001');
-  assert.equal((await call('check', 4)).pass, false);
+  assert.equal((await call('check', 4, `WITH sample AS (${packs.find(p => p.id === 4).solutions[0].sql.replace(/;$/, '')}) SELECT * REPLACE (CAST(CAST(trip_distance AS VARCHAR) AS DECIMAL(38,20)) + 0.00000000000000000001 AS trip_distance) FROM sample`)).pass, false);
 });
 for (const floor of [1, 2, 3, 4]) {
   test(`floor ${floor}: source-table columns x representations x unchanged/changed`, async t => {
@@ -113,17 +113,18 @@ for (const floor of [1, 2, 3, 4]) {
     await call('loadFloor', floor);
     await call('restartFloor', floor);
     const pack = packs.find(p => p.id === floor);
-    await run(pack.solutions[0].sql);
-    for (const output of pack.outputs) {
+    await run(`CREATE OR REPLACE TABLE ${qi(pack.outputs[0])} AS ${pack.solutions[0].sql}`);
+    for (const [output, group] of (floor === 3 ? [['trips_clean', 'reason IS NULL'], ['trips_clean', 'reason IS NOT NULL']] : pack.outputs.map(name => [name, 'true']))) {
       const saved = `matrix_saved_${output}`;
+      const reference = pack.solutions[0].sql.trim().replace(/;$/, '');
       await run(`CREATE OR REPLACE TABLE ${saved} AS FROM ${qi(output)}`);
-      for (const col of (await call('inspect', output)).columns) {
+      for (const col of (await call('inspect', output)).columns.filter(c => !(floor === 3 && group === 'reason IS NULL' && c.name === 'reason'))) {
         const c = qi(col.name);
-        const original = await one(`SELECT CAST(${c} AS VARCHAR) FROM ${saved} WHERE ${c} IS NOT NULL ORDER BY row_id LIMIT 1`);
-        const target = `row_id = (SELECT row_id FROM ${saved} WHERE ${c} IS NOT NULL ORDER BY row_id LIMIT 1)`;
-        for (const rep of reps) await t.test(`${output}.${col.name} / ${rep}: ${compatible(col, rep) ? 'equivalent passes' : 'incompatible fails'}; change fails`, async () => {
+        const original = await one(`SELECT CAST(${c} AS VARCHAR) FROM ${saved} WHERE ${c} IS NOT NULL AND (${group}) ORDER BY row_id LIMIT 1`);
+        const target = `row_id = (SELECT row_id FROM ${saved} WHERE ${c} IS NOT NULL AND (${group}) ORDER BY row_id LIMIT 1)`;
+        for (const rep of reps) await t.test(`${output} [${group}].${col.name} / ${rep}: ${compatible(col, rep) ? 'equivalent passes' : 'incompatible fails'}; change fails`, async () => {
           await run(`CREATE OR REPLACE TABLE ${qi(output)} AS SELECT * REPLACE (${represent(c, col, rep)} AS ${c}) FROM ${saved}`);
-          const same = await call('check', floor);
+          const same = await call('check', floor, `WITH ${saved} AS (${reference}) SELECT * REPLACE (${represent(c, col, rep)} AS ${c}) FROM ${saved}`);
           assert.equal(same.error, undefined);
           assert.equal(same.pass, compatible(col, rep), JSON.stringify(same.rules.filter(r => !r.ok)));
           // Preserve the mutation before CASE chooses a common type. In particular a
@@ -132,7 +133,7 @@ for (const floor of [1, 2, 3, 4]) {
             : numeric(col.type) && rep !== 'native' && rep !== 'DOUBLE' ? `CAST(CAST(${c} AS VARCHAR) AS DECIMAL(38,20))` : c;
           const expr = `CASE WHEN ${target} THEN ${changed(col, rep, original)} ELSE ${base} END`;
           await run(`CREATE OR REPLACE TABLE ${qi(output)} AS SELECT * REPLACE (${represent(expr, col, rep)} AS ${c}) FROM ${saved}`);
-          const different = await call('check', floor);
+          const different = await call('check', floor, `WITH ${saved} AS (${reference}) SELECT * REPLACE (${represent(expr, col, rep)} AS ${c}) FROM ${saved}`);
           assert.equal(different.error, undefined);
           assert.equal(different.pass, false, JSON.stringify(different.rules));
         });
@@ -165,13 +166,14 @@ for (const floor of [1, 2, 3, 4]) test(`floor ${floor}: pack money boundaries ac
   await call('loadFloor', floor);
   await call('restartFloor', floor);
   const pack = packs.find(p => p.id === floor);
-  await run(pack.solutions[0].sql);
-  for (const output of pack.outputs) {
+  await run(`CREATE OR REPLACE TABLE ${qi(pack.outputs[0])} AS ${pack.solutions[0].sql}`);
+  for (const [output, group] of (floor === 3 ? [['trips_clean', 'reason IS NULL'], ['trips_clean', 'reason IS NOT NULL']] : pack.outputs.map(name => [name, 'true']))) {
     const saved = `matrix_boundary_${output}`;
+    const reference = pack.solutions[0].sql.trim().replace(/;$/, '');
     await run(`CREATE OR REPLACE TABLE ${saved} AS FROM ${qi(output)}`);
     for (const name of money) {
       const c = qi(name), col = { name, type: 'DOUBLE' };
-      const amount = await one(`SELECT CAST(${c} AS VARCHAR) FROM ${saved} WHERE ${c} >= 0 ORDER BY row_id LIMIT 1`);
+      const amount = await one(`SELECT CAST(${c} AS VARCHAR) FROM ${saved} WHERE ${c} >= 0 AND (${group}) ORDER BY row_id LIMIT 1`);
       assert.match(amount, /^\d+(?:\.\d{1,2})?$/);
       const [whole, fraction = ''] = amount.split('.');
       const cents = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
@@ -182,12 +184,12 @@ for (const floor of [1, 2, 3, 4]) test(`floor ${floor}: pack money boundaries ac
         const points = rep === 'native' || rep === 'DOUBLE'
           ? [nextDouble(at, -1n), at, nextDouble(at)]
           : [decimal(half - 1n), decimal(half), decimal(half + 1n)];
-        for (const [index, point] of points.entries()) await t.test(`${output}.${name} / ${rep} / ${['below', 'at', 'above'][index]} half cent`, async () => {
-          const target = `row_id = (SELECT row_id FROM ${saved} WHERE ${c} >= 0 ORDER BY row_id LIMIT 1)`;
+        for (const [index, point] of points.entries()) await t.test(`${output} [${group}].${name} / ${rep} / ${['below', 'at', 'above'][index]} half cent`, async () => {
+          const target = `row_id = (SELECT row_id FROM ${saved} WHERE ${c} >= 0 AND (${group}) ORDER BY row_id LIMIT 1)`;
           const value = represent(point, col, rep === 'native' ? 'DOUBLE' : rep);
           const base = represent(c, col, rep);
           await run(`CREATE OR REPLACE TABLE ${qi(output)} AS SELECT * REPLACE (CASE WHEN ${target} THEN ${value} ELSE ${base} END AS ${c}) FROM ${saved}`);
-          const result = await call('check', floor);
+          const result = await call('check', floor, `WITH ${saved} AS (${reference}) SELECT * REPLACE (CASE WHEN ${target} THEN ${value} ELSE ${base} END AS ${c}) FROM ${saved}`);
           assert.equal(result.error, undefined);
           assert.equal(result.pass, index === 0, JSON.stringify(result.rules.filter(r => !r.ok)));
         });
@@ -259,9 +261,10 @@ for (const floor of [1, 2, 3, 4]) {
     await call('loadFloor', floor);
     await call('restartFloor', floor);
     const pack = packs.find(p => p.id === floor);
-    await run(pack.solutions[0].sql);
-    for (const output of pack.outputs) {
+    await run(`CREATE OR REPLACE TABLE ${qi(pack.outputs[0])} AS ${pack.solutions[0].sql}`);
+    for (const [output, group] of (floor === 3 ? [['trips_clean', 'reason IS NULL'], ['trips_clean', 'reason IS NOT NULL']] : pack.outputs.map(name => [name, 'true']))) {
       const saved = `matrix_day_end_${output}`;
+      const reference = pack.solutions[0].sql.trim().replace(/;$/, '');
       await run(`CREATE OR REPLACE TABLE ${saved} AS FROM ${qi(output)}`);
       for (const [text, same] of [
         ['2024-01-31T24:00:00-06:00', true],
@@ -270,12 +273,12 @@ for (const floor of [1, 2, 3, 4]) {
         ['2024-01-31T24:01:00-06:00', false],
         ['2024-01-31T24:00:00.000000001-06:00', false],
         ['2024-01-31T24:00:00.000000000001-06:00', false],
-      ]) await t.test(`${output}: ${text}`, async () => {
+      ]) await t.test(`${output} [${group}]: ${text}`, async () => {
         await run(`CREATE OR REPLACE TABLE ${qi(output)} AS FROM ${saved}`);
         await run(`ALTER TABLE ${qi(output)} ALTER loaded_at TYPE VARCHAR`);
-        const changed = await run(`UPDATE ${qi(output)} SET loaded_at = '${text}' WHERE loaded_at = '2024-02-01 06:00:00' RETURNING row_id`);
+        const changed = await run(`UPDATE ${qi(output)} SET loaded_at = '${text}' WHERE loaded_at = '2024-02-01 06:00:00' AND (${group}) RETURNING row_id`);
         assert.ok(changed.rowCount > 0, 'exercise a real reference timestamp');
-        const result = await call('check', floor);
+        const result = await call('check', floor, `WITH ${saved} AS (${reference}) SELECT * REPLACE (CASE WHEN loaded_at = TIMESTAMP '2024-02-01 06:00:00' AND (${group}) THEN '${text}' ELSE CAST(loaded_at AS VARCHAR) END AS loaded_at) FROM ${saved}`);
         assert.equal(result.error, undefined);
         assert.equal(result.pass, same, JSON.stringify(result.rules.filter(r => !r.ok)));
       });
@@ -287,8 +290,8 @@ for (const floor of [1, 2, 3, 4]) {
 test('review reproduction: floor 1 row 1588 accepts the previous day at 24:00', async () => {
   await call('loadFloor', 1);
   await call('restartFloor', 1);
-  await run(packs.find(p => p.id === 1).solutions[0].sql);
+  await run(`CREATE TABLE trips_clean AS ${packs.find(p => p.id === 1).solutions[0].sql}`);
   assert.equal(await one('SELECT CAST(dropoff_at AS VARCHAR) FROM trips_clean WHERE row_id = 1588'), '2024-01-23 00:00:00');
   await run("ALTER TABLE trips_clean ALTER dropoff_at TYPE VARCHAR; UPDATE trips_clean SET dropoff_at = '2024-01-22T24:00:00' WHERE row_id = 1588");
-  assert.equal((await call('check', 1)).pass, true);
+  assert.equal((await call('check', 1, `WITH original AS (${packs.find(p => p.id === 1).solutions[0].sql.trim().replace(/;$/, '')}) SELECT * REPLACE (CASE WHEN row_id = 1588 THEN '2024-01-22T24:00:00' ELSE CAST(dropoff_at AS VARCHAR) END AS dropoff_at) FROM original`)).pass, true);
 });

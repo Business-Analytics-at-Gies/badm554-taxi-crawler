@@ -1,6 +1,6 @@
 // All three floors played end to end with the reference SQL from /data/reference/, at both widths.
 import { test, expect } from '@playwright/test';
-import { resetMock, openFloor, runSql, noHorizontalScroll, showTab } from './helpers.js';
+import { resetMock, openFloor, runSql, runAnswer, noHorizontalScroll, showTab } from './helpers.js';
 
 test.beforeEach(async ({ request }) => { await resetMock(request); });
 
@@ -15,7 +15,7 @@ test('floors 1-3 clear in order and the receipt lists three codes', async ({ pag
       await expect(frame.locator('#engine-status')).toHaveText(`Floor ${n} is ready.`, { timeout: 30000 });
     }
     const sql = await (await request.get(`/data/reference/floor${n}.sql`)).text();
-    await runSql(frame, sql);
+    await runAnswer(frame, sql);
     await expect(frame.locator('#result-status')).not.toHaveText(/^Error/);
     await frame.locator('#check-btn').click();
     await expect(frame.locator('#check-result')).toContainText(`Floor ${n} passes every rule.`, { timeout: 30000 });

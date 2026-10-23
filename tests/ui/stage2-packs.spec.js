@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { access } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { resetMock, showTab, openFloor, runSql, noHorizontalScroll } from './helpers.js';
+import { resetMock, showTab, openFloor, runSql, runAnswer, noHorizontalScroll } from './helpers.js';
 
 const root = new URL('../../', import.meta.url);
 const textbook = 'https://vishalsachdev.github.io/badm554-textbook/modules/';
@@ -98,9 +98,10 @@ test('a fourth test pack renders in the guide and game and passes its own check'
   const frame = await openFloor(page, 4);
   await expect(frame.locator('#floor-title')).toHaveText('Floor 4: The sample desk');
   await expect(frame.locator('#floor-task')).toContainText('audit_sample');
+  await frame.locator('#answer-input').fill('SELECT * FROM trips LIMIT 1');
   await frame.locator('#check-btn').click();
   await expect(frame.locator('#check-result')).toContainText('does not pass yet');
-  await runSql(frame, 'CREATE OR REPLACE TABLE audit_sample AS SELECT * FROM trips ORDER BY row_id LIMIT 2');
+  await runAnswer(frame, 'SELECT * FROM trips ORDER BY row_id LIMIT 2');
   await frame.locator('#check-btn').click();
   await expect(frame.locator('#check-result')).toContainText('Floor 4 passes every rule.');
   await page.screenshot({ path: testInfo.outputPath('floor4.png') });

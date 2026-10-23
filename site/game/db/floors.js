@@ -12,7 +12,7 @@ export function referenceBuildSql(refSql) {
   for (const n of FLOOR_IDS) {
     out.push(`CREATE SCHEMA ${ref(n)}`);
     for (const [name, src] of Object.entries(FLOORS[n].given)) out.push(`CREATE TABLE ${ref(n)}.${qi(name)} AS FROM ${src}`);
-    out.push(`SET schema = ${qs(ref(n))}`, refSql[n]);
+    out.push(`SET schema = ${qs(ref(n))}`, `CREATE TABLE ${qi(FLOORS[n].outputs[0])} AS ${refSql[n]}`);
   }
   out.push("SET schema = 'main'");
   return out;
@@ -35,10 +35,10 @@ export function plantSelectSql(n, kind, count, firstId, seed, source = null) {
 
 // ---------------------------------------------------------------------------------------------
 
-export async function checkFloor(db, n, plantedEver = []) {
+export async function checkFloor(db, n, plantedEver = [], context = {}) {
   const pack = FLOORS[n];
   const { check } = await import(pack.check);
-  const rules = await check(db, { pack, plantedEver, learner: learner(n), ref: ref(n) });
+  const rules = await check(db, { pack, plantedEver, learner: learner(n), ref: ref(n), ...context });
   const invalid = () => ({ pass: false, rules: [], error: `Floor ${n}: invalid rule results; every declared rule must have an explicit Boolean outcome and complete details.` });
   const expected = new Set(pack.ruleIds);
   if (!Array.isArray(rules) || !expected.size || rules.length !== expected.size) return invalid();

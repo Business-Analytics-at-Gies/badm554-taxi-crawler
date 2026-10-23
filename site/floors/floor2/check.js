@@ -1,12 +1,11 @@
 import { learner, ref } from '/game/db/names.js';
 import { fmt, list, makeRule, wantColumns, columnsOf, columnReport, exactDiff, breakdown } from '/game/db/check-helpers.js';
 
-export async function check(db, { pack, plantedEver }) {
-  const S = learner(pack.id);
+export async function check(db, { pack, plantedEver, learner: S }) {
   const out = [];
   const R = {
-    exists: makeRule('exists', 'trips_clean exists', 'Create a table named trips_clean on this floor.'),
-    cols: makeRule('columns', 'trips_clean has every column of trips, plus pu_zone, do_zone and zone_flag', 'Keep the columns of trips and add the three new ones.'),
+    exists: makeRule('exists', 'The answer has a result', 'Write a query in the Answer box, then press Check floor.'),
+    cols: makeRule('columns', 'The answer has every column of trips, plus pu_zone, do_zone and zone_flag', 'Keep the columns of trips and add the three new ones.'),
     count: makeRule('row_count', 'Row count: every trip stays', 'Count the rows before and after: a join can drop rows without an error.'),
     flags: makeRule('zone_flags', 'Zone names and zone_flag match for every row_id', 'The flag is the first that applies: unmatched, unknown (264), outside_nyc (265), ok. Check both sides of the trip.'),
     same: makeRule('unchanged', 'The columns from trips keep their values', 'Add columns; do not change or drop the ones that came from trips.'),
@@ -19,10 +18,10 @@ export async function check(db, { pack, plantedEver }) {
   const expRows = Number(await db.one(`SELECT system.main.count(*) FROM ${refFrom}`));
   const expFlags = await breakdown(db, refFrom, 'zone_flag');
   if (!have) {
-    out.push(R.exists.fail('a table named trips_clean', 'not found'));
+    out.push(R.exists.fail('an answer result', 'not found'));
     return [...out, R.cols.skip(`${need.length} columns`), R.count.skip(fmt(expRows)), R.flags.skip(expFlags), R.same.skip('0 changed rows')];
   }
-  out.push(R.exists.ok('a table named trips_clean', 'found'));
+  out.push(R.exists.ok('an answer result', 'found'));
   const cr = columnReport(need, have, { allowExtra: true });
   out.push(R.cols.of(cr.ok, `${list(want.map((c) => c.name))}, pu_zone, do_zone, zone_flag`, cr.got));
   const from = `${S}.trips_clean`;

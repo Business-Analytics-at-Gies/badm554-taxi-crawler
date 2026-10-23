@@ -39,20 +39,24 @@
     <details id="task-panel" class="task-panel">
       <summary>Task panel · rules and checklist</summary>
       <p id="floor-task" class="task"></p>
-      <p class="help">The checklist shows whether each required table exists and its row count. Use Check this floor to test correctness.</p>
+      <p class="help">The checklist shows the row count from your last Run answer. Check floor grades the query in Answer; Scratch never counts.</p>
       <ul id="task-checklist" aria-live="polite"></ul>
     </details>
     <div id="tables" class="tables-list" tabindex="-1">
       <h3>Tables</h3>
       <ul id="tables-ul"></ul>
     </div>
-    <label for="sql-input" class="sql-label">Your SQL</label>
+    <label for="sql-input" class="sql-label">Scratch</label>
     <textarea id="sql-input" rows="6" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="sql-help"></textarea>
     <div class="row">
       <button type="button" id="run-btn" class="btn">Run</button>
       <button type="button" id="cancel-btn" class="btn btn-quiet" hidden>Cancel</button>
       <span id="sql-help" class="help">Ctrl+Enter or ⌘+Enter runs the SQL.</span>
     </div>
+    <label for="answer-input" class="sql-label">Answer</label>
+    <p id="answer-help" class="help">One SELECT or WITH query, using this floor’s given tables. Run answer shows its rows; Check floor grades it. Scratch tables never count.</p>
+    <textarea id="answer-input" rows="6" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="answer-help"></textarea>
+    <div class="row"><button type="button" id="run-answer-btn" class="btn">Run answer</button></div>
     <div id="result" class="result" tabindex="-1">
       <h3 id="result-h">Result</h3>
       <p id="result-status" class="result-status" role="status"></p>

@@ -46,25 +46,33 @@
     {
       "id": "task-panel",
       "levels": [
-        "The task panel above Your SQL holds the full rules and a checklist for audit_sample. Open it before writing your query; it starts collapsed on mobile. The checklist says whether each table exists and counts its rows. Exists does not mean correct. SQL refresher and About the data links beside it open the guide in a new tab.",
-        "Use the task panel checklist after each Run: an empty audit_sample table still exists with zero rows. Replacing or dropping a table updates the count or marks it missing. Use Check this floor to test its rules. The panel remembers your collapse choice in the page address.",
-        "After CREATE OR REPLACE TABLE, compare the task panel checklist counts with your own SELECT count(*) queries on audit_sample. The checklist reports presence and size only; the full rules in the task panel explain what Check this floor will test."
+        "The task panel above Scratch holds the full rules and a checklist for Answer. Open it before writing your query; it starts collapsed on mobile. The checklist shows whether Answer has been run and its last row count. SQL refresher and About the data links beside it open the guide in a new tab.",
+        "Use the task panel checklist after each Run answer: an empty Answer result shows zero rows. Scratch table changes never count as an Answer run. Check floor grades your current Answer query; a row count alone does not mean correct. The panel remembers your collapse choice in the page address.",
+        "The task panel checklist starts at Answer: not run yet, then reports Answer: N rows (last run). It preserves that last-run count while you edit Answer or use Scratch. Compare it with the full rules; Check floor evaluates the current query independently of the last run."
       ]
     },
     {
       "id": "table-columns",
       "levels": [
-        "Under Tables above Your SQL, open a table chip to see its columns and types. Start with trips to find the available names before writing a query. Opening a chip leaves your SQL and Result alone; Enter or Space opens and closes it from the keyboard.",
-        "The columns and types describe the table on the active floor, including tables you create. When you replace a table, an open chip refreshes its column view. After switching floors, open the new floor\u2019s chip to inspect that floor\u2019s columns and types.",
-        "Use the table chip\u2019s columns and types to choose names for SELECT, WHERE and joins. The column view reads the table quietly: it adds no query to your history or the tutor\u2019s recent queries and never replaces unfinished SQL."
+        "Under Tables above Scratch, open a table chip to see its columns and types. Start with trips to find the available names before writing a query. Opening a chip leaves your SQL and Result alone; Enter or Space opens and closes it from the keyboard.",
+        "The columns and types describe the table on the active floor, including tables you create. When you replace a table, an open chip refreshes its column view. After switching floors, open the new floor’s chip to inspect that floor’s columns and types.",
+        "Use the table chip’s columns and types to choose names for SELECT, WHERE and joins. The column view reads the table quietly: it adds no query to your history or the tutor’s recent queries and never replaces unfinished SQL."
       ]
     },
     {
       "id": "table-preview",
       "levels": [
-        "Choose Preview beside any table chip under Tables to see its first 10 rows in a separate panel beside the console, or below it on a narrow screen. Start with trips to see what a row holds. Preview leaves Your SQL, Result and query records alone; Close preview takes you back to the chip.",
+        "Choose Preview beside any table chip under Tables to see its first 10 rows in a separate panel beside the console, or below it on a narrow screen. Start with trips to see what a row holds. Preview leaves Scratch, Result and query records alone; Close preview takes you back to the chip.",
         "Preview shows up to 10 rows from the table on this floor, including your own outputs. An empty table still shows its column names. Preview refreshes after a replacement and closes when you drop its table or change floors. The panel scrolls sideways for wide rows on a phone.",
         "Preview is a quiet SELECT * with LIMIT 10, without a guaranteed sort order. It does not add a run to either query record. When a transaction is open, Preview explains that you must COMMIT or ROLLBACK before reading rows; it shows columns without running row expressions or changing your transaction."
+      ]
+    },
+    {
+      "id": "answer",
+      "levels": [
+        "Use Scratch to explore the given tables or make your own tables. Put one SELECT or WITH query in Answer. Run answer shows its rows in Result; Check floor grades only that query against the original given tables. You do not need to save a table.",
+        "Answer uses only this floor’s original given tables, even if you change or drop a table in Scratch. Check floor leaves both boxes, Scratch and Result alone. The task checklist says Answer: not run yet, then shows the row count from your last Run answer; it does not say the answer is correct.",
+        "Run answer and Check floor accept the same single SELECT or WITH query. Use Scratch for other statements. Answer text is saved separately for each floor and survives reload, floor switches and Restart floor. Run answer adds an answer entry to both query records; Check floor adds no run."
       ]
     }
   ]

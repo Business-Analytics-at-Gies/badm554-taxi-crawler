@@ -21,6 +21,7 @@ let engine = 'loading';
 let lastCheck = null;
 let running = false;
 let codes = readCodes();
+const answerRows = {};
 let previewTable = null;
 let previewVersion = 0;
 const clearedFloors = () => FLOOR_IDS.filter(n => validCode(n, codes[n]));
@@ -41,13 +42,17 @@ taskPanel.addEventListener('toggle', () => {
   writeHash({ panel: panelOpen ? 'open' : 'closed' }, settingsWindow);
 });
 
-function renderChecklist(tables) {
-  $('task-checklist').replaceChildren(...FLOORS[floor].outputs.map(name => {
-    const table = tables.find(t => t.name.toLowerCase() === name.toLowerCase());
-    const li = document.createElement('li');
-    li.textContent = `${name}: ${!table ? 'missing' : `exists · ${table.rows == null ? 'row count unavailable' : `${fmt(table.rows)} rows`}`}`;
-    return li;
-  }));
+function renderChecklist() {
+  const li = document.createElement('li');
+  li.textContent = answerRows[floor] == null ? 'Answer: not run yet' : `Answer: ${fmt(answerRows[floor])} rows (last run)`;
+  $('task-checklist').replaceChildren(li);
+}
+function saveAnswer() {
+  try { localStorage.setItem(`tc.answer.floor${floor}`, $('answer-input').value); } catch { /* storage unavailable */ }
+}
+function restoreAnswer() {
+  try { $('answer-input').value = localStorage.getItem(`tc.answer.floor${floor}`) || ''; }
+  catch { $('answer-input').value = ''; }
 }
 
 function renderCodeList() {
@@ -83,7 +88,7 @@ function setEngine(state, text) {
   engine = state;
   $('engine-status').textContent = text;
   $('engine-status').classList.toggle('bad', state === 'error');
-  for (const id of ['run-btn', 'check-btn', 'restart-btn', 'undo-btn']) $(id).disabled = state !== 'ready' || (running && id !== 'cancel-btn');
+  for (const id of ['run-btn', 'run-answer-btn', 'check-btn', 'restart-btn', 'undo-btn']) $(id).disabled = state !== 'ready' || (running && id !== 'cancel-btn');
 }
 
 async function refreshTables() {
@@ -240,22 +245,30 @@ async function lightResult(r) {
   map.lens(rows, 'your last query');
 }
 
-async function runSql() {
-  const sql = $('sql-input').value.trim();
-  if (!sql || running || engine !== 'ready') return;
+async function runSql(source = 'scratch') {
+  const answer = source === 'answer';
+  const text = $(answer ? 'answer-input' : 'sql-input').value;
+  const sql = answer ? text : text.trim();
+  if ((!sql && !answer) || running || engine !== 'ready') return;
   running = true;
   $('run-btn').disabled = true;
+  $('run-answer-btn').disabled = true;
   $('cancel-btn').hidden = false;
-  $('result-status').classList.remove('bad');
-  $('result-status').textContent = 'Running…';
+  if (!answer) {
+    $('result-status').classList.remove('bad');
+    $('result-status').textContent = 'Running…';
+  }
   try {
-    const r = await db.query(sql, { timeoutMs: 10000 });
+    const r = await db[answer ? 'queryAnswer' : 'query'](sql, { timeoutMs: 10000 });
+    if (r.refused) { $('check-result').textContent = r.error; return; }
+    if (answer && !r.error) answerRows[floor] = r.rowCount;
     renderResult(r);
-    await lightResult(r);
+    if (!answer) await lightResult(r);
     await refreshTables();
   } finally {
     running = false;
     $('run-btn').disabled = engine !== 'ready';
+    $('run-answer-btn').disabled = engine !== 'ready';
     $('cancel-btn').hidden = true;
   }
 }
@@ -266,7 +279,8 @@ async function checkFloor() {
   const out = $('check-result');
   out.textContent = 'Checking…';
   try {
-    const r = await db.check(n);
+    const r = await db.check(n, $('answer-input').value);
+    if (r.refused) { out.textContent = r.error; return; }
     if (r.error && !(r.rules || []).length) {
       lastCheck = { floor: n, pass: false, rules: [], error: friendlyError(r.error) };
       out.textContent = `The check could not run: ${friendlyError(r.error)}`;
@@ -287,8 +301,6 @@ async function checkFloor() {
       ul.append(li);
     }
     out.append(head, ul);
-    map.clearLens();
-    await refreshTables();
     emit({ type: 'check', floor: n, pass: !!r.pass });
     if (r.pass) { out.scrollIntoView({ block: 'nearest' }); await receipt(n); }
   } finally {
@@ -328,6 +340,7 @@ async function receipt(n) {
 async function setFloor(n) {
   if (!validFloor(n)) throw new Error(`Unknown floor ${n}`);
   floor = n;
+  restoreAnswer();
   const f = FLOORS[n];
   document.title = `Taxi Crawler · ${f.title}`;
   $('floor-title').textContent = f.title;
@@ -367,7 +380,10 @@ function highlight(target, note) {
   setTimeout(() => { el.classList.remove('tc-highlight'); n.remove(); }, 12000);
 }
 
-$('run-btn').addEventListener('click', runSql);
+$('run-btn').addEventListener('click', () => runSql());
+$('run-answer-btn').addEventListener('click', () => runSql('answer'));
+$('answer-input').addEventListener('input', saveAnswer);
+$('answer-input').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runSql('answer'); } });
 $('preview-close').addEventListener('click', () => closePreview(true));
 $('cancel-btn').addEventListener('click', () => db?.cancel());
 $('sql-input').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runSql(); } });
@@ -376,6 +392,7 @@ $('undo-btn').addEventListener('click', async () => { await db.undoExperiments()
 $('restart-btn').addEventListener('click', async () => {
   if (!confirm(`Restart floor ${floor}? Your tables on this floor will be removed.`)) return;
   await db.restartFloor(floor);
+  delete answerRows[floor];
   await setFloor(floor);
   $('result-status').textContent = `Floor ${floor} restarted.`;
 });

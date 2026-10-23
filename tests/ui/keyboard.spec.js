@@ -12,10 +12,10 @@ test('floor 1 is playable with the keyboard only', async ({ page }) => {
   const frame = page.frameLocator('#game-frame');
   await expect(frame.locator('#engine-status')).toHaveText('Floor 1 is ready.', { timeout: 30000 });
 
-  const f = await tabUntil(page, () => document.activeElement?.id === 'sql-input' && document.hasFocus());
+  const f = await tabUntil(page, () => document.activeElement?.id === 'answer-input' && document.hasFocus());
   await page.keyboard.type(FLOOR1_REFERENCE);
   await page.keyboard.press('Control+Enter');
-  await expect(frame.locator('#result-status')).toContainText('1 row');
+  await expect(frame.locator('#result-status')).toContainText('7,171 rows');
 
   await tabUntil(page, () => document.activeElement?.id === 'check-btn' && document.hasFocus());
   await page.keyboard.press('Enter');

@@ -10,6 +10,11 @@ test('iPhone WebKit accepts a tap and typing in both SQL and tutor boxes', async
   await sql.tap();
   await page.keyboard.type('SELECT count(*) FROM trips_raw;');
   await expect(sql).toHaveValue('SELECT count(*) FROM trips_raw;');
+  const answer = frame.locator('#answer-input');
+  await answer.tap();
+  await page.keyboard.type('WITH n AS (SELECT 1) SELECT * FROM n;');
+  await expect(answer).toHaveValue('WITH n AS (SELECT 1) SELECT * FROM n;');
+  await expect(sql).toHaveValue('SELECT count(*) FROM trips_raw;');
   await page.screenshot({ path: testInfo.outputPath('sql-touch.png') });
   await page.getByRole('tab', { name: /^Tutor/ }).tap();
   const tutor = page.locator('#tutor-input');

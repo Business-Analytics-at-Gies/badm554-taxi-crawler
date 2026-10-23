@@ -101,3 +101,15 @@ External file and network access disabled inside DuckDB (`enable_external_access
   8,000 characters. Never cookies, `/api/me` fields, receipt codes or other page text.
 - The tutor panel shows the greeting from static text, then `/api/tutor/history`. It renders the
   tutor's markdown as text-safe HTML (no raw HTML from the model).
+
+### v2 R1: Answer query entry points (2026-10-23)
+
+`query(sql, options)` remains Scratch. `queryAnswer(sql, options)` runs one answer query
+against pristine given tables and returns the same bounded display shape. Answer runs
+have `source: "answer"` in both query records; Scratch retains its existing record shape.
+`check(floor, sql)` grades only that answer query; omitting SQL never grades Scratch tables.
+Both answer entry points share native parser and function checks. Refused inputs return
+`refused: true` and an error without changing the workspace, query records or last check.
+A qualified/nongiven table message names this floor's given tables. Valid checks may update
+lastCheck and emit check feedback, but do not commit Scratch transactions, remove plants,
+record a run or change Scratch tables. Floor 3's result contains all trips and reason.

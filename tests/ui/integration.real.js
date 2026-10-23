@@ -1,6 +1,6 @@
 // Thin path against the real server (FAKE_MODEL=1, AUTH_MODE=dev) and the real DuckDB-WASM db.
 import { test, expect } from '@playwright/test';
-import { FLOOR1_REFERENCE, openFloor, runSql, askTutor, showTab, noHorizontalScroll } from './helpers.js';
+import { FLOOR1_REFERENCE, openFloor, runSql, runAnswer, askTutor, showTab, noHorizontalScroll } from './helpers.js';
 
 test('real server: dev login, floor 1, tutor lens, check, receipt, same code twice', async ({ page }) => {
   test.setTimeout(120000);
@@ -22,7 +22,7 @@ test('real server: dev login, floor 1, tutor lens, check, receipt, same code twi
   await expect(frame.locator('#map-summary')).toContainText('Lit: 5 rows ("Look at these trips")');
   expect(asks[0].page).toContain('game: open, floor 1, engine ready');
 
-  await runSql(frame, FLOOR1_REFERENCE);
+  await runAnswer(frame, FLOOR1_REFERENCE);
   await frame.locator('#check-btn').click();
   await expect(frame.locator('#check-result')).toContainText('Floor 1 passes every rule.', { timeout: 30000 });
   await expect(frame.locator('#receipt-code')).toHaveText(/^TAXI-1-[A-Z]{8}$/);

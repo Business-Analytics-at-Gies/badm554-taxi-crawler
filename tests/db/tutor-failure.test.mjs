@@ -1,3 +1,4 @@
+import { ANSWERS } from '../answer-fixtures.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {openDb} from './harness.mjs';
@@ -24,19 +25,20 @@ for(const mode of ['throw','hang']) for(const action of ['check','undoExperiment
     const h=await fixture();
     try {
       await h.call('init');await h.call('loadFloor',1);
+      if(action==='check') assert.equal((await h.call('check',1,ANSWERS[1])).pass,true);
       await h.call('query','CREATE TABLE learner_marker AS SELECT 77 AS marker');
       await h.call('plant','duplicate',1);
       assert.equal((await h.call('tutorQuery','SELECT count(*) FROM trips_raw')).error,undefined);
       await h.page.evaluate(mode=>{const worker=[...activeWorkers].at(-1);worker.fault=mode;if(mode==='throw')worker.dispatchEvent(new Event('error'));},mode);
-      const args=action==='check'||action==='restartFloor'?[1]:action==='loadFloor'?[2]:[];
+      const args=action==='check'?[1,ANSWERS[1]]:action==='restartFloor'?[1]:action==='loadFloor'?[2]:[];
       const result=await within(h.call(action,...args));
       assert.equal(result.error,undefined,result.error);
-      assert.deepEqual((await h.call('state')).plants,[]);
-      assert.equal(await h.page.evaluate(()=>activeWorkers.size),1,'cleanup releases tutor without rebuilding');
+      assert.equal((await h.call('state')).plants.length,action==='check'?1:0);
+      assert.equal(await h.page.evaluate(()=>activeWorkers.size),action==='check'?3:1,'cleanup releases tutor without rebuilding');
       if(['check','undoExperiments'].includes(action))assert.deepEqual((await h.call('query','FROM learner_marker')).rows,[[77]]);
       const next=await h.call('tutorQuery',`SELECT count(*) FROM ${action==='loadFloor'?'trips':'trips_raw'}`);
-      assert.deepEqual(next.rows,[[action==='loadFloor'?7171:7345]],next.error);
-      assert.equal(await h.page.evaluate(()=>activeWorkers.size),2,'next tutor request rebuilds lazily');
+      assert.deepEqual(next.rows,[[action==='loadFloor'?7171:action==='check'?7346:7345]],next.error);
+      assert.equal(await h.page.evaluate(()=>activeWorkers.size),action==='check'?4:2,'next tutor request rebuilds lazily');
       assert.deepEqual(h.errors,[]);assert.deepEqual(h.external,[]);
     }finally{await h.close();}
   });
