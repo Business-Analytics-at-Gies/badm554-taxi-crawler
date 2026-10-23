@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { resetMock, openFloor, runSql, noHorizontalScroll } from './helpers.js';
+import { resetMock, openFloor, showTab, runSql, noHorizontalScroll } from './helpers.js';
 
 test.beforeEach(async ({ request }) => resetMock(request));
 
@@ -44,6 +44,39 @@ test('2.1 full ordered rules and review links work on a direct floor and an in-g
   await page.locator('#task-panel').screenshot({ path: testInfo.outputPath('task-panel.png') });
   await noHorizontalScroll(page);
 });
+
+// Catches a review target replayed on reload, or URL cleanup that discards other settings.
+for (const [name, target] of [['SQL refresher', '#f3-refresher'], ['About the data', '#about-data']]) {
+  test(`2.1 ${name} review handoff is consumed and later navigation survives reload`, async ({ page }) => {
+    await ready(page);
+    const link = page.getByRole('link', { name, exact: true });
+    const href = new URL(await link.getAttribute('href'), page.url());
+    href.searchParams.set('source', 'keep & + me');
+    const settings = { help: 'walk', panel: 'closed', width: '640', future: 'keep & + me' };
+    const hash = new URLSearchParams(href.hash.slice(1));
+    for (const [key, value] of Object.entries(settings)) hash.set(key, value);
+    href.hash = hash.toString();
+    await link.evaluate((el, url) => { el.href = url; }, href.href);
+    const popupPromise = page.waitForEvent('popup');
+    await link.click();
+    const guide = await popupPromise;
+    await expect(guide.locator(target)).toBeVisible();
+    await expect(guide.locator(target)).toBeInViewport();
+    expect(new URL(guide.url()).searchParams.has('review')).toBe(false);
+    await guide.locator('.rooms a[data-room="floor1"]').click();
+    for (let i = 0; i < 2; i++) await guide.locator('#room-floor1').getByRole('button', { name: 'Next', exact: true }).click();
+    await expect(guide.locator('#f1-key')).toBeVisible();
+    await guide.reload();
+    await showTab(guide, 'Guide');
+    await expect(guide.locator('#f1-key')).toBeVisible();
+    const url = new URL(guide.url());
+    expect(url.searchParams.has('review')).toBe(false);
+    expect(url.searchParams.get('source')).toBe('keep & + me');
+    expect(Object.fromEntries(new URLSearchParams(url.hash.slice(1))))
+      .toMatchObject({ room: 'floor1', slide: 'f1-key', lv: '1', ...settings });
+    await guide.close();
+  });
+}
 
 // Catches cached counts, empty-table confusion, and floor/restart state leaking into the checklist.
 test('2.1 checklist follows empty, replaced, dropped, returned and restarted outputs', async ({ page }) => {

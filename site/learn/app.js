@@ -113,6 +113,10 @@ const review = document.getElementById(new URLSearchParams(location.search).get(
 if (review?.matches('.floor-refresher, #about-data')) {
   guide.go(review.closest('.room').dataset.room, review.closest('.slide').id);
   layout.show('guide');
+  // The handoff is one-time; keep the hash saved by guide.go and all other URL state.
+  const url = new URL(location.href);
+  url.searchParams.delete('review');
+  history.replaceState(history.state, '', url);
   requestAnimationFrame(() => {
     const heading = review.querySelector('h4');
     heading.tabIndex = -1;
