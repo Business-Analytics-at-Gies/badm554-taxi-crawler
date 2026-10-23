@@ -1,5 +1,5 @@
 // Packs are trusted, versioned content. Reject incomplete teaching material before publishing it.
-export const RERUN_INSTRUCTION = 'Use CREATE OR REPLACE TABLE to run your SQL again without a DROP.';
+export const RERUN_INSTRUCTION = 'Write your answer as one query in the Answer box. A WITH query is fine: the check runs your query and grades its result. You do not need to save a table.';
 
 export function validatePack(pack) {
   const fail = field => { throw new Error(`Floor ${pack?.id ?? '?'}: invalid or missing ${field}`); };

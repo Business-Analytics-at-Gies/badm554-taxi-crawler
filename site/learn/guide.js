@@ -95,6 +95,17 @@ export function createGuide(root = document) {
       guide.querySelector('#level-picker input:checked')?.focus();
       return;
     }
+    const lessonLink = e.target.closest('a[data-refresher]');
+    const lesson = lessonLink && root.getElementById(lessonLink.getAttribute('href').slice(1));
+    if (lesson?.matches('.floor-refresher')) {
+      e.preventDefault();
+      go(lesson.closest('.room').dataset.room, lesson.closest('.slide').id);
+      const heading = lesson.querySelector('h4');
+      heading.setAttribute('tabindex', '-1');
+      heading.focus({ preventScroll: true });
+      lesson.scrollIntoView({ block: 'start' });
+      return;
+    }
     const a = e.target.closest('.card-actions a');
     if (!a) return;
     e.preventDefault();

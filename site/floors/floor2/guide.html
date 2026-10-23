@@ -95,12 +95,13 @@ WHERE dz.location_id IS NULL;  -- the 25 that match nothing</code></pre>
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
         <p>Flags: ok 6,962, unknown 110, outside_nyc 74, unmatched 25. Together they make 7,171.</p>
-        <p>The check passes when <code>trips_clean</code> has 7,171 rows, keeps every column of <code>trips</code> unchanged, and has the expected <code>(row_id, pu_zone, do_zone, zone_flag)</code> values.</p>
+        <p>The check passes when your answer has 7,171 rows, keeps every column of <code>trips</code> unchanged, and has the expected <code>(row_id, pu_zone, do_zone, zone_flag)</code> values.</p>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
-        <pre><code>SELECT zone_flag, count(*) AS trips
-FROM trips_clean
+        <pre><code>WITH answer AS (/* your answer query */)
+SELECT zone_flag, count(*) AS trips
+FROM answer
 GROUP BY zone_flag
 ORDER BY trips DESC;</code></pre>
       </div>

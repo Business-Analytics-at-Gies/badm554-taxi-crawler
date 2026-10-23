@@ -12,7 +12,7 @@
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
         <p class="value-equality">The check compares values, not formatting: 1.10 and 1.1 are the same, and money is compared to the cent.</p>
-        <p>You get two tables: <code>trips_raw</code> (7,345 rows) and <code>zones</code> (265 rows). <code>trips_clean</code> must keep every column of <code>trips_raw</code>, add no columns, and change no values.</p>
+        <p>You get two tables: <code>trips_raw</code> (7,345 rows) and <code>zones</code> (265 rows). Your answer must keep every column of <code>trips_raw</code>, add no columns, and change no values.</p>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
@@ -28,6 +28,7 @@ ORDER BY loaded_at;</code></pre>
       <h3 id="h-f1-distinct">Why DISTINCT finds nothing</h3>
       <div class="lv" data-lv="1">
         <p><code>SELECT DISTINCT</code> removes rows that are equal in every column. The second copies are not equal: each one has a new <code>row_id</code> and a later <code>loaded_at</code>. So <code>DISTINCT</code> removes nothing.</p>
+        <p>To keep one whole row per trip, number the rows inside each trip-key group and keep row 1. <a href="#f1-refresher" data-refresher>Review the WITH and ROW_NUMBER refresher</a>.</p>
       </div>
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
@@ -70,11 +71,12 @@ FROM (SELECT DISTINCT vendor_id, pickup_at, dropoff_at,
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
-        <pre><code>CREATE OR REPLACE TABLE trips_clean AS
-SELECT * FROM trips_raw
-QUALIFY row_number() OVER (
-  PARTITION BY /* your trip key */
-  ORDER BY row_id) = 1;</code></pre>
+        <pre><code>WITH ranked AS (
+  SELECT *, row_number() OVER (
+    PARTITION BY /* your trip key */ ORDER BY row_id) AS rn
+  FROM trips_raw
+)
+SELECT /* source columns, without rn */ FROM ranked WHERE rn = 1;</code></pre>
       </div>
     </article>
     <article class="slide" id="f1-reconcile" data-title="Count before and after" aria-labelledby="h-f1-reconcile">
@@ -84,14 +86,15 @@ QUALIFY row_number() OVER (
       </div>
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
-        <p>The check passes when <code>trips_clean</code> has the columns of <code>trips_raw</code> and no others, every row is an unchanged row of <code>trips_raw</code>, and it has 7,171 rows and 7,171 distinct trip keys.</p>
+        <p>The check passes when your answer has the columns of <code>trips_raw</code> and no others, every row is an unchanged row of <code>trips_raw</code>, and it has 7,171 rows and 7,171 distinct trip keys.</p>
         <p>Revenue (<code>sum(total_amount)</code>): 197,977.97 before, 193,403.10 after.</p>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
-        <pre><code>SELECT count(*) AS rows,
+        <pre><code>WITH answer AS (/* your answer query */)
+SELECT count(*) AS rows,
        round(sum(total_amount), 2) AS revenue
-FROM trips_clean;</code></pre>
+FROM answer;</code></pre>
       </div>
     </article>
     <p class="room-play js-only"><button type="button" class="play" data-floor="1">Play this floor</button></p>

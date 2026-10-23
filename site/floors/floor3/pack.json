@@ -16,6 +16,11 @@
   "context": "The depot must explain rides with impossible measurements before using them in a report. trips holds 7,171 trips with zone names and zone_flag; zones is the location lookup. Separating questionable rows with a reason preserves the evidence and leaves a clean report that reconciles to the input.",
   "refresher": [
     {
+      "title": "A query in steps: WITH",
+      "text": "WITH names a query result so the next step can read it. The final SELECT returns your answer. These steps are one query; you do not need to save a table.",
+      "sql": "WITH rides(id) AS (VALUES (1), (2))\nSELECT count(*) AS rides FROM rides;"
+    },
+    {
       "title": "Filter ranges and combine conditions",
       "text": "WHERE keeps rows whose condition is true. Compare values with <, >= and =; use AND when both conditions must hold and OR when either may hold. A timestamp range with an inclusive start and exclusive end includes the whole final day.",
       "sql": "WITH rides(started_at, fare) AS (VALUES (TIMESTAMP '2024-03-01', -2))\nSELECT * FROM rides WHERE fare < 0\nOR (started_at >= TIMESTAMP '2024-03-01' AND started_at < TIMESTAMP '2024-04-01');"

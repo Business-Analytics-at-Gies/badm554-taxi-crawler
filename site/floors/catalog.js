@@ -13,16 +13,16 @@ const packs = [
       "trips_clean"
     ],
     "title": "Floor 1: The double shift",
-    "task": "Create trips_clean with exactly one row per trip key, and every column of trips_raw. A trip key is the set of columns that together identify one trip. Two trips that differ in any amount are different trips. row_id and loaded_at describe the load, not the trip.",
+    "task": "Return exactly one row per trip key, and every column of trips_raw. A trip key is the set of columns that together identify one trip. Two trips that differ in any amount are different trips. row_id and loaded_at describe the load, not the trip.",
     "dirt": "SELECT row_id, pu_location_id, do_location_id FROM trips_raw\nQUALIFY count(*) OVER (PARTITION BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount) > 1",
-    "guideTask": "Create trips_clean with exactly one row per trip key, and every column of trips_raw. A trip key is the set of columns that together identify one trip. Two trips that differ in any amount are different trips. row_id and loaded_at describe the load, not the trip.",
+    "guideTask": "Return exactly one row per trip key, and every column of trips_raw. A trip key is the set of columns that together identify one trip. Two trips that differ in any amount are different trips. row_id and loaded_at describe the load, not the trip.",
     "card": "One day's load ran twice.",
     "context": "The depot dashboard is overstating revenue because one delivery arrived twice. trips_raw holds every physical row in the incoming feed, including both copies, and zones names the locations. Keep one whole row per trip so the morning report counts each ride once.",
     "refresher": [
       {
-        "title": "Read, count and save a result",
-        "text": "SELECT chooses columns and FROM names a table. COUNT(*) counts rows. CREATE OR REPLACE TABLE ... AS saves a query result; rerunning it replaces the previous saved table.",
-        "sql": "CREATE OR REPLACE TABLE tiny AS\nSELECT * FROM (VALUES (1, 12), (2, 18)) AS rides(id, fare);\nSELECT count(*) FROM tiny;"
+        "title": "A query in steps: WITH",
+        "text": "WITH names a query result so the next step can read it. The final SELECT returns your answer. These steps are one query; you do not need to save a table.",
+        "sql": "WITH rides(id) AS (VALUES (1), (2))\nSELECT count(*) AS rides FROM rides;"
       },
       {
         "title": "A key, grain and repeated groups",
@@ -31,8 +31,8 @@ const packs = [
       },
       {
         "title": "Keep a whole row from each group",
-        "text": "ROW_NUMBER numbers rows inside each PARTITION BY group. ORDER BY chooses which copy comes first. QUALIFY filters the window result, so keeping number 1 preserves a whole row instead of adding its amounts.",
-        "sql": "WITH deliveries(ride, copy) AS (VALUES (1, 1), (1, 2), (2, 1))\nSELECT * FROM deliveries\nQUALIFY row_number() OVER (PARTITION BY ride ORDER BY copy) = 1;"
+        "text": "ROW_NUMBER numbers rows inside each PARTITION BY group. ORDER BY chooses which copy comes first. Put the numbered rows in a CTE, then use WHERE rn = 1 in the final SELECT to keep one whole row per group. Leave rn out of the answer.",
+        "sql": "WITH deliveries(ride, copy) AS (VALUES (1, 1), (1, 2), (2, 1)),\nranked AS (SELECT *, row_number() OVER (PARTITION BY ride ORDER BY copy) AS rn FROM deliveries)\nSELECT ride, copy FROM ranked WHERE rn = 1;"
       }
     ],
     "reviewLinks": [
@@ -172,7 +172,7 @@ const packs = [
         }
       ]
     },
-    "rulesText": "## Floor 1: The double shift (duplicates)\n\n- **Tables given:** `trips_raw`, `zones`.\n- **The dirt (planted):** the load for pickups on 2024-01-15 ran twice. The 174 second copies have\n  new `row_id` values and `loaded_at = 2024-02-01 06:40`. So `SELECT DISTINCT *` removes nothing.\n- **Trip key:** `(vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount)`.\n  In the full January file this key has no duplicates (checked: 0 duplicate groups in 2,964,624 rows).\n- **Task:** create `trips_clean` with exactly one row per trip key, every column of `trips_raw`.\n- **Expected:** 7,345 rows in, 7,171 out. Revenue (`sum(total_amount)`) 197,977.97 in, 193,403.10 out.\n- **Pass:** `trips_clean` has the columns of `trips_raw` (any order, extra columns not allowed);\n  every row in it is an unchanged row of `trips_raw` (multiset check on all columns);\n  7,171 rows; 7,171 distinct trip keys. Which copy survives does not matter.\n- **Aha line:** a duplicate is defined by a key you choose, not by \"every column equal\". Count before, count after, and explain the difference (174 = the rerun).\n\n",
+    "rulesText": "## Floor 1: The double shift (duplicates)\n\n- **Tables given:** `trips_raw`, `zones`.\n- **The dirt (planted):** the load for pickups on 2024-01-15 ran twice. The 174 second copies have\n  new `row_id` values and `loaded_at = 2024-02-01 06:40`. So `SELECT DISTINCT *` removes nothing.\n- **Trip key:** `(vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount)`.\n  In the full January file this key has no duplicates (checked: 0 duplicate groups in 2,964,624 rows).\n- **Task:** return an answer with exactly one row per trip key, every column of `trips_raw`.\n- **Expected:** 7,345 rows in, 7,171 out. Revenue (`sum(total_amount)`) 197,977.97 in, 193,403.10 out.\n- **Pass:** the answer has the columns of `trips_raw` (any order, extra columns not allowed);\n  every row in it is an unchanged row of `trips_raw` (multiset check on all columns);\n  7,171 rows; 7,171 distinct trip keys. Which copy survives does not matter.\n- **Aha line:** a duplicate is defined by a key you choose, not by \"every column equal\". Count before, count after, and explain the difference (174 = the rerun).\n\n",
     "emblem": "/learn/img/floor1.svg",
     "tripKey": [
       "vendor_id",
@@ -254,12 +254,17 @@ const packs = [
       "trips_clean"
     ],
     "title": "Floor 2: Nowhere zones",
-    "task": "Create trips_clean with every row of trips, plus three columns:\n- pu_zone and do_zone: the zone name from zones (NULL when there is no match)\n- zone_flag: the first label that applies, checking both pu_location_id and do_location_id:\n  1. 'unmatched' if either id is NULL or not in zones\n  2. 'unknown' if either id is 264\n  3. 'outside_nyc' if either id is 265\n  4. 'ok' otherwise",
+    "task": "Return every row of trips, plus three columns:\n- pu_zone and do_zone: the zone name from zones (NULL when there is no match)\n- zone_flag: the first label that applies, checking both pu_location_id and do_location_id:\n  1. 'unmatched' if either id is NULL or not in zones\n  2. 'unknown' if either id is 264\n  3. 'outside_nyc' if either id is 265\n  4. 'ok' otherwise",
     "dirt": "SELECT row_id, pu_location_id, do_location_id FROM trips\nWHERE pu_location_id IS NULL OR do_location_id IS NULL OR pu_location_id IN (264, 265) OR do_location_id IN (264, 265)\n   OR pu_location_id NOT IN (SELECT location_id FROM zones) OR do_location_id NOT IN (SELECT location_id FROM zones)",
-    "guideTask": "create trips_clean with every row of trips, plus three columns: pu_zone, do_zone and zone_flag.",
+    "guideTask": "return every row of trips, plus three columns: pu_zone, do_zone and zone_flag.",
     "card": "Some trips start or end in a zone that is not on the map.",
     "context": "The depot needs to report where every trip started and ended, including trips whose locations cannot be matched. trips holds 7,171 trips with rerun copies already removed; zones is the location lookup. Keeping unmatched trips in the report prevents an incomplete picture of service and revenue.",
     "refresher": [
+      {
+        "title": "A query in steps: WITH",
+        "text": "WITH names a query result so the next step can read it. The final SELECT returns your answer. These steps are one query; you do not need to save a table.",
+        "sql": "WITH rides(id) AS (VALUES (1), (2))\nSELECT count(*) AS rides FROM rides;"
+      },
       {
         "title": "Keep unmatched rows with LEFT JOIN",
         "text": "A JOIN matches keys between tables. A LEFT JOIN keeps every row on the left and puts NULL in the right columns when there is no match. Aliases such as r and z name the two table copies. Joining twice lets you look up two locations.",
@@ -271,9 +276,9 @@ const packs = [
         "sql": "WITH places(id) AS (VALUES (10), (99), (NULL))\nSELECT id, CASE WHEN id IS NULL THEN 'missing'\nWHEN id IN (99) THEN 'outside' ELSE 'known' END AS flag\nFROM places;"
       },
       {
-        "title": "Save and count the joined result",
-        "text": "CREATE OR REPLACE TABLE ... AS saves the query so you can rebuild it. COUNT(*) checks that a join kept the expected number of rows. GROUP BY makes one group per label; HAVING can filter those groups.",
-        "sql": "CREATE OR REPLACE TABLE tiny AS\nSELECT * FROM (VALUES ('known'), ('missing')) AS labels(flag);\nSELECT flag, count(*) FROM tiny GROUP BY flag\nHAVING count(*) > 0;"
+        "title": "Count the joined result",
+        "text": "COUNT(*) checks that a join kept the expected number of rows. GROUP BY makes one group per label; HAVING can filter those groups. Use a WITH step to name the result you want to count.",
+        "sql": "WITH labels(flag) AS (VALUES ('known'), ('missing'))\nSELECT flag, count(*) FROM labels GROUP BY flag\nHAVING count(*) > 0;"
       }
     ],
     "reviewLinks": [
@@ -319,7 +324,7 @@ const packs = [
       }
     },
     "tables": {},
-    "rulesText": "## Floor 2: Nowhere zones (joins, NULLs and sentinels)\n\n- **Tables given:** `trips` (floor 1's reference output, 7,171 rows), `zones`.\n- **The dirt:** real: 110 trips touch zone 264 \"Unknown\", 74 touch zone 265 \"Outside of NYC\".\n  Planted: 15 drop-off ids are 0 (not in the lookup) and 10 drop-off ids are NULL.\n- **Task:** create `trips_clean`: every row of `trips`, plus `pu_zone`, `do_zone` (the zone name,\n  NULL when there is no match) and `zone_flag`, the first that applies:\n  1. `'unmatched'`: either id is NULL or not in `zones`;\n  2. `'unknown'`: either id is 264;\n  3. `'outside_nyc'`: either id is 265;\n  4. `'ok'`.\n- **Expected:** 7,171 rows in and out. Flags: ok 6,962; unknown 110; outside_nyc 74; unmatched 25.\n  An inner join to `zones` on both ids keeps only 7,146 rows (it silently loses 25).\n- **Pass:** 7,171 rows; the multiset of `(row_id, pu_zone, do_zone, zone_flag)` equals the reference\n  `data/reference/floor2.sql`; all columns of `trips` present and unchanged.\n- **Aha line:** a join can drop rows without an error. \"Unknown\" (264) is in the lookup, so an anti-join cannot find it; a missing id (0, NULL) is not, so only a left join shows it. Flag, do not delete.\n\n",
+    "rulesText": "## Floor 2: Nowhere zones (joins, NULLs and sentinels)\n\n- **Tables given:** `trips` (floor 1's reference output, 7,171 rows), `zones`.\n- **The dirt:** real: 110 trips touch zone 264 \"Unknown\", 74 touch zone 265 \"Outside of NYC\".\n  Planted: 15 drop-off ids are 0 (not in the lookup) and 10 drop-off ids are NULL.\n- **Task:** return an answer: every row of `trips`, plus `pu_zone`, `do_zone` (the zone name,\n  NULL when there is no match) and `zone_flag`, the first that applies:\n  1. `'unmatched'`: either id is NULL or not in `zones`;\n  2. `'unknown'`: either id is 264;\n  3. `'outside_nyc'`: either id is 265;\n  4. `'ok'`.\n- **Expected:** 7,171 rows in and out. Flags: ok 6,962; unknown 110; outside_nyc 74; unmatched 25.\n  An inner join to `zones` on both ids keeps only 7,146 rows (it silently loses 25).\n- **Pass:** 7,171 rows; the multiset of `(row_id, pu_zone, do_zone, zone_flag)` equals the reference\n  `data/reference/floor2.sql`; all columns of `trips` present and unchanged.\n- **Aha line:** a join can drop rows without an error. \"Unknown\" (264) is in the lookup, so an anti-join cannot find it; a missing id (0, NULL) is not, so only a left join shows it. Flag, do not delete.\n\n",
     "emblem": "/learn/img/floor2.svg",
     "ruleIds": [
       "exists",
@@ -383,6 +388,11 @@ const packs = [
     "card": "Some rides cannot have happened.",
     "context": "The depot must explain rides with impossible measurements before using them in a report. trips holds 7,171 trips with zone names and zone_flag; zones is the location lookup. Separating questionable rows with a reason preserves the evidence and leaves a clean report that reconciles to the input.",
     "refresher": [
+      {
+        "title": "A query in steps: WITH",
+        "text": "WITH names a query result so the next step can read it. The final SELECT returns your answer. These steps are one query; you do not need to save a table.",
+        "sql": "WITH rides(id) AS (VALUES (1), (2))\nSELECT count(*) AS rides FROM rides;"
+      },
       {
         "title": "Filter ranges and combine conditions",
         "text": "WHERE keeps rows whose condition is true. Compare values with <, >= and =; use AND when both conditions must hold and OR when either may hold. A timestamp range with an inclusive start and exclusive end includes the whole final day.",

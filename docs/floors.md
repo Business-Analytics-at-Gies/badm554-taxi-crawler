@@ -130,3 +130,10 @@ Counts remain 7,171 total: 6,955 clean and 216 bad (negative_fare 132,
 zero_distance_high_fare 47, time_travel 20, outside_january 17).
 The former two-output rule ids map to the single-result ids in floor3/solutions.json.
 All other pass rules, expected values and counts remain unchanged.
+
+## v2 change log — 2026-10-23: R2 answer tasks and taught query steps
+
+Tasks and hints describe Answer results. Every floor opens its SQL refresher with a
+WITH query; floor 1 keeps a whole row per trip using ROW_NUMBER inside a CTE and
+WHERE rn = 1. The DISTINCT explanation links to that refresher at Detail 1.
+The 6,998–7,170 hint thresholds, pass rules, counts and money comparisons stay the same.

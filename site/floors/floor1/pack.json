@@ -9,16 +9,16 @@
     "trips_clean"
   ],
   "title": "Floor 1: The double shift",
-  "task": "Create trips_clean with exactly one row per trip key, and every column of trips_raw. A trip key is the set of columns that together identify one trip. Two trips that differ in any amount are different trips. row_id and loaded_at describe the load, not the trip.",
+  "task": "Return exactly one row per trip key, and every column of trips_raw. A trip key is the set of columns that together identify one trip. Two trips that differ in any amount are different trips. row_id and loaded_at describe the load, not the trip.",
   "dirt": "SELECT row_id, pu_location_id, do_location_id FROM trips_raw\nQUALIFY count(*) OVER (PARTITION BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount) > 1",
-  "guideTask": "Create trips_clean with exactly one row per trip key, and every column of trips_raw. A trip key is the set of columns that together identify one trip. Two trips that differ in any amount are different trips. row_id and loaded_at describe the load, not the trip.",
+  "guideTask": "Return exactly one row per trip key, and every column of trips_raw. A trip key is the set of columns that together identify one trip. Two trips that differ in any amount are different trips. row_id and loaded_at describe the load, not the trip.",
   "card": "One day's load ran twice.",
   "context": "The depot dashboard is overstating revenue because one delivery arrived twice. trips_raw holds every physical row in the incoming feed, including both copies, and zones names the locations. Keep one whole row per trip so the morning report counts each ride once.",
   "refresher": [
     {
-      "title": "Read, count and save a result",
-      "text": "SELECT chooses columns and FROM names a table. COUNT(*) counts rows. CREATE OR REPLACE TABLE ... AS saves a query result; rerunning it replaces the previous saved table.",
-      "sql": "CREATE OR REPLACE TABLE tiny AS\nSELECT * FROM (VALUES (1, 12), (2, 18)) AS rides(id, fare);\nSELECT count(*) FROM tiny;"
+      "title": "A query in steps: WITH",
+      "text": "WITH names a query result so the next step can read it. The final SELECT returns your answer. These steps are one query; you do not need to save a table.",
+      "sql": "WITH rides(id) AS (VALUES (1), (2))\nSELECT count(*) AS rides FROM rides;"
     },
     {
       "title": "A key, grain and repeated groups",
@@ -27,8 +27,8 @@
     },
     {
       "title": "Keep a whole row from each group",
-      "text": "ROW_NUMBER numbers rows inside each PARTITION BY group. ORDER BY chooses which copy comes first. QUALIFY filters the window result, so keeping number 1 preserves a whole row instead of adding its amounts.",
-      "sql": "WITH deliveries(ride, copy) AS (VALUES (1, 1), (1, 2), (2, 1))\nSELECT * FROM deliveries\nQUALIFY row_number() OVER (PARTITION BY ride ORDER BY copy) = 1;"
+      "text": "ROW_NUMBER numbers rows inside each PARTITION BY group. ORDER BY chooses which copy comes first. Put the numbered rows in a CTE, then use WHERE rn = 1 in the final SELECT to keep one whole row per group. Leave rn out of the answer.",
+      "sql": "WITH deliveries(ride, copy) AS (VALUES (1, 1), (1, 2), (2, 1)),\nranked AS (SELECT *, row_number() OVER (PARTITION BY ride ORDER BY copy) AS rn FROM deliveries)\nSELECT ride, copy FROM ranked WHERE rn = 1;"
     }
   ],
   "reviewLinks": [
@@ -168,7 +168,7 @@
       }
     ]
   },
-  "rulesText": "## Floor 1: The double shift (duplicates)\n\n- **Tables given:** `trips_raw`, `zones`.\n- **The dirt (planted):** the load for pickups on 2024-01-15 ran twice. The 174 second copies have\n  new `row_id` values and `loaded_at = 2024-02-01 06:40`. So `SELECT DISTINCT *` removes nothing.\n- **Trip key:** `(vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount)`.\n  In the full January file this key has no duplicates (checked: 0 duplicate groups in 2,964,624 rows).\n- **Task:** create `trips_clean` with exactly one row per trip key, every column of `trips_raw`.\n- **Expected:** 7,345 rows in, 7,171 out. Revenue (`sum(total_amount)`) 197,977.97 in, 193,403.10 out.\n- **Pass:** `trips_clean` has the columns of `trips_raw` (any order, extra columns not allowed);\n  every row in it is an unchanged row of `trips_raw` (multiset check on all columns);\n  7,171 rows; 7,171 distinct trip keys. Which copy survives does not matter.\n- **Aha line:** a duplicate is defined by a key you choose, not by \"every column equal\". Count before, count after, and explain the difference (174 = the rerun).\n\n",
+  "rulesText": "## Floor 1: The double shift (duplicates)\n\n- **Tables given:** `trips_raw`, `zones`.\n- **The dirt (planted):** the load for pickups on 2024-01-15 ran twice. The 174 second copies have\n  new `row_id` values and `loaded_at = 2024-02-01 06:40`. So `SELECT DISTINCT *` removes nothing.\n- **Trip key:** `(vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount)`.\n  In the full January file this key has no duplicates (checked: 0 duplicate groups in 2,964,624 rows).\n- **Task:** return an answer with exactly one row per trip key, every column of `trips_raw`.\n- **Expected:** 7,345 rows in, 7,171 out. Revenue (`sum(total_amount)`) 197,977.97 in, 193,403.10 out.\n- **Pass:** the answer has the columns of `trips_raw` (any order, extra columns not allowed);\n  every row in it is an unchanged row of `trips_raw` (multiset check on all columns);\n  7,171 rows; 7,171 distinct trip keys. Which copy survives does not matter.\n- **Aha line:** a duplicate is defined by a key you choose, not by \"every column equal\". Count before, count after, and explain the difference (174 = the rerun).\n\n",
   "emblem": "/learn/img/floor1.svg",
   "tripKey": [
     "vendor_id",

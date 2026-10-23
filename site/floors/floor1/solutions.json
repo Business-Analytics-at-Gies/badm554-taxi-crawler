@@ -2,12 +2,12 @@
   {
     "name": "valid (a): the reference (first load survives)",
     "fails": [],
-    "sql": "WITH answer AS (\nSELECT * FROM trips_raw\nQUALIFY row_number() OVER (PARTITION BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount\n                           ORDER BY row_id) = 1\n) SELECT * FROM answer;\n"
+    "sql": "WITH source AS (\nSELECT * FROM trips_raw\n), ranked AS (\nSELECT *, row_number() OVER (PARTITION BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount\n                           ORDER BY row_id) AS rn\nFROM source\n)\nSELECT row_id, vendor_id, pickup_at, dropoff_at, passenger_count, trip_distance, pu_location_id, do_location_id, payment_type, fare_amount, tip_amount, total_amount, loaded_at FROM ranked WHERE rn = 1;\n"
   },
   {
     "name": "valid (b): the reference with ORDER BY row_id DESC (second copy survives)",
     "fails": [],
-    "sql": "WITH answer AS (\nSELECT * FROM trips_raw\nQUALIFY row_number() OVER (PARTITION BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount\n                           ORDER BY row_id DESC) = 1\n) SELECT * FROM answer;\n"
+    "sql": "WITH source AS (\nSELECT * FROM trips_raw\n), ranked AS (\nSELECT *, row_number() OVER (PARTITION BY vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount\n                           ORDER BY row_id DESC) AS rn\nFROM source\n)\nSELECT row_id, vendor_id, pickup_at, dropoff_at, passenger_count, trip_distance, pu_location_id, do_location_id, payment_type, fare_amount, tip_amount, total_amount, loaded_at FROM ranked WHERE rn = 1;\n"
   },
   {
     "name": "valid (c): keep the first load by loaded_at",

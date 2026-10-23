@@ -33,7 +33,8 @@ export async function check(db, { pack, plantedEver, learner: S }) {
   }
   const rc = Number(await db.one(`SELECT system.main.count(*) FROM ${from}`));
   const countRule = R.count.of(rc === expRows, fmt(expRows), fmt(rc));
-  if (rc > 6997 && rc <= 7170) countRule.hint += ' You may have merged trips that are not rerun copies. Check whether their amounts differ.';
+  if (rc > 6997 && rc <= 7170) countRule.hint = 'Your answer has between 6,998 and 7,170 rows. You may have merged trips that are not rerun copies. Check whether their amounts differ.';
+  if (rc === 7345) countRule.hint = 'To keep one whole row per trip, number the rows inside each trip-key group and keep row 1. Use a WITH query with ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...), then WHERE rn = 1. Review the SQL refresher in the guide.';
   out.push(countRule);
   if (keyCols.some((c) => !have.has(c.name))) out.push(R.keys.skip(`${fmt(expKeys)} trip keys`));
   else {

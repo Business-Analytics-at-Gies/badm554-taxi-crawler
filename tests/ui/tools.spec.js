@@ -100,7 +100,7 @@ test('show_code puts the file in the tutor panel', async ({ page, request }) => 
   await page.goto('/learn/');
   let [r] = await tool(page, request, 'tool:show_code');
   expect(r.ok).toBe(true);
-  await expect(page.locator('.code-card').last()).toContainText('QUALIFY row_number()');
+  await expect(page.locator('.code-card').last()).toContainText('WHERE rn = 1');
   await expect(page.locator('.code-card h3').last()).toHaveText('floor1-reference');
   await page.evaluate(() => window.taxiLearn.guide.go('floor2'));
   [r] = await tool(page, request, 'tool:show_code {"file":"floors-rules"}');

@@ -28,7 +28,7 @@ test('2.1 full ordered rules and review links work on a direct floor and an in-g
   const guide = await popupPromise;
   await expect(guide.locator('#f3-refresher')).toBeVisible();
   await expect(guide.locator('#f3-refresher')).toBeInViewport();
-  await expect(guide.locator('#f3-task .task-rules')).toHaveText(wording.replace(/\s*Use CREATE OR REPLACE TABLE[\s\S]*$/, ''));
+  await expect(guide.locator('#f3-task .task-rules')).toHaveText(wording.replace(/\s*Write your answer as one query[\s\S]*$/, ''));
   await guide.close();
   const aboutPromise = page.waitForEvent('popup');
   await page.getByRole('link', { name: 'About the data', exact: true }).click();

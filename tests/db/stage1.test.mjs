@@ -5,7 +5,8 @@ import { openDb } from './harness.mjs';
 import { SOLUTIONS } from './solutions.mjs';
 
 const HINT = 'You may have merged trips that are not rerun copies. Check whether their amounts differ.';
-const PILOT_COUNT_HINT = 'Count the rows before and after: one row should be left for each trip.';
+const FULL_HINT = `Your answer has between 6,998 and 7,170 rows. ${HINT}`;
+const PATTERN_HINT = 'To keep one whole row per trip, number the rows inside each trip-key group and keep row 1. Use a WITH query with ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...), then WHERE rn = 1. Review the SQL refresher in the guide.';
 const KEY = 'vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount';
 let h, answer;
 before(async () => {
@@ -48,6 +49,7 @@ describe('1.2 hint boundaries on whole, unchanged learner rows', () => {
       assert.equal(result.pass, rows === 7171, 'the existing 7,171-row pass rule stays unchanged');
       assert.equal(result.rules.find(rule => rule.id === 'unchanged').ok, true);
       assert.equal(hints(result).includes(HINT), wantHint);
+      if (wantHint) assert.ok(hints(result).includes(FULL_HINT));
     });
   }
 });
@@ -61,10 +63,11 @@ describe('1.2 existing valid and wrong floor-1 solutions retain their pass rules
       assert.equal(result.pass, solution.fails.length === 0);
       assert.deepEqual(result.rules.filter(rule => !rule.ok).map(rule => rule.id).sort(), [...solution.fails].sort());
       assert.equal(hints(result).includes(HINT), false);
+      if (!solution.fails.length) assert.equal(hints(result).includes(PATTERN_HINT), false);
       if (solution.name.startsWith('wrong (a)')) {
         assert.equal(await count(), 7345);
-        assert.equal(result.rules.find(rule => rule.id === 'row_count').hint, PILOT_COUNT_HINT,
-          'DISTINCT * keeps the pilot hint');
+        assert.equal(result.rules.find(rule => rule.id === 'row_count').hint, PATTERN_HINT,
+          'DISTINCT * gets the taught CTE and row-number pattern');
       }
     });
   }
@@ -95,6 +98,7 @@ describe('1.2 approved data-check variants', () => {
     assert.equal(result.pass, false);
     assert.deepEqual(result.rules.filter(rule => !rule.ok).map(rule => rule.id).sort(), ['row_count', 'trip_keys']);
     assert.ok(hints(result).includes(HINT));
+    assert.ok(hints(result).includes(FULL_HINT));
   });
 
   test('DISTINCT * EXCLUDE (row_id, loaded_at) has 7,171 rows but still fails for missing columns', async () => {

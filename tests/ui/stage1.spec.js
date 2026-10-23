@@ -2,7 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { resetMock, openFloor, runSql, runAnswer, showTab, askTutor, mockLog, noHorizontalScroll } from './helpers.js';
 
-const ENDING = 'Use CREATE OR REPLACE TABLE to run your SQL again without a DROP.';
+const ENDING = 'Write your answer as one query in the Answer box. A WITH query is fine: the check runs your query and grades its result. You do not need to save a table.';
 const KEY_COLUMNS = ['vendor_id', 'pickup_at', 'dropoff_at', 'pu_location_id', 'do_location_id', 'total_amount'];
 test.beforeEach(async ({ request }) => { await resetMock(request); });
 
@@ -31,7 +31,7 @@ test('1.1 game task defines a trip key, amount differences and load metadata wit
 });
 
 for (const floor of [1, 2, 3]) {
-  test(`1.3 floor ${floor} guide task ends with the rerun instruction at every detail level`, async ({ page }) => {
+  test(`1.3 floor ${floor} guide task ends with the answer instruction at every detail level`, async ({ page }) => {
     await page.goto(`/learn/#room=floor${floor}&slide=f${floor}-task&lv=1`);
     await showTab(page, 'Guide');
     for (const level of [1, 2, 3]) {
@@ -43,7 +43,7 @@ for (const floor of [1, 2, 3]) {
     }
   });
 
-  test(`1.3 floor ${floor} game task ends with the visible rerun instruction`, async ({ page }) => {
+  test(`1.3 floor ${floor} game task ends with the visible answer instruction`, async ({ page }) => {
     await page.goto('/learn/');
     const frame = await openFloor(page, floor);
     const task = frame.locator('#floor-task');

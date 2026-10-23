@@ -5,9 +5,9 @@
   new `row_id` values and `loaded_at = 2024-02-01 06:40`. So `SELECT DISTINCT *` removes nothing.
 - **Trip key:** `(vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount)`.
   In the full January file this key has no duplicates (checked: 0 duplicate groups in 2,964,624 rows).
-- **Task:** create `trips_clean` with exactly one row per trip key, every column of `trips_raw`.
+- **Task:** return an answer with exactly one row per trip key, every column of `trips_raw`.
 - **Expected:** 7,345 rows in, 7,171 out. Revenue (`sum(total_amount)`) 197,977.97 in, 193,403.10 out.
-- **Pass:** `trips_clean` has the columns of `trips_raw` (any order, extra columns not allowed);
+- **Pass:** the answer has the columns of `trips_raw` (any order, extra columns not allowed);
   every row in it is an unchanged row of `trips_raw` (multiset check on all columns);
   7,171 rows; 7,171 distinct trip keys. Which copy survives does not matter.
 - **Aha line:** a duplicate is defined by a key you choose, not by "every column equal". Count before, count after, and explain the difference (174 = the rerun).
@@ -17,7 +17,7 @@
 - **Tables given:** `trips` (floor 1's reference output, 7,171 rows), `zones`.
 - **The dirt:** real: 110 trips touch zone 264 "Unknown", 74 touch zone 265 "Outside of NYC".
   Planted: 15 drop-off ids are 0 (not in the lookup) and 10 drop-off ids are NULL.
-- **Task:** create `trips_clean`: every row of `trips`, plus `pu_zone`, `do_zone` (the zone name,
+- **Task:** return an answer: every row of `trips`, plus `pu_zone`, `do_zone` (the zone name,
   NULL when there is no match) and `zone_flag`, the first that applies:
   1. `'unmatched'`: either id is NULL or not in `zones`;
   2. `'unknown'`: either id is 264;
