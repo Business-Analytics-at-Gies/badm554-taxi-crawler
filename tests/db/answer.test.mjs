@@ -115,10 +115,18 @@ test('R7 both buttons refuse catalog reads regardless of CTE scope or query dept
   await fresh(2);
   const before = await snapshot();
   const failures = [];
-  const refs = ['pg_tables', 'information_schema.tables', 'information_schema.columns',
-    'duckdb_tables()', 'duckdb_columns()', 'sqlite_master', 'pg_catalog.pg_tables', 'pg_catalog.pg_class'];
-  for (const ref of refs) {
-    const name = ref.split('.').at(-1).replace('()', '');
+  const refs = [
+    ['pg_tables', ''], ['information_schema.tables', ''], ['information_schema.columns', ''],
+    ['duckdb_tables', '()'], ['duckdb_columns', '()'], ['sqlite_master', ''],
+    ['pg_catalog.pg_tables', ''], ['pg_catalog.pg_class', ''],
+    ['duckdb_schemas', '()'], ['duckdb_databases', '()'],
+    ['pragma_table_info', "('trips')"], ['pragma_show_tables', '()'],
+  ];
+  const spellings = [name => name, name => name.toUpperCase(),
+    name => `"${name}"`, name => `"${name.toUpperCase()}"`];
+  for (const [path, args] of refs) for (const spell of spellings) {
+    const ref = path.split('.').map(spell).join('.') + args;
+    const name = spell(path.split('.').at(-1));
     const queries = [
       `SELECT * FROM ${ref}`,
       `WITH ${name} AS (SELECT * FROM ${ref}) SELECT * FROM ${name}`,
@@ -127,6 +135,11 @@ test('R7 both buttons refuse catalog reads regardless of CTE scope or query dept
       `WITH ${name} AS (SELECT * FROM (SELECT * FROM ${ref}) sub) SELECT * FROM ${name}`,
       `WITH RECURSIVE ${name} AS (SELECT * FROM ${ref} UNION ALL SELECT * FROM ${name} WHERE false) SELECT * FROM ${name}`,
       `WITH earlier AS (SELECT * FROM ${ref}), ${name} AS (SELECT 1) SELECT * FROM earlier`,
+      `SELECT catalog.* FROM (SELECT 1 AS n) seed CROSS JOIN LATERAL (SELECT * FROM ${ref}) catalog`,
+      ...['UNION ALL', 'INTERSECT', 'EXCEPT'].flatMap(op => [
+        `SELECT count(*) FROM trips ${op} SELECT count(*) FROM ${ref}`,
+        `SELECT count(*) FROM ${ref} ${op} SELECT count(*) FROM trips`,
+      ]),
     ];
     for (const sql of queries) for (const button of ['queryAnswer', 'check']) {
       const r = await h.call(button, ...(button === 'check' ? [2, sql] : [sql]));
