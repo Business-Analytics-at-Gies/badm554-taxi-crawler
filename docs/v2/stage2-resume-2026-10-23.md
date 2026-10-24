@@ -247,11 +247,21 @@ All other text is prose, which the gate does not check (item 3a).
    `DISTINCT`, `FILTER`, ordered aggregates, sample and the query modifiers. Zero ids means known
    and neutral, for example a column reference. Functions are checked here, on the tree's
    function nodes only, so a CTE column list such as `rides(id)` or an alias list such as `t(n)`
-   is not a function. **Whole-row references.** A column reference whose name matches a table
+   is not a function. **Names are closed too.** DuckDB decides what a bare name means when it
+   binds the query, not in the parse tree. So a column reference is neutral only when its name
+   (the last part, for a qualified name) is one of:
+   - a column of the floor's given tables;
+   - a name defined in the same statement: a select-list alias, a CTE column list, an alias
+     column list such as `t(n)`, or a column name that a subquery or CTE in the statement
+     selects;
+   - the blank placeholder.
+   Any other name fails: `unknown name <name>`. This stops names that DuckDB resolves to
+   something else: an implicit subquery name (`SELECT unnamed_subquery FROM (SELECT row_id FROM
+   trips_raw)` returns whole rows) and a function without brackets (`SELECT current_schema`
+   reads the session). **Whole-row references.** A column reference whose name matches a table
    name or alias in the same statement (for example `t` in `SELECT t FROM trips t`) returns the
-   whole row as one structured value. Treat it as a whole-row reference, which is unmapped and
-   fails. When a real column has the same name as a table or alias, it also fails; the author
-   renames the alias. A function entry names the function and its argument count, because one
+   whole row as one structured value. It fails, even when a real column has the same name; the
+   author renames the alias. A function entry names the function and its argument count, because one
    name can do different jobs: `min(fare_amount)` returns one value, but `min(fare_amount, 2)`
    returns a list of the two smallest. A call with an unlisted argument count is unmapped. The walker visits every object and every field, at every depth. An
    unlisted element, field or enum value fails: `unmapped construct <path>: <value>`.
@@ -291,7 +301,9 @@ All other text is prose, which the gate does not check (item 3a).
      '2024-02-01 06:40:00'`, and declare what it detects). List each rewrite in the verification
      note.
    - **Inline name**: a bare or qualified name, such as `trips_raw` or `t.row_id`. The keyword
-     layer applies. It detects no concept.
+     layer applies. It detects no concept. The name must be a given table, a given column, or a
+     name defined in one of the pack's complete-SQL sources (such as `rn`). Any other name fails
+     as unknown, for example `current_schema`.
    - **Inline phrase**: an exact match with a short phrase list in the map. This kind is checked
      first, before Complete SQL. Start with what the guides use: `SELECT DISTINCT`, `DISTINCT`,
      `GROUP BY`, plus `COMMIT` and `ROLLBACK` with no concept. Each phrase maps to its concept ids,
@@ -366,7 +378,11 @@ All other text is prose, which the gate does not check (item 3a).
 - `SELECT min(fare_amount, 2) FROM trips` and the same with `max`, added to floor 3's guide, fail.
   Ordinary `min(fare_amount)` and `max(fare_amount)` pass. An inline `(row_id, reason)` fails as
   unmapped `row`; the rewritten separate names pass. `SELECT t FROM trips t;` in a floor 3 guide
-  `<pre>` block fails as a whole-row reference; `SELECT t.row_id FROM trips t;` passes. The migrated `rulesText` of floors 1 and 2
+  `<pre>` block fails as a whole-row reference; `SELECT t.row_id FROM trips t;` passes. In floor
+  1's guide, `SELECT unnamed_subquery FROM (SELECT row_id FROM trips_raw);` fails as an unknown
+  name, and `SELECT row_id FROM (SELECT row_id FROM trips_raw);` passes. `SELECT current_schema;`
+  in a `<pre>` block and inline `<code>current_schema</code>` both fail; `SELECT current_schema
+  FROM (SELECT 7 AS current_schema) t;` passes, because the statement defines the name. The migrated `rulesText` of floors 1 and 2
   passes.
 - The map is used: remove any one map entry that floors 1 to 3 use, and the gate fails on that
   floor. Remove any one keyword allowlist entry or phrase entry that they use, and the gate fails.
