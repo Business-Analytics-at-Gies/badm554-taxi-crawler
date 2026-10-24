@@ -1,7 +1,7 @@
 # Stage 2 resume: answer-query grading, concept gate, hint ladder
 
 Created: 2026-10-23
-Last Updated: 2026-10-23 (review rounds 1 and 2 applied)
+Last Updated: 2026-10-24 (R3b added after code review round 11)
 
 Vishal's decisions of 10-23 are in `docs/decisions/2026-10-23-v2-grading-and-gates.md` on `main`.
 This file turns them into build items for crew-codex-v2. It amends `docs/v2/plan-as-approved.md`.
@@ -29,7 +29,8 @@ game on saved tables assumption when we don't teach that concept."
 ## Order
 
 One commit per item. All four suites green before each commit (runbook rule 9). Push after each
-green item. **Stop for Claude's review after R0 and after R1.** Then R2 to R4 and stop. Then R5.
+green item. **Stop for Claude's review after R0 and after R1.** Then R2 to R4 and stop. Then R3b
+and stop. Then R5.
 
 | Item | What |
 |---|---|
@@ -38,6 +39,7 @@ green item. **Stop for Claude's review after R0 and after R1.** Then R2 to R4 an
 | R2 | Stage 1 rework (1.2, 1.3) and feedback items A and B, rewritten for R1 |
 | R3 | 2.7 Learning-graph gate and the `CASE WHEN` refreshers |
 | R4 | 2.6 Hint ladder (approved as proposed) |
+| R3b | Closed-world concept gate (added 10-24; replaces R3's detector, keeps R3's rules) |
 | R5 | 2.4 Error help and 2.5 Query history, as the plan specifies, adapted to R1 |
 
 ## R1: Answer box and answer-query grading
@@ -208,6 +210,84 @@ green item. **Stop for Claude's review after R0 and after R1.** Then R2 to R4 an
 - A fixture pack that must pass: the same `CASE WHEN` pack with a refresher that lists it.
 - The detector finds each keyword in each scanned place (positive controls), so a pass is not an
   empty scan.
+
+## R3b: closed-world concept gate (added 2026-10-24)
+
+**Why.** Code review rounds 9 to 11 found false passes in R3's checks. Each one was a spelling
+that the checks did not list. In the detector: `LAG`/`LEAD`, `CREATE TEMP TABLE`, a named window,
+`GROUP BY ALL`, `UNION ALL BY NAME`, `WITH RECURSIVE`, `ORDER BY` after a set operation, `ifnull`,
+`ISNULL`, `= +0`, `= 0::INT`, `::DATE`, `count(t.*)`, and a comma join that feeds a grouping. In
+the lesson check: `COMMIT` inside a lesson, and `setseed` inside a table statement. In the leak
+test: `-1`, then `- 987654321`. A list of untaught forms cannot be complete: DuckDB has too
+many spellings, and Codex writes the packs. R3b inverts the default. A construct passes only when
+the gate knows which concept it is. R3's rules (`module`, `concepts`, `refreshes`, the override
+file, the fixture packs) stay as they are.
+
+**Change.**
+
+1. **Parse tree only.** The gate reads every scanned source with DuckDB's parser
+   (`json_serialize_sql`). Delete the token fallback (`site/floors/sql-context.mjs` and the
+   unfinished-SQL path in `concept-gate.mjs`). A source that does not parse fails the gate and
+   shows the parse error.
+2. **Hint outlines.** Before parsing, replace each `___` with one placeholder column name. An
+   outline that still does not parse fails the gate with: "Rewrite the outline so that each blank
+   stands for one name or value." Claude checked this on 10-24 with DuckDB 1.5.5. All 15 current
+   outlines and all 16 current lessons parse this way.
+3. **One allowlist map.** One reviewed file maps each element of the parse tree to zero or more
+   concept ids. It covers node and expression classes and types, function names (in the form
+   after DuckDB's rewrites, for example `date_part` for `EXTRACT`), operators, and every
+   enum-valued field, by value. Examples: `aggregate_handling` (`GROUP BY ALL` is
+   `FORCE_AGGREGATES`), `setop_type` (`UNION_BY_NAME`), the set-operation `ALL` flag, CTE
+   recursion and materialization, window frame fields, `DISTINCT`, `FILTER`, ordered aggregates,
+   sample, and the query modifiers. Zero ids means known and neutral, for example a column
+   reference or a constant. The walker visits every object and every field. An element, a field,
+   or an enum value that the map does not list fails the gate: `unmapped construct <path>:
+   <value>`. The map starts with what floors 1 to 3 use. Every other construct stays unmapped
+   until someone adds it with a concept id and a test.
+4. **Combination concepts.** C016, C023, C029, C083, C085 and any other combination are derived
+   by rules over the same tree. Where a rule cannot decide, it over-detects: the author then
+   declares the concept or rewrites the SQL. A false failure is visible; a false pass is silent.
+   The gate judges a constant operand by the value DuckDB computes for it, not by its spelling,
+   so `+0`, `0::INT` and `-0.0` are all zero.
+5. **Lessons.** A refresher example is one or more SELECT-family statements (`SELECT`, `WITH`,
+   `VALUES`, set operations). Each statement passes the same native statement and function checks
+   as the Answer box: no catalog, file, setting or state-changing function. Any other statement
+   family fails, including table statements. `runLesson` stays as built in `48e150b` (a fresh
+   database, and the same runner as the Run button).
+6. **Leak test numbers.** Add every number in the vocabulary with a minus sign and with a plus
+   sign, whatever the displayed spelling.
+
+**Acceptance.**
+
+- Floors 1 to 3 pass the gate. List any new declaration in the verification note, with the
+  reason why it is a true teaching claim.
+- Every input from code reviews r9, r10 and r11 (`docs/v2/stage2-review-r9.md` to `-r11.md`)
+  is a fixture with its expected result. All of them fail, except r10 finding 2 (the `AVG`
+  window frame), which passes.
+- Each of these fails as unmapped, or maps to the correct concept with a test: `GROUP BY ALL`,
+  `UNION ALL BY NAME`, `WITH RECURSIVE`, `ifnull`, `ISNULL`, `count(t.*)`, `PIVOT`,
+  `USING SAMPLE`, a lambda, a list comprehension, list and struct literals, `COLUMNS(*)`,
+  `* EXCLUDE` and `* REPLACE`, `ASOF JOIN`, `POSITIONAL JOIN`, `LATERAL`, string slicing,
+  `->>`.
+- The walker visits fields: a synthetic tree with an unknown field, and one with an unknown enum
+  value, both fail.
+- The map is used: remove any one map entry that floors 1 to 3 use, and the gate fails on that
+  floor.
+- An outline that does not parse with its blanks filled fails. All current outlines pass.
+- The r10 `COMMIT` lesson, the r11 `setseed` lesson and a `CREATE TABLE` lesson all fail. All
+  current lessons pass and run.
+- The r11 `- 987654321` outline is a must-flag leak fixture. All earlier must-flag fixtures are
+  still flagged.
+
+**Review focus.**
+
+- DuckDB rewrites at parse time (`EXTRACT`, `COALESCE`, `ISNULL`, `::`, `IN`, `BETWEEN`). Key the
+  map on the rewritten form. Write each test with the spelled form.
+- Fields the walker can skip: query modifiers (`LIMIT`, `ORDER BY`, `DISTINCT ON`), the CTE map,
+  sample, `aggregate_handling`, set-operation flags, window frame bounds, `FILTER`, and
+  `ORDER BY` inside an aggregate.
+- The tree format can change with the engine version. The gate runs on the pinned engine. A field
+  the map has never seen must fail.
 
 ## R4: 2.6 hint ladder
 
