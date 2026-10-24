@@ -428,9 +428,10 @@ All other text is prose, which the gate does not check (item 3a).
   `SELECT row_id FROM (SELECT vendor_id FROM trips_raw) row_id;`, and
   `SELECT payload.vendor_id FROM (SELECT row_id AS payload FROM (SELECT 7 AS vendor_id) row_id) q;`
   and the same with `payload.*`. So does floor 1's reference with an unused CTE defining
-  `current_schema` and `AND current_schema = 'main'` added (same 7,171 rows). These pass:
-  `SELECT row_id FROM (SELECT row_id FROM trips_raw);` and
-  `SELECT current_schema FROM (SELECT 7 AS current_schema) t;` (it binds to the column, 7).
+  `current_schema` and `AND current_schema = 'main'` added (same 7,171 rows).
+  `SELECT current_schema FROM (SELECT 7 AS current_schema) t;` fails as a built-in name (item
+  2c), by design. These pass: `SELECT row_id FROM (SELECT row_id FROM trips_raw);` and
+  `SELECT active_schema_value FROM (SELECT 7 AS active_schema_value) t;` (it returns 7).
   Inline `<code>current_schema</code>` fails as an unknown inline name. In floor 1's guide,
   `WITH ghost AS (SELECT "current_timestamp" AS env) SELECT row_id FROM trips_raw;` and
   `WITH ghost AS (SELECT t FROM trips_raw t) SELECT row_id FROM trips_raw;` fail as unused CTEs,
