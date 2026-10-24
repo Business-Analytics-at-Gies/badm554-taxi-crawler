@@ -78,7 +78,7 @@ const controls = [
   ['ROUND', 'SELECT round(n,2) FROM t'],
 ];
 
-test('R3 positive controls find every required construct in every scanned place, including partial hints', async () => {
+test('R3 positive controls find every required construct in every scanned place, and rejects partial hints under R3b', async () => {
   await ready();
   for (const [id, sql] of controls) for (const [place, fields] of [
     ['reference', { referenceSql: sql }], ['refresher', { refresher: [{ title: 'control', sql }] }],
@@ -86,20 +86,19 @@ test('R3 positive controls find every required construct in every scanned place,
     ['hint', { hints: { rule: [{ outline: sql }] } }],
   ]) {
     const result = await check({ ...base(), ...fields });
-    assert.ok(result.detected.some(item => item.source.startsWith(place) && item.concepts.includes(id)), `${id} in ${place}: ${JSON.stringify(result)}`);
+    if(id==='C053') assert.match(result.errors.join('\n'), /unmapped/, `${id} in ${place}`);
+    else assert.ok(result.detected.some(item => item.source.startsWith(place) && item.concepts.includes(id)), `${id} in ${place}: ${JSON.stringify(result)}`);
   }
-  for (const sql of ['case /* note */ when ___ then', 'CASE\nWHEN ___ THEN']) {
-    const result = await detection(sql);
-    assert.equal(result.method, 'tokens'); assert.ok(result.concepts.includes('CASE_WHEN'));
+  // R3b replaces unfinished-token detection with a mandatory parse failure.
+  for (const sql of ['case /* note */ when ___ then', 'CASE\nWHEN ___ THEN',
+    'WITH a AS (SELECT 1) SELECT row_number() OVER (',
+    'WITH a AS (SELECT row_number() OVER (',
+    'SELECT row_number() OVER () FROM t ORDER BY', 'SELECT "RoW_NuMbEr"() OVER (']) {
+    const result=await detection(sql);
+    assert.equal(result.method,'rejected');assert.match(result.errors.join('\n'),/Rewrite/);
   }
   assert.equal((await detection('SELECT row_number() OVER () FROM t')).method, 'parser');
-  assert.ok(!(await detection('WITH a AS (SELECT 1) SELECT row_number() OVER () FROM a')).concepts.includes('C034'), 'a window outside the CTE is not a window inside it');
-  assert.ok(!(await detection('WITH a AS (SELECT 1) SELECT row_number() OVER (')).concepts.includes('C034'), 'a partial outer window is not inside a CTE');
-  assert.ok((await detection('WITH a AS (SELECT row_number() OVER (')).concepts.includes('C034'), 'a partial window inside a CTE is found');
-  assert.ok(!(await detection('SELECT row_number() OVER () FROM t ORDER BY')).concepts.includes('C027'), 'outer ORDER BY is not window ordering');
-  const quotedWindow = await detection('SELECT "RoW_NuMbEr"() OVER (');
-  assert.equal(quotedWindow.method, 'tokens');
-  assert.ok(quotedWindow.concepts.includes('C028'));
+  assert.ok(!(await detection('WITH a AS (SELECT 1) SELECT row_number() OVER () FROM a')).concepts.includes('C034'));
   const quiet = await detection(`SELECT 'CASE WHEN QUALIFY CREATE TABLE WITH SELECT DISTINCT ROW_NUMBER() OVER ()' AS note /* QUALIFY */`);
   for (const id of ['C035', 'C053', 'CASE_WHEN', 'SELECT_DISTINCT', 'C025', 'C028', 'C033']) assert.ok(!quiet.concepts.includes(id), id);
   const fragment = await detection(`'CASE WHEN' /* outer /* QUALIFY */ CREATE TABLE */ SELECT ___`);
@@ -173,8 +172,8 @@ const inventory = [
   ['C033', 'WITH t AS (SELECT 1) SELECT * FROM t', 'WITH t AS (SELECT'],
   ['C034', 'WITH t AS (SELECT row_number() OVER ()) SELECT * FROM t', 'WITH t AS (SELECT row_number() OVER ('],
   ['C035', 'SELECT row_number() OVER () AS rn QUALIFY rn=1', 'SELECT * FROM t QUALIFY'],
-  ['C036', "SELECT extract(year FROM DATE '2024-01-01')", 'SELECT extract(year FROM'],
-  ['C036', 'SELECT 1 UNION ALL SELECT 2', 'SELECT 1 UNION ALL'],
+  ['EXTRACT', "SELECT extract(year FROM DATE '2024-01-01')", 'SELECT extract(year FROM'],
+  ['UNION_ALL', 'SELECT 1 UNION ALL SELECT 2', 'SELECT 1 UNION ALL'],
   ['C046', 'CREATE TABLE child (n INT REFERENCES parent(n))', 'CREATE TABLE child (n INT, FOREIGN KEY'],
   ...['read_csv', 'read_csv_auto', 'read_parquet', 'parquet_scan', 'csv_scan'].map(fn => ['C052', `SELECT * FROM ${fn}('tiny')`, `SELECT * FROM "${fn}"(`]),
   ...['', 'OR REPLACE ', 'TEMP ', 'TEMPORARY ', 'OR REPLACE TEMP ', 'OR REPLACE TEMPORARY '].map(form => ['C053', `CREATE ${form}TABLE t AS SELECT 1`, `CREATE ${form}TABLE t AS SELECT (`]),
@@ -189,18 +188,21 @@ const inventory = [
   ['ROUND', 'SELECT round(1.25, 1)', 'SELECT "round"('],
 ];
 
-test('R3 round 9 complete SQL inventory detects every surface in complete and unfinished examples', async () => {
+test('R3 round 9 SQL inventory detects supported complete surfaces and refuses unmapped or unfinished forms under R3b', async () => {
   await ready();
   const missing = [];
   for (const [id, complete, partial] of inventory) for (const [form, sql] of [['complete', complete], ['unfinished', partial]]) {
     const result = await detection(sql);
-    if (!result.concepts.includes(id)) missing.push(`${id} ${form}: ${sql}`);
+    if(form==='unfinished') { assert.equal(result.method,'rejected',sql); assert.match(result.errors.join('\n'),/Rewrite|unmapped/,sql); }
+    else if (['C046','C052','C053','C073'].includes(id)) assert.match(result.errors.join('\n'),/unmapped/,`${id}: ${sql}`);
+    else assert.ok(result.concepts.includes(id),`${id}: ${sql}`);
     for (const fields of [{ referenceSql: sql }, { refresher: [{ title: 'inventory', sql }] },
       { guide: `<code>${sql.replaceAll('<', '&lt;')}</code>` }, { hints: { rule: [{ outline: sql }] } }]) {
       const scanned = await check({ ...base(), concepts: ['C042'], ...fields });
-      if (!scanned.errors.some(error => error.endsWith(`undeclared ${id}`))) missing.push(`${id} ${form} in ${Object.keys(fields)[0]}`);
+      if(form==='unfinished'||['C046','C052','C053','C073'].includes(id)) { if(!scanned.errors.some(error=>/Rewrite|unmapped/.test(error)))missing.push(`${id} ${form} in ${Object.keys(fields)[0]}`); }
+      else if (!scanned.errors.some(error => error.endsWith(`undeclared ${id}`))) missing.push(`${id} ${form} in ${Object.keys(fields)[0]}`);
     }
-    if (form === 'unfinished') assert.equal(result.method, 'tokens', sql);
+    if (form === 'unfinished') assert.equal(result.method, 'rejected', sql);
   }
   assert.deepEqual(missing, []);
 });

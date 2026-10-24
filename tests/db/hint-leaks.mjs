@@ -17,7 +17,10 @@ function addTextVocabulary(candidates, text, composites = true) {
   )) {
     const number = match[0].replaceAll(',', '');
     candidates.add(number);
-    candidates.add(number.replace(/^[+-]/, ''));
+    const magnitude = number.replace(/^[+-]/, '');
+    candidates.add(magnitude);
+    candidates.add('-' + magnitude);
+    candidates.add('+' + magnitude);
     const cast = suffix(match.index + match[0].length);
     if (cast) candidates.add(number + cast);
   }

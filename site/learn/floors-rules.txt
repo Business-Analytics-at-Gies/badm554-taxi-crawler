@@ -2,8 +2,8 @@
 
 - **Tables given:** `trips_raw`, `zones`.
 - **The dirt (planted):** the load for pickups on 2024-01-15 ran twice. The 174 second copies have
-  new `row_id` values and `loaded_at = 2024-02-01 06:40`. So `SELECT DISTINCT *` removes nothing.
-- **Trip key:** `(vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount)`.
+  new `row_id` values and `loaded_at = TIMESTAMP '2024-02-01 06:40:00'`. So `SELECT DISTINCT * FROM trips_raw` removes nothing.
+- **Trip key:** `vendor_id`, `pickup_at`, `dropoff_at`, `pu_location_id`, `do_location_id`, `total_amount`.
   In the full January file this key has no duplicates (checked: 0 duplicate groups in 2,964,624 rows).
 - **Task:** return an answer with exactly one row per trip key, every column of `trips_raw`.
 - **Expected:** 7,345 rows in, 7,171 out. Revenue (`sum(total_amount)`) 197,977.97 in, 193,403.10 out.
@@ -25,8 +25,8 @@
   4. `'ok'`.
 - **Expected:** 7,171 rows in and out. Flags: ok 6,962; unknown 110; outside_nyc 74; unmatched 25.
   An inner join to `zones` on both ids keeps only 7,146 rows (it silently loses 25).
-- **Pass:** 7,171 rows; the multiset of `(row_id, pu_zone, do_zone, zone_flag)` equals the reference
-  `data/reference/floor2.sql`; all columns of `trips` present and unchanged.
+- **Pass:** 7,171 rows; the multiset of `row_id`, `pu_zone`, `do_zone`, `zone_flag` equals the reference
+  data/reference/floor2.sql; all columns of `trips` present and unchanged.
 - **Aha line:** a join can drop rows without an error. "Unknown" (264) is in the lookup, so an anti-join cannot find it; a missing id (0, NULL) is not, so only a left join shows it. Flag, do not delete.
 
 ## Floor 3: Impossible rides (range checks and quarantine)

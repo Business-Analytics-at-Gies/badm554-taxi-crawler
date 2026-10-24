@@ -32,12 +32,12 @@ const packs = [
       {
         "title": "Keep a whole row from each group",
         "text": "ROW_NUMBER numbers rows inside each PARTITION BY group. ORDER BY chooses which copy comes first. Put the numbered rows in a CTE, then use WHERE rn = 1 in the final SELECT to keep one whole row per group. Leave rn out of the answer.",
-        "sql": "WITH deliveries(ride, copy) AS (VALUES (1, 1), (1, 2), (2, 1)),\nranked AS (SELECT *, row_number() OVER (PARTITION BY ride ORDER BY copy) AS rn FROM deliveries)\nSELECT ride, copy FROM ranked WHERE rn = 1;"
+        "sql": "WITH deliveries(ride, \"copy\") AS (VALUES (1, 1), (1, 2), (2, 1)),\nranked AS (SELECT *, row_number() OVER (PARTITION BY ride ORDER BY \"copy\") AS rn FROM deliveries)\nSELECT ride, \"copy\" FROM ranked WHERE rn = 1;"
       },
       {
         "title": "What DISTINCT compares",
         "text": "DISTINCT compares only the selected columns. Two loads of one ride can have different copy numbers, so selecting every column keeps both. Selecting just ride gives one ride value. This differs from keeping one complete row with ROW_NUMBER.",
-        "sql": "WITH loads(ride, copy) AS (VALUES (1, 1), (1, 2))\nSELECT DISTINCT ride FROM loads;"
+        "sql": "WITH loads(ride, \"copy\") AS (VALUES (1, 1), (1, 2))\nSELECT DISTINCT ride FROM loads;"
       },
       {
         "title": "Round a displayed amount",
@@ -182,7 +182,7 @@ const packs = [
         }
       ]
     },
-    "rulesText": "## Floor 1: The double shift (duplicates)\n\n- **Tables given:** `trips_raw`, `zones`.\n- **The dirt (planted):** the load for pickups on 2024-01-15 ran twice. The 174 second copies have\n  new `row_id` values and `loaded_at = 2024-02-01 06:40`. So `SELECT DISTINCT *` removes nothing.\n- **Trip key:** `(vendor_id, pickup_at, dropoff_at, pu_location_id, do_location_id, total_amount)`.\n  In the full January file this key has no duplicates (checked: 0 duplicate groups in 2,964,624 rows).\n- **Task:** return an answer with exactly one row per trip key, every column of `trips_raw`.\n- **Expected:** 7,345 rows in, 7,171 out. Revenue (`sum(total_amount)`) 197,977.97 in, 193,403.10 out.\n- **Pass:** the answer has the columns of `trips_raw` (any order, extra columns not allowed);\n  every row in it is an unchanged row of `trips_raw` (multiset check on all columns);\n  7,171 rows; 7,171 distinct trip keys. Which copy survives does not matter.\n- **Aha line:** a duplicate is defined by a key you choose, not by \"every column equal\". Count before, count after, and explain the difference (174 = the rerun).\n\n",
+    "rulesText": "## Floor 1: The double shift (duplicates)\n\n- **Tables given:** `trips_raw`, `zones`.\n- **The dirt (planted):** the load for pickups on 2024-01-15 ran twice. The 174 second copies have\n  new `row_id` values and `loaded_at = TIMESTAMP '2024-02-01 06:40:00'`. So `SELECT DISTINCT * FROM trips_raw` removes nothing.\n- **Trip key:** `vendor_id`, `pickup_at`, `dropoff_at`, `pu_location_id`, `do_location_id`, `total_amount`.\n  In the full January file this key has no duplicates (checked: 0 duplicate groups in 2,964,624 rows).\n- **Task:** return an answer with exactly one row per trip key, every column of `trips_raw`.\n- **Expected:** 7,345 rows in, 7,171 out. Revenue (`sum(total_amount)`) 197,977.97 in, 193,403.10 out.\n- **Pass:** the answer has the columns of `trips_raw` (any order, extra columns not allowed);\n  every row in it is an unchanged row of `trips_raw` (multiset check on all columns);\n  7,171 rows; 7,171 distinct trip keys. Which copy survives does not matter.\n- **Aha line:** a duplicate is defined by a key you choose, not by \"every column equal\". Count before, count after, and explain the difference (174 = the rerun).\n\n",
     "emblem": "/learn/img/floor1.svg",
     "tripKey": [
       "vendor_id",
@@ -281,7 +281,8 @@ const packs = [
       "C082",
       "C084",
       "SELECT_DISTINCT",
-      "ROUND"
+      "ROUND",
+      "C085"
     ],
     "refreshes": {
       "SELECT_DISTINCT": "What DISTINCT compares",
@@ -451,7 +452,7 @@ const packs = [
       }
     },
     "tables": {},
-    "rulesText": "## Floor 2: Nowhere zones (joins, NULLs and sentinels)\n\n- **Tables given:** `trips` (floor 1's reference output, 7,171 rows), `zones`.\n- **The dirt:** real: 110 trips touch zone 264 \"Unknown\", 74 touch zone 265 \"Outside of NYC\".\n  Planted: 15 drop-off ids are 0 (not in the lookup) and 10 drop-off ids are NULL.\n- **Task:** return an answer: every row of `trips`, plus `pu_zone`, `do_zone` (the zone name,\n  NULL when there is no match) and `zone_flag`, the first that applies:\n  1. `'unmatched'`: either id is NULL or not in `zones`;\n  2. `'unknown'`: either id is 264;\n  3. `'outside_nyc'`: either id is 265;\n  4. `'ok'`.\n- **Expected:** 7,171 rows in and out. Flags: ok 6,962; unknown 110; outside_nyc 74; unmatched 25.\n  An inner join to `zones` on both ids keeps only 7,146 rows (it silently loses 25).\n- **Pass:** 7,171 rows; the multiset of `(row_id, pu_zone, do_zone, zone_flag)` equals the reference\n  `data/reference/floor2.sql`; all columns of `trips` present and unchanged.\n- **Aha line:** a join can drop rows without an error. \"Unknown\" (264) is in the lookup, so an anti-join cannot find it; a missing id (0, NULL) is not, so only a left join shows it. Flag, do not delete.\n\n",
+    "rulesText": "## Floor 2: Nowhere zones (joins, NULLs and sentinels)\n\n- **Tables given:** `trips` (floor 1's reference output, 7,171 rows), `zones`.\n- **The dirt:** real: 110 trips touch zone 264 \"Unknown\", 74 touch zone 265 \"Outside of NYC\".\n  Planted: 15 drop-off ids are 0 (not in the lookup) and 10 drop-off ids are NULL.\n- **Task:** return an answer: every row of `trips`, plus `pu_zone`, `do_zone` (the zone name,\n  NULL when there is no match) and `zone_flag`, the first that applies:\n  1. `'unmatched'`: either id is NULL or not in `zones`;\n  2. `'unknown'`: either id is 264;\n  3. `'outside_nyc'`: either id is 265;\n  4. `'ok'`.\n- **Expected:** 7,171 rows in and out. Flags: ok 6,962; unknown 110; outside_nyc 74; unmatched 25.\n  An inner join to `zones` on both ids keeps only 7,146 rows (it silently loses 25).\n- **Pass:** 7,171 rows; the multiset of `row_id`, `pu_zone`, `do_zone`, `zone_flag` equals the reference\n  data/reference/floor2.sql; all columns of `trips` present and unchanged.\n- **Aha line:** a join can drop rows without an error. \"Unknown\" (264) is in the lookup, so an anti-join cannot find it; a missing id (0, NULL) is not, so only a left join shows it. Flag, do not delete.\n\n",
     "emblem": "/learn/img/floor2.svg",
     "ruleIds": [
       "exists",
@@ -771,7 +772,6 @@ const packs = [
       "CASE_WHEN",
       "UNION_ALL",
       "AGGREGATE_FILTER",
-      "C036",
       "C008"
     ],
     "refreshes": {
@@ -782,8 +782,7 @@ const packs = [
       "C007": "Filter ranges and combine conditions",
       "C085": "Filter ranges and combine conditions",
       "C021": "Check counts by reason",
-      "C024": "Check counts by reason",
-      "C036": "Stack results with UNION ALL"
+      "C024": "Check counts by reason"
     },
     "hints": {
       "exists": [

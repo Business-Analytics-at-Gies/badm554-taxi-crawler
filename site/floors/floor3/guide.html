@@ -63,8 +63,8 @@ FROM trips;</code></pre>
         <p class="lv-tag">Lv 3 · The real SQL</p>
         <pre><code>CASE WHEN fare_amount &lt; 0 THEN 'negative_fare'
      WHEN dropoff_at &lt; pickup_at THEN 'time_travel'
-     WHEN /* outside January */ THEN 'outside_january'
-     WHEN /* zero miles, fare of 50 or more */ THEN 'zero_distance_high_fare'
+     WHEN ___ /* outside January */ THEN 'outside_january'
+     WHEN ___ /* zero miles, fare of 50 or more */ THEN 'zero_distance_high_fare'
 END AS reason  -- NULL: the row passes every rule</code></pre>
       </div>
     </article>
@@ -80,7 +80,7 @@ END AS reason  -- NULL: the row passes every rule</code></pre>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
         <pre><code>WITH checked AS (
-  SELECT *, /* your CASE */ AS reason FROM trips
+  SELECT *, ___ /* your CASE */ AS reason FROM trips
 )
 SELECT * FROM checked;</code></pre>
       </div>
@@ -93,11 +93,11 @@ SELECT * FROM checked;</code></pre>
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
         <p>By reason: negative_fare 132, zero_distance_high_fare 47, time_travel 20, outside_january 17.</p>
-        <p>The check passes when the answer holds every original trip exactly once, keeps its values, and has the expected <code>(row_id, reason)</code> pairs, including NULL for clean trips.</p>
+        <p>The check passes when the answer holds every original trip exactly once, keeps its values, and has the expected <code>row_id</code>, <code>reason</code> pairs, including NULL for clean trips.</p>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
-        <pre><code>WITH answer AS (/* your answer query */)
+        <pre><code>WITH answer(reason) AS (___ /* your answer query */)
 SELECT count(*) FILTER (WHERE reason IS NULL) AS clean,
        count(*) FILTER (WHERE reason IS NOT NULL) AS bad,
        count(*) AS total FROM answer;</code></pre>

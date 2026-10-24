@@ -17,3 +17,8 @@ SQL refresher link, then an inspection outline with blanks. Repeated failures
 advance each rule separately, even with the tutor closed. Passing a rule resets
 its ladder; a full pass or Restart floor resets that floor. See the
 [R4 verification](docs/v2/stage2-r4-verification.md).
+
+Floor content also passes a teaching check against the pinned course graph and
+DuckDB engine. SQL must use reviewed constructs and names; unfamiliar forms fail
+until they are mapped and taught. See the [R3b verification note](docs/v2/stage2-r3b-verification.md)
+for the source rules, migrations and regression evidence.

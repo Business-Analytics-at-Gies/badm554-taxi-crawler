@@ -73,10 +73,10 @@ FROM (SELECT DISTINCT vendor_id, pickup_at, dropoff_at,
         <p class="lv-tag">Lv 3 · The real SQL</p>
         <pre><code>WITH ranked AS (
   SELECT *, row_number() OVER (
-    PARTITION BY /* your trip key */ ORDER BY row_id) AS rn
+    PARTITION BY ___ /* your trip key */ ORDER BY row_id) AS rn
   FROM trips_raw
 )
-SELECT /* source columns, without rn */ FROM ranked WHERE rn = 1;</code></pre>
+SELECT ___ /* source columns, without rn */ FROM ranked WHERE rn = 1;</code></pre>
       </div>
     </article>
     <article class="slide" id="f1-reconcile" data-title="Count before and after" aria-labelledby="h-f1-reconcile">
@@ -91,7 +91,7 @@ SELECT /* source columns, without rn */ FROM ranked WHERE rn = 1;</code></pre>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
-        <pre><code>WITH answer AS (/* your answer query */)
+        <pre><code>WITH answer AS (___ /* your answer query */)
 SELECT count(*) AS rows,
        round(sum(total_amount), 2) AS revenue
 FROM answer;</code></pre>

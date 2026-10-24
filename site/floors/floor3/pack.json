@@ -165,7 +165,6 @@
     "CASE_WHEN",
     "UNION_ALL",
     "AGGREGATE_FILTER",
-    "C036",
     "C008"
   ],
   "refreshes": {
@@ -176,8 +175,7 @@
     "C007": "Filter ranges and combine conditions",
     "C085": "Filter ranges and combine conditions",
     "C021": "Check counts by reason",
-    "C024": "Check counts by reason",
-    "C036": "Stack results with UNION ALL"
+    "C024": "Check counts by reason"
   },
   "hints": {
     "exists": [

@@ -30,5 +30,13 @@
   "ROUND": {
     "name": "ROUND",
     "reason": "No explicit graph lesson for numeric rounding; teach the function locally when displaying rounded revenue."
+  },
+  "EXTRACT": {
+    "name": "EXTRACT date part",
+    "reason": "C036 bundles untaught date extraction with UNION ALL. Separate credit prevents a UNION ALL refresher from authorizing date extraction."
+  },
+  "UNION": {
+    "name": "UNION (remove duplicates)",
+    "reason": "Plain UNION removes duplicates; a UNION ALL lesson teaches keeping duplicates and cannot earn credit for this separate operation."
   }
 }

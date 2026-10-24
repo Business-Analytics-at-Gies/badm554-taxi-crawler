@@ -81,9 +81,9 @@ WHERE dz.location_id IS NULL;  -- the 25 that match nothing</code></pre>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
-        <pre><code>CASE WHEN /* a pickup or drop-off with no match */ THEN 'unmatched'
-     WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'
-     WHEN /* ... 265 ... */ THEN 'outside_nyc'
+        <pre><code>CASE WHEN ___ /* a pickup or drop-off with no match */ THEN 'unmatched'
+     WHEN pu_location_id = 264 OR do_location_id = 264 THEN 'unknown'
+     WHEN ___ /* ... 265 ... */ THEN 'outside_nyc'
      ELSE 'ok' END AS zone_flag</code></pre>
       </div>
     </article>
@@ -95,11 +95,11 @@ WHERE dz.location_id IS NULL;  -- the 25 that match nothing</code></pre>
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
         <p>Flags: ok 6,962, unknown 110, outside_nyc 74, unmatched 25. Together they make 7,171.</p>
-        <p>The check passes when your answer has 7,171 rows, keeps every column of <code>trips</code> unchanged, and has the expected <code>(row_id, pu_zone, do_zone, zone_flag)</code> values.</p>
+        <p>The check passes when your answer has 7,171 rows, keeps every column of <code>trips</code> unchanged, and has the expected <code>row_id</code>, <code>pu_zone</code>, <code>do_zone</code>, <code>zone_flag</code> values.</p>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
-        <pre><code>WITH answer AS (/* your answer query */)
+        <pre><code>WITH answer(zone_flag) AS (___ /* your answer query */)
 SELECT zone_flag, count(*) AS trips
 FROM answer
 GROUP BY zone_flag

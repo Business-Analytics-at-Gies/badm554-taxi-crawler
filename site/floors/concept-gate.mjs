@@ -1,18 +1,27 @@
-// Trusted, versioned content only. Detection inspects SQL; refresher proof also
-// executes its example through the learner runner on a fresh copy of its givens.
 import { lessonStatements } from '../game/db/lesson-policy.mjs';
-import { detectTokenContext } from './sql-context.mjs';
-const literal = sql => `'${sql.replaceAll("'", "''")}'`;
+import { nativeTokens, nativeStatements } from '../game/db/sql.js';
+import { CONCEPT_MAP } from './concept-map.mjs';
+import { checkBound, inspectBoundPlan } from './concept-bound.mjs';
+import { blankVariants } from './sql-blanks.mjs';
+import { inspectTree, detectComputedZeros } from './concept-tree.mjs';
+export { CONCEPT_MAP, inspectTree, inspectBoundPlan };
+const literal = (sql) => `'${sql.replaceAll("'", "''")}'`;
 
 export function parseGraph(csv) {
-  const rows = []; let row = [], cell = '', quoted = false;
+  const rows = [];
+  let row = [],
+    cell = '',
+    quoted = false;
   for (let i = 0; i < csv.length; i++) {
     const ch = csv[i];
     if (ch === '"') {
-      if (quoted && csv[i + 1] === '"') { cell += '"'; i++; }
-      else quoted = !quoted;
+      if (quoted && csv[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else quoted = !quoted;
     } else if (!quoted && (ch === ',' || ch === '\n' || ch === '\r')) {
-      row.push(cell); cell = '';
+      row.push(cell);
+      cell = '';
       if (ch !== ',') {
         if (row.some(Boolean)) rows.push(row);
         row = [];
@@ -21,9 +30,13 @@ export function parseGraph(csv) {
     } else cell += ch;
   }
   if (quoted) throw new Error('Unclosed CSV quote');
-  if (cell || row.length) { row.push(cell); rows.push(row); }
+  if (cell || row.length) {
+    row.push(cell);
+    rows.push(row);
+  }
   const header = rows.shift();
-  if (header?.join(',') !== 'ConceptID,ConceptName,TaughtIn') throw new Error('Expected the three learning-graph columns');
+  if (header?.join(',') !== 'ConceptID,ConceptName,TaughtIn')
+    throw new Error('Expected the three learning-graph columns');
   const graph = {};
   for (const fields of rows) {
     if (fields.length !== 3 || graph[fields[0]]) throw new Error('Invalid or duplicate graph row');
@@ -32,221 +45,340 @@ export function parseGraph(csv) {
   return graph;
 }
 
-function fromAST(ast) {
-  const found = new Set(),
-    add = (id) => found.add(id);
-  const zero = (node) =>
-    node?.class === 'CONSTANT' &&
-    !node.value?.is_null &&
-    typeof node.value?.value !== 'string' &&
-    Number(node.value?.value) === 0;
-  const bindCTEs = (node, env) => {
-    if (!node?.cte_map?.map?.length) return env;
-    const next = new Map(env);
-    for (const e of node.cte_map.map) next.set(e.key.toLowerCase(), e.value.query.node);
-    return next;
-  };
-  const inputJoins = (node, env, seen = new Set()) => {
-    if (!node || typeof node !== 'object' || seen.has(node)) return { join: false, left: false };
-    seen.add(node);
-    env = bindCTEs(node, env);
-    if (node.type === 'BASE_TABLE' && !node.schema_name && env.has(node.table_name?.toLowerCase()))
-      return inputJoins(env.get(node.table_name.toLowerCase()), env, seen);
-    const result = {
-      join: node.type === 'JOIN',
-      left: node.type === 'JOIN' && node.join_type === 'LEFT',
-    };
-    // Follow table inputs and set-operation inputs, not scalar subqueries or
-    // unrelated statements. This also handles JOIN -> CTE -> GROUP/NULL check.
-    for (const key of ['node', 'from_table', 'subquery', 'left', 'right']) {
-      const child = inputJoins(node[key], env, seen);
-      result.join ||= child.join;
-      result.left ||= child.left;
-    }
-    return result;
-  };
-  const visit = (node, inCTE = false, scope = null, inFrame = false, bindings = new Map()) => {
-    if (!node || typeof node !== 'object') return;
-    const entries = node.cte_map?.map ?? [];
-    bindings = bindCTEs(node, bindings);
-    if (entries.length || node.type === 'RECURSIVE_CTE_NODE') add('C033');
-    for (const entry of entries) visit(entry.value.query, true, null, false, bindings);
-    const select = node.type === 'SELECT_NODE';
-    if (select) {
-      scope = {
-        group: !!node.group_expressions?.length,
-        ...inputJoins(node.from_table, bindings),
-        nullTest: false,
-      };
-      inFrame = false;
-      add('C005');
-      if (node.from_table && node.from_table.type !== 'EMPTY') add('C006');
-      if (node.where_clause) add('C007');
-      if (scope.group) add('C021');
-      if (node.having) add('C024');
-      if (node.qualify) add('C035');
-      if (
-        node.modifiers?.some(
-          (m) => (m.type === 'ORDER_MODIFIER' && m.orders?.length) || m.type === 'LIMIT_MODIFIER',
-        )
-      )
-        add('C008');
-    }
-    if (node.type === 'EXPRESSION_LIST') add('C003');
-    if (node.type === 'SUBQUERY' || node.class === 'SUBQUERY') add('C032');
-    if (node.type === 'DISTINCT_MODIFIER') add('SELECT_DISTINCT');
-    if (['OPERATOR_IS_NULL', 'OPERATOR_IS_NOT_NULL'].includes(node.type)) {
-      add('C016');
-      add('C085');
-      if (scope) scope.nullTest = true;
-    }
-    if (node.type === 'OPERATOR_COALESCE') add('C020');
-    if (
-      node.class === 'BETWEEN' ||
-      (node.class === 'COMPARISON' && (zero(node.left) || zero(node.right)))
-    )
-      add('C085');
-    if (node.class === 'CASE') add('CASE_WHEN');
-    if (
-      node.class === 'CAST' &&
-      !inFrame &&
-      /^(?:DATE|TIME|TIMESTAMP|TIMESTAMP_TZ|TIME_TZ|INTERVAL)/.test(node.cast_type?.id ?? '')
-    )
-      add('C085');
-    if (node.type === 'SET_OPERATION_NODE' && node.setop_type === 'UNION' && node.setop_all) {
-      add('UNION_ALL');
-      add('C036');
-    }
-    if (node.type === 'JOIN') {
-      if (scope) scope.join = true;
-      if (node.condition || node.using_columns?.length) add('C013');
-      if (node.join_type === 'LEFT') {
-        add('C015');
-        if (scope) scope.left = true;
-      }
-      if (['RIGHT', 'FULL'].includes(node.join_type)) add('C017');
-      if (node.join_type === 'INNER') add('C014');
-    }
-    const fn = node.function_name?.toLowerCase();
-    if (fn === 'count_star') {
-      add('C010');
-      if (scope?.group) add('C022');
-    }
-    if (['sum', 'avg', 'min', 'max', 'count'].includes(fn)) add('C022');
-    if (fn === 'count' && node.distinct) add('COUNT_DISTINCT');
-    if (fn === 'coalesce') add('C020');
-    if (fn === 'round') add('ROUND');
-    if (['extract', 'date_part'].includes(fn)) add('C036');
-    if (['read_csv', 'read_csv_auto', 'csv_scan', 'read_parquet', 'parquet_scan'].includes(fn))
-      add('C052');
-    if (['row_number', 'rank', 'dense_rank'].includes(fn)) add('C028');
-    if (['lag', 'lead'].includes(fn)) add('C030');
-    if ((node.filter || node.filter_expr) && node.function_name) add('AGGREGATE_FILTER');
-    if (node.class === 'WINDOW') {
-      add('C025');
-      if (node.partitions?.length) add('C026');
-      if (node.orders?.length || node.start_expr || node.end_expr) add('C027');
-      if (fn === 'sum' && node.orders?.length) add('C029');
-      if (inCTE) add('C034');
-    }
-    for (const [key, child] of Object.entries(node)) {
-      if (key === 'cte_map' || !child || typeof child !== 'object') continue;
-      const frame =
-        (node.class === 'WINDOW' && ['start_expr', 'end_expr'].includes(key)) || inFrame;
-      const childFrame = node.class === 'COMPARISON' || node.class === 'BETWEEN' ? false : frame;
-      if (Array.isArray(child)) child.forEach((x) => visit(x, inCTE, scope, childFrame, bindings));
-      else visit(child, inCTE, scope, childFrame, bindings);
-    }
-    if (select) {
-      if (scope.group && scope.join) add('C023');
-      if (scope.left && scope.nullTest) add('C083');
-    }
-  };
-  visit(ast);
-  return [...found].sort();
+// Text outside code markup is intentionally prose, per R3b 3a.
+const decode = (html) =>
+  html.replace(
+    /&(?:lt|gt|amp|quot|apos|#39|#96);/g,
+    (s) =>
+      ({
+        '&lt;': '<',
+        '&gt;': '>',
+        '&amp;': '&',
+        '&quot;': '"',
+        '&apos;': "'",
+        '&#39;': "'",
+        '&#96;': '`',
+      })[s],
+  );
+export function markedSources(text, source) {
+  const out = [];
+  let i = 0;
+  // Match the outer pre first, so pre/code pairs are one source, not two.
+  const rest = String(text ?? '').replace(
+    /<pre\b[^>]*>([\s\S]*?)<\/pre>|<code\b[^>]*>([\s\S]*?)<\/code>/gi,
+    (_, pre, code) => {
+      out.push({
+        source: `${source} SQL ${++i}`,
+        sql: decode((pre ?? code).replace(/<[^>]*>/g, ' ')),
+        kind: pre === undefined ? 'inline' : 'pre',
+      });
+      return ' ';
+    },
+  );
+  for (const m of rest.matchAll(/`([^`]+)`/g))
+    out.push({
+      source: `${source} SQL ${++i}`,
+      sql: decode(m[1]),
+      kind: 'inline',
+    });
+  const residue = rest.replace(/`([^`]+)`/g, ' ');
+  if (/<\/?(?:code|pre)\b|`/i.test(residue))
+    out.push({ source: `${source} incomplete code markup`, sql: residue, kind: 'inline' });
+  return out;
 }
-
-export async function detectSQL(conn, sql) {
-  const table = await conn.query(`SELECT system.main.json_serialize_sql(${literal(sql)}) AS ast`);
-  const ast = JSON.parse(table.toArray()[0].ast);
-  // Structural tokens cover unfinished SQL, DDL and unused window definitions.
-  // Complete SELECT expressions are classified from DuckDB's native tree.
-  const tokens = await detectTokenContext(conn, sql);
-  if (!ast.error) {
-    // Native ASTs resolve named/inherited windows and distinguish clauses. Only
-    // window-definition syntax (which can be unused and omitted from the AST)
-    // supplements the tree; generic keyword matches never override its context.
-    return { concepts: [...new Set([...fromAST(ast), ...tokens.filter(id => ['C026','C027'].includes(id))])].sort(), method: 'parser' };
-  }
-  // The pinned serializer supports SELECT-family ASTs. Valid DDL returns its
-  // explicit 'not implemented' response; both that case and partial teaching SQL
-  // use native tokens. A tokenizer/connection failure is reported by the gate.
-  return { concepts: tokens, method: 'tokens' };
-}
-
-const decode = html => html.replace(/&(?:lt|gt|amp|quot|#39);/g, s => ({'&lt;':'<','&gt;':'>','&amp;':'&','&quot;':'"','&#39;':"'"}[s]));
 export function sqlSources(pack) {
-  const sources = [{ source: 'reference', sql: pack.referenceSql ?? '' }];
-  for (const lesson of pack.refresher ?? []) sources.push({ source: `refresher: ${lesson.title}`, sql: lesson.sql ?? '' });
-  for (const [i, match] of [...(pack.guide ?? '').matchAll(/<code\b[^>]*>([\s\S]*?)<\/code>/gi)].entries()) {
-    sources.push({ source: `guide SQL ${i + 1}`, sql: decode(match[1].replace(/<[^>]*>/g, ' ')) });
-  }
+  const out = [{ source: 'reference', sql: pack.referenceSql ?? '', kind: 'complete' }];
+  for (const l of pack.refresher ?? [])
+    out.push({
+      source: `refresher: ${l.title}`,
+      sql: l.sql ?? '',
+      kind: 'complete',
+      lesson: true,
+    });
   const walk = (value, path) => {
+    if (typeof value === 'string') {
+      out.push(...markedSources(value, path));
+      return;
+    }
     if (!value || typeof value !== 'object') return;
     for (const [key, child] of Object.entries(value)) {
-      if (['outline', 'sql'].includes(key) && typeof child === 'string') sources.push({ source: `${path}.${key}`, sql: child });
-      else if (child && typeof child === 'object') walk(child, `${path}.${key}`);
+      if (['referenceSql', 'checkSource', 'generatedGuide'].includes(key)) continue;
+      if ((key === 'sql' && path.startsWith('pack.refresher')) || key === 'outline') {
+        if (key === 'outline') out.push({ source: `${path}.${key}`, sql: child, kind: 'complete' });
+      } else
+        walk(
+          child,
+          path === 'pack' && key === 'guide'
+            ? 'guide'
+            : path === 'pack' && key === 'hints'
+              ? 'hint'
+              : `${path}.${key}`,
+        );
     }
   };
-  walk(pack.hints, 'hint');
-  return sources.filter(item => item.sql.trim());
+  walk(pack, 'pack');
+  if (pack.generatedGuide) out.push(...markedSources(pack.generatedGuide, 'built guide'));
+  // The builder supplies decoded JS literal fragments (including template
+  // fragments) without executing check.js. Scan all of them, conservatively,
+  // rather than guessing which branch might display a message.
+  for (const [i, text] of (pack.checkMessages ?? []).entries())
+    out.push(...markedSources(text, `check.js message ${i + 1}`));
+  return out;
 }
-
-export async function checkConcepts(conn, pack, graph, overrides) {
-  const errors = [], detected = [];
-  const declared = new Set(pack.concepts ?? []), refreshed = new Set();
+const rewriteMessage = 'Rewrite it so that each blank stands for one name, value or query.';
+async function filledSources(conn, sql) {
+  return [...(await blankVariants(conn, sql, (i) => [`__concept_blank_${i}`, 'SELECT NULL']))];
+}
+async function parse(conn, sql) {
+  try {
+    const statements = await nativeStatements(conn, sql);
+    if (!statements.length) return null;
+    const table = await conn.query(`SELECT system.main.json_serialize_sql(${literal(sql)}) AS ast`);
+    const ast = JSON.parse(table.toArray()[0].ast);
+    if (ast.error && ast.error_type !== 'not implemented') return null;
+    return { ast, sql };
+  } catch {
+    return null;
+  }
+}
+export async function detectSQL(
+  conn,
+  sql,
+  { kind = 'complete', map = CONCEPT_MAP, nameContext = {} } = {},
+) {
+  const errors = [],
+    used = [],
+    concepts = [],
+    confirmed = [];
+  const tokens = await nativeTokens(conn, sql);
+  for (const t of tokens)
+    if (t.type === 4) {
+      const word = t.text.match(/^[A-Za-z_][A-Za-z_0-9$]*/)?.[0].toUpperCase();
+      if (!Object.hasOwn(map.keywords, word))
+        errors.push(`unmapped keyword ${word}; quote it if it is a name`);
+      else used.push(`keyword:${word}`);
+    }
+  const phrase = sql.trim().replace(/\s+/g, ' ').toUpperCase();
+  if (['inline', 'pre'].includes(kind) && Object.hasOwn(map.phrases, phrase)) {
+    used.push(`phrase:${phrase}`);
+    concepts.push(...map.phrases[phrase].ids);
+    return {
+      errors,
+      concepts,
+      confirmed,
+      used,
+      method: 'phrase',
+      kind: 'phrase',
+    };
+  }
+  // Removing a used phrase must not let a command/keyword become a bare name.
+  const name = /^(?:[a-z_][a-z_0-9$]*|"(?:[^"]|"")+")(?:\.(?:[a-z_][a-z_0-9$]*|"(?:[^"]|"")+"))*$/i;
+  const candidates = await filledSources(conn, sql);
+  let selected = null,
+    sourceKind = 'complete';
+  for (const candidate of candidates) {
+    const r = await parse(conn, candidate);
+    if (r) {
+      selected = r;
+      break;
+    }
+  }
+  if (!selected && kind === 'inline' && name.test(sql.trim())) {
+    const wrapped = await parse(conn, `SELECT ${sql}`);
+    const ref = wrapped?.ast.statements?.[0]?.node?.select_list?.[0];
+    if (ref?.class === 'COLUMN_REF') {
+      const value = ref.column_names.at(-1).toLowerCase();
+      const allowed = new Set(
+        [
+          ...(nameContext.columns ?? []),
+          ...(nameContext.tables ?? []),
+          ...(nameContext.defined ?? []),
+        ].map((n) => n.toLowerCase()),
+      );
+      if (!allowed.has(value) && value !== '___') errors.push(`unknown name ${value}`);
+      const entry = map.entries['name:inline'];
+      if (!entry) errors.push(`unmapped construct inline name: ${value}`);
+      else used.push('name:inline');
+      return { errors, concepts, confirmed, used, method: 'name', kind: 'name' };
+    }
+  }
+  if (!selected && ['inline', 'pre'].includes(kind))
+    for (const candidate of candidates) {
+      const r = await parse(conn, `SELECT ${candidate}`);
+      if (r) {
+        selected = r;
+        sourceKind = 'expression';
+        break;
+      }
+    }
+  if (!selected) {
+    errors.push(rewriteMessage);
+    return { errors, concepts, confirmed, used, method: 'rejected', kind };
+  }
+  if (selected.ast.error) {
+    errors.push(`unmapped construct $: ${selected.ast.error_message}`);
+    return {
+      errors,
+      concepts,
+      confirmed,
+      used,
+      method: 'rejected',
+      kind: sourceKind,
+    };
+  }
+  const tree = await detectComputedZeros(
+    conn,
+    selected.ast,
+    inspectTree(selected.ast, map, nameContext),
+    map,
+  );
+  const bound =
+    errors.length || tree.errors.length
+      ? { errors: [], used: [] }
+      : await checkBound(conn, sql, {
+          expression: sourceKind === 'expression',
+          nameContext,
+          ast: selected.ast,
+          map,
+        });
+  return {
+    ...tree,
+    boundSql: bound.boundSql,
+    errors: [...errors, ...tree.errors, ...bound.errors],
+    used: [...used, ...tree.used, ...bound.used],
+    method: 'parser',
+    kind: sourceKind,
+  };
+}
+const nameCaches = new WeakMap();
+export async function sourceNameContext(conn, pack) {
+  let cache = nameCaches.get(conn);
+  if (!cache) {
+    cache = new Map();
+    nameCaches.set(conn, cache);
+  }
+  const key = JSON.stringify([pack.id, pack.given ?? {}]);
+  if (!cache.has(key)) {
+    const columns = new Set(),
+      schemas = {},
+      tables = Object.keys(pack.given ?? {});
+    const { runLesson } = await import('../game/db/db.js');
+    for (const table of tables) {
+      const result = await runLesson(
+        pack,
+        `SELECT * FROM "${table.replaceAll('"', '""')}" LIMIT 0`,
+      );
+      if (result.error) throw new Error(`Cannot inspect given table ${table}: ${result.error}`);
+      result.columns.forEach((name) => columns.add(name.toLowerCase()));
+      const qi = (name) => `"${name.replaceAll('"', '""')}"`;
+      const typeQuery =
+        'SELECT ' +
+        result.columns
+          .map((name) => `typeof((SELECT ${qi(name)} FROM ${qi(table)} LIMIT 1)) AS ${qi(name)}`)
+          .join(', ');
+      const types = await runLesson(pack, typeQuery);
+      if (types.error || types.rows.length !== 1)
+        throw new Error(`Cannot inspect given types for ${table}: ${types.error ?? 'no types'}`);
+      schemas[table] = result.columns.map((name, i) => ({ name, type: types.rows[0][i] }));
+    }
+    cache.set(key, { columns: [...columns], tables, schemas, defined: [] });
+  }
+  return structuredClone(cache.get(key));
+}
+export async function checkConcepts(conn, pack, graph, overrides, { map = CONCEPT_MAP } = {}) {
+  const errors = [],
+    detected = [],
+    declared = new Set(pack.concepts ?? []),
+    refreshed = new Set();
   const module = /^M([1-9]\d*)$/.exec(pack.module ?? '');
   if (!module) errors.push('Missing or invalid module');
   if (!declared.size) errors.push('Missing concepts');
   if (!pack.referenceSql?.trim()) errors.push('Missing reference SQL');
   if (!pack.refreshes || Array.isArray(pack.refreshes)) errors.push('Missing refreshes');
-  for (const source of sqlSources(pack)) {
-    try { detected.push({ source: source.source, ...await detectSQL(conn, source.sql) }); }
-    catch (e) { errors.push(`${source.source}: SQL inspection failed: ${e.message}`); }
+  let nameContext = { columns: [], tables: [], defined: [] };
+  try {
+    nameContext = await sourceNameContext(conn, pack);
+  } catch (e) {
+    errors.push(e.message);
   }
-  if (!detected.some(item => item.source === 'reference' && item.concepts.length)) errors.push('Empty reference concept scan');
-  for (const item of detected) for (const id of item.concepts) {
-    if (!declared.has(id)) errors.push(`${item.source}: undeclared ${id}`);
-  }
-  const executed = new Map();
-  for (const [id, title] of Object.entries(pack.refreshes ?? {})) {
-    if (!declared.has(id)) errors.push(`Refresher ${id} must also be declared`);
-    const lessons = (pack.refresher ?? []).filter(l => l.title === title);
-    if (lessons.length !== 1) { errors.push(`${id}: refresher ${title} is missing or ambiguous`); continue; }
-    const proof = detected.find(item => item.source === `refresher: ${title}`);
-    if (!proof?.concepts.includes(id)) errors.push(`${id}: refresher ${title} does not demonstrate the concept`);
-    else {
-      if (!executed.has(title)) {
-        let failure = null;
+  const sources = sqlSources(pack),
+    scans = [];
+  for (const source of sources) {
+    try {
+      const result = await detectSQL(conn, source.sql, {
+        kind: source.kind,
+        map,
+        nameContext,
+      });
+      if (source.lesson) {
         try {
-          await lessonStatements(conn, lessons[0].sql);
-          const { runLesson } = await import('../game/db/db.js');
-          const result = await runLesson(pack, lessons[0].sql);
-          failure = result.error ?? null;
-        } catch (e) { failure = e.message; }
-        executed.set(title, failure);
+          await lessonStatements(conn, source.sql, Object.keys(pack.given ?? {}));
+        } catch (e) {
+          result.errors.push(`Lesson does not run: ${e.message}`);
+        }
       }
-      const failure = executed.get(title);
-      if (failure) errors.push(`${id}: refresher ${title} does not run: ${failure}`);
-      else refreshed.add(id);
+      scans.push({ source, result });
+      if (result.kind === 'complete') nameContext.defined.push(...(result.definedNames ?? []));
+    } catch (e) {
+      errors.push(`${source.source}: SQL inspection failed: ${e.message}`);
     }
   }
-  for (const id of declared) {
-    if (!graph[id] && !overrides[id]?.reason) { errors.push(`Unknown concept ${id}`); continue; }
-    const taught = graph[id]?.TaughtIn ?? '';
-    const modules = [...taught.matchAll(/(?:^|[,;\s])M(\d+)/g)].map(m => Number(m[1]));
-    const prior = taught === 'S0' || module && modules.some(n => n <= Number(module[1]));
-    if ((!prior || overrides[id]) && !refreshed.has(id)) errors.push(`${id}: not taught by ${pack.module}; needs a demonstrated local refresher`);
+  nameContext.defined = [...new Set(nameContext.defined)];
+  for (const { source, result: initial } of scans) {
+    const result =
+      initial.kind === 'name'
+        ? await detectSQL(conn, source.sql, { kind: source.kind, map, nameContext })
+        : initial;
+    detected.push({ source: source.source, ...result });
+    for (const e of result.errors) errors.push(`${source.source}: ${e}`);
   }
-  return { errors: [...new Set(errors)], detected };
+  if (!detected.some((i) => i.source === 'reference' && i.concepts.length))
+    errors.push('Empty reference concept scan');
+  for (const item of detected)
+    for (const id of item.concepts)
+      if (!declared.has(id)) errors.push(`${item.source}: undeclared ${id}`);
+  const executed = new Map();
+  // Run every authored lesson, including those not named in refreshes.
+  for (const lesson of pack.refresher ?? []) {
+    const proof = detected.find((i) => i.source === `refresher: ${lesson.title}`);
+    let failure = proof?.errors.join('; ') || null;
+    if (!failure) {
+      try {
+        const { runLesson } = await import('../game/db/db.js');
+        failure = (await runLesson(pack, lesson.sql)).error ?? null;
+      } catch (e) {
+        failure = e.message;
+      }
+    }
+    executed.set(lesson.title, failure);
+    if (failure) errors.push(`refresher: ${lesson.title}: does not run: ${failure}`);
+  }
+  for (const [id, title] of Object.entries(pack.refreshes ?? {})) {
+    if (!declared.has(id)) errors.push(`Refresher ${id} must also be declared`);
+    const lessons = (pack.refresher ?? []).filter((l) => l.title === title);
+    if (lessons.length !== 1) {
+      errors.push(`${id}: refresher ${title} is missing or ambiguous`);
+      continue;
+    }
+    const proof = detected.find((i) => i.source === `refresher: ${title}`);
+    if (!proof?.confirmed.includes(id))
+      errors.push(
+        `${id}: refresher ${title} does not demonstrate the concept (confirmed proof required)`,
+      );
+    const failure = executed.get(title);
+    if (failure) errors.push(`${id}: refresher ${title} does not run: ${failure}`);
+    if (proof?.confirmed.includes(id) && !failure) refreshed.add(id);
+  }
+  for (const id of declared) {
+    if (!graph[id] && !overrides[id]?.reason) {
+      errors.push(`Unknown concept ${id}`);
+      continue;
+    }
+    const taught = graph[id]?.TaughtIn ?? '',
+      modules = [...taught.matchAll(/(?:^|[,;\s])M(\d+)/g)].map((m) => Number(m[1]));
+    const prior = taught === 'S0' || (module && modules.some((n) => n <= Number(module[1])));
+    if ((!prior || overrides[id]) && !refreshed.has(id))
+      errors.push(`${id}: not taught by ${pack.module}; needs a demonstrated local refresher`);
+  }
+  return { errors: [...new Set(errors)], detected, nameContext };
 }

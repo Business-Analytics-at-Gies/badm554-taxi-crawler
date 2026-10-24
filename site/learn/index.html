@@ -70,7 +70,7 @@
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
         <p>The data is 7,345 yellow taxi trips from January 2024, published by the NYC TLC, and the zone lookup with 265 zones. Some dirt is real, as TLC published it. Some is planted for the game: the duplicate load, and 25 drop-off ids that are 0 or empty. Ask the tutor which is which.</p>
-        <pre><code>SELECT count(*) FROM trips_raw;
+        <pre><code>SELECT count(*) FROM zones;
 SELECT * FROM zones LIMIT 5;</code></pre>
       </div>
       <div class="credit">
@@ -90,9 +90,9 @@ SELECT * FROM zones LIMIT 5;</code></pre>
       <section class="floor-refresher" id="f1-refresher" aria-labelledby="f1-refresher-h"><h4 id="f1-refresher-h">SQL refresher</h4><h5>A query in steps: WITH</h5><p>WITH names a query result so the next step can read it. The final SELECT returns your answer. These steps are one query; you do not need to save a table.</p><pre><code>WITH rides(id) AS (VALUES (1), (2))
 SELECT count(*) AS rides FROM rides;</code></pre><h5>A key, grain and repeated groups</h5><p>Grain means what one row represents. A key is the set of columns that identifies one item at that grain. GROUP BY collects rows with the same key; HAVING filters the groups after counting. DISTINCT compares only the columns you select.</p><pre><code>WITH deliveries(ride, fare) AS (VALUES (1, 12), (1, 12), (2, 18))
 SELECT ride, fare, count(*) FROM deliveries
-GROUP BY ride, fare HAVING count(*) &gt; 1;</code></pre><h5>Keep a whole row from each group</h5><p>ROW_NUMBER numbers rows inside each PARTITION BY group. ORDER BY chooses which copy comes first. Put the numbered rows in a CTE, then use WHERE rn = 1 in the final SELECT to keep one whole row per group. Leave rn out of the answer.</p><pre><code>WITH deliveries(ride, copy) AS (VALUES (1, 1), (1, 2), (2, 1)),
-ranked AS (SELECT *, row_number() OVER (PARTITION BY ride ORDER BY copy) AS rn FROM deliveries)
-SELECT ride, copy FROM ranked WHERE rn = 1;</code></pre><h5>What DISTINCT compares</h5><p>DISTINCT compares only the selected columns. Two loads of one ride can have different copy numbers, so selecting every column keeps both. Selecting just ride gives one ride value. This differs from keeping one complete row with ROW_NUMBER.</p><pre><code>WITH loads(ride, copy) AS (VALUES (1, 1), (1, 2))
+GROUP BY ride, fare HAVING count(*) &gt; 1;</code></pre><h5>Keep a whole row from each group</h5><p>ROW_NUMBER numbers rows inside each PARTITION BY group. ORDER BY chooses which copy comes first. Put the numbered rows in a CTE, then use WHERE rn = 1 in the final SELECT to keep one whole row per group. Leave rn out of the answer.</p><pre><code>WITH deliveries(ride, &quot;copy&quot;) AS (VALUES (1, 1), (1, 2), (2, 1)),
+ranked AS (SELECT *, row_number() OVER (PARTITION BY ride ORDER BY &quot;copy&quot;) AS rn FROM deliveries)
+SELECT ride, &quot;copy&quot; FROM ranked WHERE rn = 1;</code></pre><h5>What DISTINCT compares</h5><p>DISTINCT compares only the selected columns. Two loads of one ride can have different copy numbers, so selecting every column keeps both. Selecting just ride gives one ride value. This differs from keeping one complete row with ROW_NUMBER.</p><pre><code>WITH loads(ride, &quot;copy&quot;) AS (VALUES (1, 1), (1, 2))
 SELECT DISTINCT ride FROM loads;</code></pre><h5>Round a displayed amount</h5><p>ROUND(value, 2) displays an amount to two decimal places. Round a total for presentation after calculating it; do not change the source amounts while choosing which trips to keep.</p><pre><code>WITH amounts(total) AS (VALUES (1.105), (2.50))
 SELECT round(total, 2) AS cents FROM amounts;</code></pre><h5>Review in the textbook</h5><ul class="review-links"><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M4/I3/#two-ways-grain-goes-wrong" target="_blank" rel="noopener">M4I3 Grain: two ways grain goes wrong</a></li><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M5/I3/#what-a-functional-dependency-is" target="_blank" rel="noopener">M5I3 What a functional dependency is</a></li><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M6/I4/" target="_blank" rel="noopener">M6I4 Run It Again</a></li><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M1/I4/" target="_blank" rel="noopener">M1I4 Anatomy of a Query</a></li><li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M2/I4/" target="_blank" rel="noopener">M2I4 GROUP BY + Aggregate Functions</a></li></ul></section>
       <div class="lv" data-lv="1"><p class="control-task-panel">The task panel above Scratch holds the full rules and a checklist for Answer. Open it before writing your query; it starts collapsed on mobile. The checklist shows whether Answer has been run and its last row count. SQL refresher and About the data links beside it open the guide in a new tab.</p><p class="control-table-columns">Under Tables above Scratch, open a table chip to see its columns and types. Start with trips_raw to find the available names before writing a query. Opening a chip leaves your SQL and Result alone; Enter or Space opens and closes it from the keyboard.</p><p class="control-table-preview">Choose Preview beside any table chip under Tables to see its first 10 rows in a separate panel beside the console, or below it on a narrow screen. Start with trips_raw to see what a row holds. Preview leaves Scratch, Result and query records alone; Close preview takes you back to the chip.</p><p class="control-answer">Use Scratch to explore the given tables or make your own tables. Put one SELECT or WITH query in Answer. Run answer shows its rows in Result; Check floor grades only that query against the original given tables. You do not need to save a table.</p><p class="control-hint-ladder">After Check floor, each failed rule has its own hint ladder: first what is wrong, then an idea and a SQL refresher link, then an inspection query outline with blanks. Further failures stay on rung 3. Hints work with the tutor closed. Passing a rule resets its ladder; passing the floor or Restart floor resets that floor’s ladders.</p>
@@ -163,10 +163,10 @@ FROM (SELECT DISTINCT vendor_id, pickup_at, dropoff_at,
         <p class="lv-tag">Lv 3 · The real SQL</p>
         <pre><code>WITH ranked AS (
   SELECT *, row_number() OVER (
-    PARTITION BY /* your trip key */ ORDER BY row_id) AS rn
+    PARTITION BY ___ /* your trip key */ ORDER BY row_id) AS rn
   FROM trips_raw
 )
-SELECT /* source columns, without rn */ FROM ranked WHERE rn = 1;</code></pre>
+SELECT ___ /* source columns, without rn */ FROM ranked WHERE rn = 1;</code></pre>
       </div>
     </article>
     <article class="slide" id="f1-reconcile" data-title="Count before and after" aria-labelledby="h-f1-reconcile">
@@ -181,7 +181,7 @@ SELECT /* source columns, without rn */ FROM ranked WHERE rn = 1;</code></pre>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
-        <pre><code>WITH answer AS (/* your answer query */)
+        <pre><code>WITH answer AS (___ /* your answer query */)
 SELECT count(*) AS rows,
        round(sum(total_amount), 2) AS revenue
 FROM answer;</code></pre>
@@ -288,9 +288,9 @@ WHERE dz.location_id IS NULL;  -- the 25 that match nothing</code></pre>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
-        <pre><code>CASE WHEN /* a pickup or drop-off with no match */ THEN 'unmatched'
-     WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'
-     WHEN /* ... 265 ... */ THEN 'outside_nyc'
+        <pre><code>CASE WHEN ___ /* a pickup or drop-off with no match */ THEN 'unmatched'
+     WHEN pu_location_id = 264 OR do_location_id = 264 THEN 'unknown'
+     WHEN ___ /* ... 265 ... */ THEN 'outside_nyc'
      ELSE 'ok' END AS zone_flag</code></pre>
       </div>
     </article>
@@ -302,11 +302,11 @@ WHERE dz.location_id IS NULL;  -- the 25 that match nothing</code></pre>
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
         <p>Flags: ok 6,962, unknown 110, outside_nyc 74, unmatched 25. Together they make 7,171.</p>
-        <p>The check passes when your answer has 7,171 rows, keeps every column of <code>trips</code> unchanged, and has the expected <code>(row_id, pu_zone, do_zone, zone_flag)</code> values.</p>
+        <p>The check passes when your answer has 7,171 rows, keeps every column of <code>trips</code> unchanged, and has the expected <code>row_id</code>, <code>pu_zone</code>, <code>do_zone</code>, <code>zone_flag</code> values.</p>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
-        <pre><code>WITH answer AS (/* your answer query */)
+        <pre><code>WITH answer(zone_flag) AS (___ /* your answer query */)
 SELECT zone_flag, count(*) AS trips
 FROM answer
 GROUP BY zone_flag
@@ -400,8 +400,8 @@ FROM trips;</code></pre>
         <p class="lv-tag">Lv 3 · The real SQL</p>
         <pre><code>CASE WHEN fare_amount &lt; 0 THEN 'negative_fare'
      WHEN dropoff_at &lt; pickup_at THEN 'time_travel'
-     WHEN /* outside January */ THEN 'outside_january'
-     WHEN /* zero miles, fare of 50 or more */ THEN 'zero_distance_high_fare'
+     WHEN ___ /* outside January */ THEN 'outside_january'
+     WHEN ___ /* zero miles, fare of 50 or more */ THEN 'zero_distance_high_fare'
 END AS reason  -- NULL: the row passes every rule</code></pre>
       </div>
     </article>
@@ -417,7 +417,7 @@ END AS reason  -- NULL: the row passes every rule</code></pre>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
         <pre><code>WITH checked AS (
-  SELECT *, /* your CASE */ AS reason FROM trips
+  SELECT *, ___ /* your CASE */ AS reason FROM trips
 )
 SELECT * FROM checked;</code></pre>
       </div>
@@ -430,11 +430,11 @@ SELECT * FROM checked;</code></pre>
       <div class="lv" data-lv="2">
         <p class="lv-tag">Lv 2 · How the check works</p>
         <p>By reason: negative_fare 132, zero_distance_high_fare 47, time_travel 20, outside_january 17.</p>
-        <p>The check passes when the answer holds every original trip exactly once, keeps its values, and has the expected <code>(row_id, reason)</code> pairs, including NULL for clean trips.</p>
+        <p>The check passes when the answer holds every original trip exactly once, keeps its values, and has the expected <code>row_id</code>, <code>reason</code> pairs, including NULL for clean trips.</p>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
-        <pre><code>WITH answer AS (/* your answer query */)
+        <pre><code>WITH answer(reason) AS (___ /* your answer query */)
 SELECT count(*) FILTER (WHERE reason IS NULL) AS clean,
        count(*) FILTER (WHERE reason IS NOT NULL) AS bad,
        count(*) AS total FROM answer;</code></pre>
