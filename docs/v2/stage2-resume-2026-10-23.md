@@ -409,7 +409,12 @@ All other text is prose, which the gate does not check (item 3a).
    nodes may map to zero ids. Every operator, predicate and function maps to at least one id,
    or it is unmapped. `IS [NOT] DISTINCT FROM` gets its own id.
    **One definition per CTE name.** A statement may define each CTE name once. A nested `WITH`
-   that defines a name again fails as unmodelled scope. Both kinds make a concept
+   that defines a name again fails as unmodelled scope.
+   **One way to compare names.** Every part of the gate that compares identifiers (the scope
+   check, CTE reachability, confirmed shapes, the built-in probe, name tracking) uses one shared
+   function that matches DuckDB's comparison. Identifiers must be ASCII; a non-ASCII identifier
+   fails as unmodelled scope (code review r16: JavaScript's Unicode lowercasing made `"Ä"` and
+   `"ä"` one name, which DuckDB keeps apart). Both kinds make a concept
    required, so the author must declare it. Only a `confirmed` detection in a refresher's own
    example earns refresher credit. Inline phrase detections are `possible`. Example: a lesson that
    tests `t.n IS NULL` after `LEFT JOIN ... ON true` makes C083 possible, not confirmed, so it
@@ -452,6 +457,9 @@ All other text is prose, which the gate does not check (item 3a).
   NOT DISTINCT FROM NULL` after a `LEFT JOIN` makes C016, C083 and C085 possible;
   `WHERE 1 IN (CAST(1 - 1 AS INTEGER))` and `WHERE 1 IN (0)` make C085 possible. Each one in
   all seven source places the reviewer used.
+- Code review r16 fixture: the `"Ä"`/`"ä"` lesson fails as a non-ASCII identifier and earns no
+  C034 credit; the same lesson with `alpha` and `beta` earns no credit either. `WITH "Abc" AS
+  (SELECT 1 AS a) SELECT a FROM abc` resolves, as in DuckDB.
 - Code review r15 fixtures: floor 2's `hints.columns[0].text` set to
   ``Try `SELECT 1 WHERE 1<coalesce(NULL,1) AND 2>1`.`` fails as undeclared C020, and so does the
   same text in a `check.js` message; a `check.js` whose message sits between two regular
