@@ -255,13 +255,19 @@ All other text is prose, which the gate does not check (item 3a).
      column list such as `t(n)`, or a column name that a subquery or CTE in the statement
      selects;
    - the blank placeholder.
-   Any other name fails: `unknown name <name>`. This stops names that DuckDB resolves to
-   something else: an implicit subquery name (`SELECT unnamed_subquery FROM (SELECT row_id FROM
-   trips_raw)` returns whole rows) and a function without brackets (`SELECT current_schema`
-   reads the session). **Whole-row references.** A column reference whose name matches a table
-   name or alias in the same statement (for example `t` in `SELECT t FROM trips t`) returns the
-   whole row as one structured value. It fails, even when a real column has the same name; the
-   author renames the alias. A function entry names the function and its argument count, because one
+   Any other name fails: `unknown name <name>`. **Ambiguous names fail, whatever the scope.**
+   DuckDB can resolve some names to something other than a column, depending on scope: a
+   function without brackets (`SELECT current_schema` reads the session), an implicit subquery
+   name (`SELECT unnamed_subquery FROM (SELECT row_id FROM trips_raw)` returns whole rows), the
+   `rowid` pseudo-column, or a table name or alias (`t` in `SELECT t FROM trips t` returns the
+   whole row as one structured value). The gate does not resolve scope. A column reference
+   fails, `ambiguous name <name>: rename it`, when its name is any of these, unless it is a
+   column of the floor's given tables:
+   - the name of any function in the pinned engine's catalog (`duckdb_functions()`);
+   - `rowid`, or a name that starts with `unnamed_subquery`;
+   - a table name or alias anywhere in the statement.
+   This holds even when the statement defines the name, because a definition in another scope
+   (for example in an unused CTE) does not reach the use. The author renames the alias. A function entry names the function and its argument count, because one
    name can do different jobs: `min(fare_amount)` returns one value, but `min(fare_amount, 2)`
    returns a list of the two smallest. A call with an unlisted argument count is unmapped. The walker visits every object and every field, at every depth. An
    unlisted element, field or enum value fails: `unmapped construct <path>: <value>`.
@@ -296,7 +302,9 @@ All other text is prose, which the gate does not check (item 3a).
      passages as separate names, one code mark each. `row(...)` stays unmapped.
    - **Migration.** Run the source rules on every code-marked span in every learner-visible
      string on floors 1 to 3, not only in the guides, and rewrite each span that fails. Known
-     cases: the column groups in floor 1's and floor 2's `rulesText` (separate names), and floor
+     cases: the reconciliation queries on floors 2 and 3 need explicit CTE output names
+     (`answer(zone_flag)`, `answer(reason)`) under the closed-name rule; the column groups in
+     floor 1's and floor 2's `rulesText` (separate names); and floor
      1's `loaded_at = 2024-02-01 06:40` (write it with a typed literal, `loaded_at = TIMESTAMP
      '2024-02-01 06:40:00'`, and declare what it detects). List each rewrite in the verification
      note.
@@ -381,8 +389,13 @@ All other text is prose, which the gate does not check (item 3a).
   `<pre>` block fails as a whole-row reference; `SELECT t.row_id FROM trips t;` passes. In floor
   1's guide, `SELECT unnamed_subquery FROM (SELECT row_id FROM trips_raw);` fails as an unknown
   name, and `SELECT row_id FROM (SELECT row_id FROM trips_raw);` passes. `SELECT current_schema;`
-  in a `<pre>` block and inline `<code>current_schema</code>` both fail; `SELECT current_schema
-  FROM (SELECT 7 AS current_schema) t;` passes, because the statement defines the name. The migrated `rulesText` of floors 1 and 2
+  in a `<pre>` block and inline `<code>current_schema</code>` both fail. These also fail as
+  ambiguous names: `WITH x AS (SELECT 7 AS current_schema) SELECT current_schema;`,
+  `WITH x AS (SELECT 7 AS unnamed_subquery) SELECT unnamed_subquery FROM (SELECT row_id FROM
+  trips_raw);`, floor 1's reference with an unused CTE defining `current_schema` and
+  `AND current_schema = 'main'` added (same 7,171 rows), and, by design,
+  `SELECT current_schema FROM (SELECT 7 AS current_schema) t;`. The renamed control
+  `SELECT schema_label FROM (SELECT 7 AS schema_label) t;` passes. The migrated `rulesText` of floors 1 and 2
   passes.
 - The map is used: remove any one map entry that floors 1 to 3 use, and the gate fails on that
   floor. Remove any one keyword allowlist entry or phrase entry that they use, and the gate fails.
