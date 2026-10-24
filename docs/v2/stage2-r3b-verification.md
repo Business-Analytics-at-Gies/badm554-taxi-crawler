@@ -1092,3 +1092,187 @@ dependency directory is ignored and excluded. No item is deferred. Delivery is
 one commit `v2 stage 2: code review round 15 fixes`, with the required public
 author email and Agent trailer, followed by a branch push and stop. No merge,
 PR or deployment.
+
+## Code review round 16: one identifier comparison and ASCII identifier scope
+
+Builder: crew-codex-v2. Base/spec amendment: `f18d08c`.
+Reproduction baseline: `d2d61e0`. The finishing criteria are: one shared
+DuckDB-compatible comparison throughout the gate and its inherited policies;
+non-ASCII SQL identifiers refused as unmodelled scope; the complete review pack
+and all R16 regressions red at d2d61e0 and green now; all changed comparison call
+sites listed; Floors 1–3 and four complete suites green under caffeinate with
+separate output directories; generated assets reproducible; protected paths and
+dependency links unchanged; one authored/trailered commit, push, then stop.
+
+### Shared rule and scope boundary
+
+`concept-identifiers.mjs` re-exports the **existing function object**
+`foldIdentifier` from `site/game/db/sql.js` as `identifierKey`. The protected
+sql.js is unchanged. That function folds only ASCII A–Z to a–z; it keeps Ä and ä
+apart and makes "Abc" match abc. The gate's local Unicode-lowercasing and local
+ASCII-folding implementations are removed. Scope/tree import the shared function
+as `fold`; all other gate modules use `identifierKey` directly. An executable
+check asserts both function identity and those three sample results.
+
+The inherited `answerPolicy` and `nativeReadPolicy` already use that same
+sql.js function for CTE, table, schema and function comparisons. They were
+inspected and need no change. `lessonStatements` uses those policies; its
+uppercasing classifies ASCII statement-family keywords rather than identifiers.
+The remaining uppercasing in the gate/bound keyword loops likewise receives only
+an `[A-Za-z_][A-Za-z_0-9$]*` match from native keyword tokens. Structural enum
+values, concept ids, refresher titles, source labels and opaque SQL/cache input
+strings retain their own exact meanings; they are not SQL identifiers.
+
+ASCII validation covers authored aliases; every column-reference component;
+CTE names and column lists; table/relation names and column lists; qualified
+stars; function/catalog/schema names; supplied table/column/name contexts; and
+bound function names. It examines native identifier tokens too, including names
+in constructs which the serializer erases or which the closed map refuses.
+Non-ASCII literal values, comments and prose remain legal. Neither a rejected
+source nor a failed scope check can earn confirmed C034 credit.
+
+### Comparison call-site inventory
+
+Line numbers below refer to this implementation. Each row identifies every
+comparison/name-key call site changed or redirected in that part of the gate.
+The scopes' existing `fold(...)` calls now invoke the imported shared function.
+
+| File / function | Redirected call sites |
+|---|---|
+| concept-identifiers.mjs, identifierErrors (9) | Deduplication keys for rejected names use identifierKey; source spelling is retained in diagnostics. |
+| concept-identifiers.mjs, inspectIdentifierTokens (78–79) | Native separator-probe column-name `a` and alias `b` comparisons use identifierKey. Separator/parse caches store literal code points or full parser inputs, not resolved identifiers. |
+| concept-scope.mjs, scopePreflight (15, 18–22) | Column-reference names, expression aliases, table column aliases and CTE column aliases enter the built-in-probe collection through trackName's shared key. |
+| concept-scope.mjs, scopePreflight (36) | One-definition-per-CTE-name detection. |
+| concept-scope.mjs, scopePreflight (49, 53, 61, 64) | Built-in probe cache lookup, success insertion, failure insertion and result lookup. The quoted native probe preserves the original name spelling. |
+| concept-scope.mjs, inspectScope.unique (99–100) | Expanded/derived output-name collision checks and accepted-name insertion. |
+| concept-scope.mjs, inspectScope.count (104) | Both supplied-column and requested-name keys for select-alias counting. |
+| concept-scope.mjs, inspectScope.resolve (108–109) | Column-name matching and both sides of a qualified input-name comparison. |
+| concept-scope.mjs, inspectScope.resolve (117, 122) | Select-alias binding lookup and ambiguity checks on the qualified relation name. |
+| concept-scope.mjs, expression (150) | Qualified star relation resolution. |
+| concept-scope.mjs, from (188, 193) | Visible CTE lookup and both sides of given-table name matching. |
+| concept-scope.mjs, query (252, 281, 297) | CTE environment insertion; projected-column alias binding keys; both sides of relation matching during star expansion. |
+| concept-bound.mjs, inspectBoundPlan (28) | Function/arity map lookup for BOUND_FUNCTION, BOUND_AGGREGATE, BOUND_WINDOW and LOGICAL_GET names. |
+| concept-bound.mjs, foreignInput (38, 45, 51–52) | Given-table set keys; visible CTE insertion; both given and CTE table-reference membership checks. |
+| concept-bound.mjs, unusedCTEs (74, 77) | CTE-definition keys and reference-to-definition lookup. Dependency/reachability sets still compare the resolved definition objects. |
+| concept-bound.mjs, checkBound (144) | Both sides of generated backing-table collision checks. A given __CONCEPT_EMPTY_0 can no longer collide with __concept_empty_0. |
+| concept-bound.mjs, checkBound (154–155) | Blank-fill column inventory membership and insertion use name keys, with original spelling retained for quoted SQL. |
+| concept-tree.mjs, nullRelated (7) | COALESCE/IFNULL/NULLIF function-name classification. |
+| concept-tree.mjs, plainAggregate (45–46) | COUNT(*) and simple-aggregate name matching in exact proofs. |
+| concept-tree.mjs, definedNames (66–67, 71–72, 75, 78–79, 83) | Explicit select aliases, table column lists, CTE names, CTE column lists and relation aliases added to column/inline-name sets. |
+| concept-tree.mjs, inspectTree.walk (154, 156, 174) | Identifier-valued schema/catalog enum lookup; COUNT DISTINCT function selector; function/arity lookup. Structural enum values remain unchanged. |
+| concept-tree.mjs, inspectTree.visit (200, 209) | Function/arity detection beneath optional/rejected fields and COUNT(*) ingredient recognition. |
+| concept-tree.mjs, detectComputedZeros.constantOnly (281–282) | Deterministic scalar-function set membership and reviewed function/arity map lookup. Literal data and computed numeric comparison are unchanged. |
+| concept-tree.mjs, windowCTEConsumer (448, 454) | Root source CTE name versus the candidate definition, and resolved input alias versus the consumer alias/CTE name. This closes the actual Ä/ä false credit. |
+| concept-tree.mjs, detectScopeProofs (480, 482) | Exact grouped-count and running-sum function-name checks. Resolved input objects and column positions remain identity comparisons. |
+| concept-gate.mjs, detectSQL (200) | Both sides of phrase lookup use ASCII folding; Unicode ſ cannot turn into the S in SELECT. |
+| concept-gate.mjs, detectSQL (217) | Generated query-blank prefix collision check, including ASCII case variants. |
+| concept-gate.mjs, detectSQL (233, 239) | Inline reference name and every allowed given/column/defined-name key. |
+| concept-gate.mjs, detectSQL (281, 288) | Generated marker-name removal and query-blank alias recognition normalize both name and prefix through identifierKey. |
+| concept-gate.mjs, sourceNameContext (341) | Inspected given-column inventory keys. Original schema/column spellings stay available to native binding. |
+| concept-gate.mjs, checkConcepts (399) | Final explicit-name inventory deduplication. |
+| concept-map.mjs (283, 374, 378) | Parsed function/arity definition keys, bound function/arity definition keys and function-to-concept dictionary lookup. The vocabulary and every entry count/value are unchanged. |
+
+New ASCII guards run in tree inspection, scope preflight, standalone scope
+inspection, unused-CTE inspection, bound checking, bound-function inspection,
+inline-name fallback, supplied name/schema contexts and given-table/column
+inventory construction. Native token inspection runs before keyword/phrase/parse
+early returns and on bound/reference-fill sources. These validation paths share
+the same identifier error collection and shared name keys.
+
+### Native token boundary audit
+
+DuckDB drops named WINDOW declarations from its serialized tree. The native
+lexer can also group a name, Unicode separator and following keyword into one
+type-0 span; JS trim can hide real name characters such as U+1680/U+2028/U+2029.
+Therefore the guard uses native UTF-8 offsets, rather than trusting trimmed text
+or interpreting every character in a raw span as part of an identifier.
+
+For lexical inspection only, DuckDB parses `SELECT a<character>b, 0` to identify
+actual separators. A character is a separator only when the native result is
+column a with alias b. That result is cached per connection/code point. Only
+those separators in unquoted native identifier spans become ordinary spaces
+for a second native tokenization. Quoted identifiers and SQL literal tokens
+stay intact. The original authored SQL still goes unchanged to the parser,
+scope check, binder and lesson runner.
+
+This restores hidden WINDOW keywords to the existing keyword check. Quoted
+identifier spans and prefixes ending at non-ASCII boundaries are then parsed
+natively. Closed comments disappear; open block-comment prefixes cannot parse;
+line comments retain only the earlier real expression. No custom comment,
+quote, entity, escape or Unicode-whitespace decoder is added. No authored SQL
+is executed by these probes: the engine only serializes their parse trees.
+
+Controls cover Ä/ä, café plus NBSP-glued FROM/AS, hidden WINDOW with both ASCII
+and non-ASCII names, characters the engine preserves inside names, Unicode
+separators outside ASCII names, quoted whitespace names, adjacent/line/nested
+comments and Unicode literal values. The independent read-only review reran
+64 focused tests and additional boundary probes and found no remaining issue.
+
+### Fixture, acceptance and regression evidence
+
+`tests/fixtures/r16/unicode-pack.json` retains the complete review pack unchanged.
+`tests/db/stage2-r16.test.mjs` is the portable corrected version of the review's
+`/tmp/r16-unicode.test.mjs`. Their README records module M2, declarations,
+refreshers and expected refusals. The native query still returns **7**; the gate
+now refuses its names and grants no C034 credit. The alpha/beta rewrite also
+earns no C034 credit. The direct "Abc"/abc window example earns credit, and the
+specified `WITH "Abc" AS (SELECT 1 AS a) SELECT a FROM abc` resolves and returns 1.
+
+All **65** R16 regressions fail by assertion against d2d61e0 (0 pass, 65 fail,
+0 skip/cancel), `/tmp/r16-builder-all-baseline.log`. The same **65** pass against
+the final implementation, `/tmp/r16-builder-all-focused.log`. Floors 1–3 and
+the migrated case control pass in `/tmp/r16-builder-final-floors.log`.
+The earlier retained floor/exact-proof controls passed all 39 tests in
+`/tmp/r16-builder-existing-focused.log`. All **21** generated assets reproduce
+byte for byte; no authored floor, declaration, lesson or generated file changed.
+
+The existing `R3b 2c resolution Unicode names retain case` test is migrated to
+`non-ASCII names are unmodelled; ASCII names fold` under f18d08c's new restriction.
+Its mismatched Greek-name input remains refused, now as unmodelled scope. Its
+positive control uses "AbC" against abc. The former matching Greek-name control
+is retained as an explicit R16 refusal case. No negative grading, parser,
+leak, threshold, closed-vocabulary or removal assertion is weakened.
+
+An earlier full run started before the token refinements and recorded 16
+failures in `/tmp/r16-builder-db/pre-final.log`. Their names are retained here:
+
+- R16 identifiers in lossy or unsupported syntax: star exclusion; star rename;
+  star replacement; referenced window; unused window; collation; cast type (7).
+- R16 native token guard ignores Unicode comments and literal values (1).
+- R16 native identifier boundary window/exclusion U+1680, U+2028, U+2029 (6).
+- R16 native separators outside ASCII names remain legal (1).
+- R3b 2c resolution Unicode names retain case (1; migrated above).
+
+The native checks and the explicit spec migration correct those cases. The
+complete database suite is rerun against the final code below. Initial
+browser/server log-directory creation raced before either test process launched;
+the directories were created first and both suites were relaunched successfully.
+
+The fresh complete database rerun passes **3,112** tests: **510** retained R3b
+cases, **65** new R16 cases and all **2,537** other database tests. Its duration
+is **992.5 seconds**. All four suites ran under `caffeinate -dims` with separate
+output directories and exited **0**:
+
+| Suite | Passed | Skipped | Failed | Output directory |
+|---|---:|---:|---:|---|
+| Database (`cd tests/db && npm test`) | 3,112 | 0 | 0 | `/tmp/r16-builder-db` |
+| Stub browser (`PORT=4893`) | 183 | 25 | 0 | `/tmp/r16-builder-stub` |
+| Real-engine browser (`PORT=4894 DB_SITE=../../site`) | 203 | 5 | 0 | `/tmp/r16-builder-real` |
+| Server (`node --test tests/server/*.test.js`) | 69 | 0 | 0 | `/tmp/r16-builder-server` |
+
+Each directory holds its final `results.log`; both Playwright commands used
+explicit, separate `--output=<directory>/playwright` artifact directories.
+Structural coverage remains **33** object shapes and **35** array shapes. All
+**680** used-entry removal checks pass, **226/231/223** for floors 1/2/3. No map,
+keyword, arity, scope model, refusal, grading threshold or removal check was
+loosened. The generated asset count remains **21**, with every byte unchanged.
+
+Final scope is six concept-gate modules (the five consumers plus the new shared
+identifier module), the new portable R16 tests, the single explicitly migrated
+R3b case, the unchanged complete review fixture/README and this note. No Rerun
+path, site/game/db/sql.js, server/config.js or server/index.js changed. No
+dependency installation or dependency-manifest change was needed. The UI
+node_modules link remains untracked; both dependency paths are excluded from
+the commit. No item is deferred. Delivery is one commit
+`v2 stage 2: code review round 16 fixes`, with the required public author email
+and Agent trailer, then branch push and stop. No merge, PR or deployment.

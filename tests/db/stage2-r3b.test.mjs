@@ -1199,8 +1199,8 @@ test('R3b 2c given columns cannot authorize built-in names', async () => {
 });
 
 const scopePairs = [
-  ['Unicode names retain case', 'SELECT "Σ" FROM (VALUES (1)) t("σ")', /unresolved name Σ/,
-    'SELECT "σ" FROM (VALUES (1)) t("σ")'],
+  ['non-ASCII names are unmodelled; ASCII names fold', 'SELECT "Σ" FROM (VALUES (1)) t("σ")', /unmodelled scope non-ASCII identifier/,
+    'SELECT "AbC" FROM (VALUES (1)) t(abc)'],
   [
     'missing name',
     'SELECT missing FROM (VALUES (1)) t(n)',

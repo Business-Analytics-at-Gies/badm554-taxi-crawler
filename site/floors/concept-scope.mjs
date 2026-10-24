@@ -1,7 +1,7 @@
+import { identifierKey as fold, sqlIdentifierErrors, contextIdentifierErrors } from './concept-identifiers.mjs';
 // Names are checked on the parsed tree: binding can erase LIMIT expressions
 // and turn implicit session macros into constants. Never infer scope from a plan.
 // DuckDB folds ASCII identifiers only, including inside double quotes.
-const fold = (name) => String(name).replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 const qi = (name) => `"${name.replaceAll('"', '""')}"`;
 const builtinCaches = new WeakMap();
 const objects = (node, visit) => {
@@ -10,14 +10,16 @@ const objects = (node, visit) => {
   Object.values(node).forEach((child) => objects(child, visit));
 };
 export async function scopePreflight(conn, ast) {
-  const errors = [],
-    names = new Set();
+  const errors = sqlIdentifierErrors(ast),
+    names = new Map();
+  const trackName = name => names.set(fold(name), name);
+  if (errors.length) return errors;
   objects(ast, (node) => {
-    if (node.class === 'COLUMN_REF') names.add(node.column_names.at(-1));
-    if (node.class && node.alias) names.add(node.alias);
-    for (const name of node.column_name_alias ?? []) names.add(name);
+    if (node.class === 'COLUMN_REF') trackName(node.column_names.at(-1));
+    if (node.class && node.alias) trackName(node.alias);
+    for (const name of node.column_name_alias ?? []) trackName(name);
     for (const entry of node.cte_map?.map ?? [])
-      for (const name of entry.value.aliases) names.add(name);
+      for (const name of entry.value.aliases) trackName(name);
     if (['LIMIT_MODIFIER', 'LIMIT_PERCENT_MODIFIER'].includes(node.type))
       for (const field of ['limit', 'offset'])
         objects(node[field], (ref) => {
@@ -43,7 +45,7 @@ export async function scopePreflight(conn, ast) {
   // Probe the quoted name itself, never a function list or a spelling heuristic.
   let empty;
   try {
-    for (const name of names) {
+    for (const name of names.values()) {
       if (!cache.has(fold(name))) {
         empty ??= await conn.bindings.connect();
         try {
@@ -73,6 +75,8 @@ export async function inspectScope(
   outputNames,
   facts = { references: new Map(), queries: [] },
 ) {
+  const identifiers = [...sqlIdentifierErrors(ast), ...contextIdentifierErrors({schemas})];
+  if (identifiers.length) return identifiers;
   let statementIndex = 0;
   const queryHasJoin = new WeakMap(), cteQueries = new WeakMap();
   objects(ast, node => {

@@ -1,3 +1,4 @@
+import { identifierKey } from './concept-identifiers.mjs';
 // Reviewed vocabulary for the pinned DuckDB 1.5.4 serializer. There is no
 // catch-all field, enum, function, or neutral default. Entries describe one
 // construct (one id) or an explicitly neutral representation (zero ids).
@@ -279,7 +280,7 @@ for (const [name, arity, id] of [
   ['*', 2, 'ARITHMETIC'],
   ['/', 2, 'ARITHMETIC'],
 ])
-  put(`function:${name}/${arity}`, id);
+  put(`function:${identifierKey(name)}/${arity}`, id);
 for (const [name, id, confidence] of [
   ['select', 'C005', 'confirmed'],
   ['from', 'C006', 'confirmed'],
@@ -370,8 +371,8 @@ for (const [fn, arity] of [
   ['*', 2],
   ['/', 2],
 ])
-  put(`bound-function:${fn}/${arity}`, ({
+  put(`bound-function:${identifierKey(fn)}/${arity}`, ({
     seq_scan: 'C006', count_star: 'C010', count: 'C022', sum: 'C022', avg: 'C022', min: 'C022', max: 'C022',
     round: 'ROUND', row_number: 'C028', rank: 'C028', dense_rank: 'C028', lag: 'C030', lead: 'C030',
     '+': 'ARITHMETIC', '-': 'ARITHMETIC', '*': 'ARITHMETIC', '/': 'ARITHMETIC',
-  })[fn]);
+  })[identifierKey(fn)]);

@@ -1,6 +1,6 @@
+import { identifierKey, identifierErrors, sqlIdentifierErrors, contextIdentifierErrors, inspectIdentifierTokens } from './concept-identifiers.mjs';
 import { CONCEPT_MAP } from './concept-map.mjs';
 import { blankVariants } from './sql-blanks.mjs';
-import { nativeTokens } from '../game/db/sql.js';
 import { inspectTree } from './concept-tree.mjs';
 import { inspectScope, scopePreflight } from './concept-scope.mjs';
 const qi = (name) => `"${name.replaceAll('"', '""')}"`;
@@ -24,7 +24,8 @@ export function inspectBoundPlan(plan, map = CONCEPT_MAP) {
     ) {
       const arity =
         node.type === 'LOGICAL_GET' ? node.arguments?.length : node.children?.length;
-      require(`bound-function:${node.name}/${arity}`);
+      errors.push(...identifierErrors([node.name]));
+      require(`bound-function:${identifierKey(node.name)}/${arity}`);
     }
     Object.values(node).forEach(walk);
   };
@@ -34,21 +35,21 @@ export function inspectBoundPlan(plan, map = CONCEPT_MAP) {
 // Reject foreign inputs before asking the binder to open a file/catalog view.
 // Nonrecursive CTE bodies see preceding entries, never their own name.
 function foreignInput(ast, tables) {
-  const given = new Set(tables.map((n) => n.toLowerCase()));
+  const given = new Set(tables.map(identifierKey));
   let foreign = null;
   const visit = (node, scope = new Set()) => {
     if (!node || typeof node !== 'object') return;
     const local = new Set(scope);
     for (const entry of node.cte_map?.map ?? []) {
       visit(entry.value.query, local);
-      local.add(entry.key.toLowerCase());
+      local.add(identifierKey(entry.key));
     }
     if (
       node.type === 'BASE_TABLE' &&
       (node.schema_name ||
         node.catalog_name ||
-        (!given.has(node.table_name.toLowerCase()) &&
-          !local.has(node.table_name.toLowerCase())))
+        (!given.has(identifierKey(node.table_name)) &&
+          !local.has(identifierKey(node.table_name))))
     )
       foreign = node.table_name;
     for (const [key, child] of Object.entries(node))
@@ -70,10 +71,10 @@ export function unusedCTEs(ast) {
       const record = { name: entry.key, deps: new Set() };
       definitions.push(record);
       analyse(entry.value.query, local, record);
-      local.set(entry.key.toLowerCase(), record);
+      local.set(identifierKey(entry.key), record);
     }
     if (node.type === 'BASE_TABLE' && !node.schema_name && !node.catalog_name) {
-      const target = local.get(node.table_name.toLowerCase());
+      const target = local.get(identifierKey(node.table_name));
       if (target) owner.deps.add(target);
     }
     for (const [key, child] of Object.entries(node))
@@ -94,7 +95,7 @@ export function unusedCTEs(ast) {
       node.deps.forEach(visit);
     };
   roots.forEach(visit);
-  return definitions.filter((d) => !reached.has(d)).map((d) => `unused CTE ${d.name}`);
+  return [...sqlIdentifierErrors(ast), ...definitions.filter((d) => !reached.has(d)).map((d) => `unused CTE ${d.name}`)];
 }
 export async function checkBound(
   conn,
@@ -108,6 +109,9 @@ export async function checkBound(
     map = CONCEPT_MAP,
   } = {},
 ) {
+  const identifiers = [...sqlIdentifierErrors(ast), ...contextIdentifierErrors(nameContext),
+    ...(await inspectIdentifierTokens(conn, sql)).errors];
+  if (identifiers.length) return { errors: identifiers, used: [] };
   const schema = nameContext.schemas ?? {},
     tables = Object.keys(schema);
   const fresh = await conn.bindings.connect();
@@ -121,10 +125,13 @@ export async function checkBound(
           )
         ).toArray()[0].ast,
       );
-      const errors = parsed.error
-        ? [`unmapped construct reference fill: ${parsed.error_message}`]
-        : inspectTree(parsed, map, nameContext).errors;
-      for (const token of await nativeTokens(conn, reference))
+      const inspectedTokens = await inspectIdentifierTokens(conn, reference);
+      const errors = [
+        ...inspectedTokens.errors,
+        ...parsed.error ? [`unmapped construct reference fill: ${parsed.error_message}`]
+          : inspectTree(parsed, map, nameContext).errors,
+      ];
+      for (const token of inspectedTokens.tokens)
         if (token.type === 4) {
           const word = token.text.match(/^[A-Za-z_][A-Za-z_0-9$]*/)?.[0].toUpperCase();
           if (!Object.hasOwn(map.keywords, word))
@@ -134,7 +141,7 @@ export async function checkBound(
     }
     for (const [i, [table, columns]] of Object.entries(schema).entries()) {
       let backing = `__concept_empty_${i}`;
-      while (tables.includes(backing)) backing += '_';
+      while (tables.some(table => identifierKey(table) === identifierKey(backing))) backing += '_';
       await fresh.query(
         `CREATE TEMP TABLE ${qi(backing)} (${columns.map((c) => `${qi(c.name)} ${c.type}`).join(', ')})`,
       );
@@ -142,13 +149,11 @@ export async function checkBound(
         `CREATE TEMP VIEW ${qi(table)} AS SELECT ${columns.map((c) => qi(c.name)).join(', ')} FROM ${qi(backing)}`,
       );
     }
-    const columnNames = [
-      ...new Set(
-        Object.values(schema)
-          .flat()
-          .map((c) => qi(c.name)),
-      ),
-    ];
+    const columnsByName = new Map();
+    for (const column of Object.values(schema).flat())
+      if (!columnsByName.has(identifierKey(column.name)))
+        columnsByName.set(identifierKey(column.name), column.name);
+    const columnNames = [...columnsByName.values()].map(qi);
     const choices = [
       'NULL',
       ...columnNames,

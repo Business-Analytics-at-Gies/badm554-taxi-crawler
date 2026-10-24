@@ -1,9 +1,10 @@
+import { identifierKey as fold, sqlIdentifierErrors, contextIdentifierErrors } from './concept-identifiers.mjs';
 import { CONCEPT_MAP } from './concept-map.mjs';
 const nullTest = (n) => ['OPERATOR_IS_NULL', 'OPERATOR_IS_NOT_NULL'].includes(n?.type);
 const temporal = (n) => ['DATE', 'TIME', 'TIMESTAMP', 'INTERVAL'].includes(n?.cast_type?.id ?? n?.value?.type?.id);
 const nullRelated = (n) => nullTest(n) ||
   ['COMPARE_DISTINCT_FROM', 'COMPARE_NOT_DISTINCT_FROM', 'OPERATOR_COALESCE'].includes(n.type) ||
-  ['coalesce', 'ifnull', 'nullif'].includes(n.function_name?.toLowerCase());
+  ['coalesce', 'ifnull', 'nullif'].includes(fold(n.function_name));
 // Roles establish predicate context. Once inside, visit every object/operand,
 // including the left child and the query body of IN/ANY/ALL. Expression classes
 // also identify projected predicates; operator spellings never limit operands.
@@ -41,8 +42,8 @@ const plainProjection = node => plainColumn(node) || node?.class === 'STAR';
 const plainValue = node => plainColumn(node) || node?.class === 'CONSTANT';
 const plainAggregate = node => node?.class === 'FUNCTION' &&
   !node.distinct && !node.filter && !node.order_bys?.orders?.length &&
-  (node.function_name === 'count_star' && !node.children.length ||
-    ['count', 'sum', 'avg', 'min', 'max'].includes(node.function_name) &&
+  (fold(node.function_name) === 'count_star' && !node.children.length ||
+    ['count', 'sum', 'avg', 'min', 'max'].includes(fold(node.function_name)) &&
     node.children.length === 1 && plainValue(node.children[0]));
 const plainWindow = node => node?.class === 'WINDOW' &&
   !node.distinct && !node.filter_expr && !node.ignore_nulls &&
@@ -55,7 +56,6 @@ const forObjects = (node, fn) => {
   if (!Array.isArray(node)) fn(node);
   for (const child of Object.values(node)) forObjects(child, fn);
 };
-const fold = (name) => String(name).toLowerCase();
 // Only explicit definitions add names. A bare reference cannot define itself
 // (current_schema must not gain permission merely by appearing in a subquery).
 export function definedNames(statement) {
@@ -88,7 +88,7 @@ export function definedNames(statement) {
 // Payload strings (names/literals) have explicit scalar entries; enum strings do
 // not. Every container and every list state requires an entry before recursion.
 export function inspectTree(ast, map = CONCEPT_MAP, nameContext = {}) {
-  const errors = [],
+  const errors = [...sqlIdentifierErrors(ast), ...contextIdentifierErrors(nameContext)],
     concepts = new Set(),
     confirmed = new Set(),
     used = new Set(),
@@ -150,9 +150,10 @@ export function inspectTree(ast, map = CONCEPT_MAP, nameContext = {}) {
             : 'empty'
         : v && typeof v === 'object'
           ? 'object'
-          : JSON.stringify(v);
+          : JSON.stringify(typeof v === 'string' &&
+            ['schema_name', 'catalog_name', 'schema', 'catalog'].includes(field) ? fold(v) : v);
       if (owner === 'FUNCTION' && field === 'distinct' && v === true)
-        selector += ':' + value.function_name?.toLowerCase();
+        selector += ':' + fold(value.function_name);
       let key = prefix + selector;
       if (
         !map.entries[key] &&
@@ -170,7 +171,7 @@ export function inspectTree(ast, map = CONCEPT_MAP, nameContext = {}) {
     }
     if (['FUNCTION', 'WINDOW'].includes(value.class))
       apply(
-        `function:${value.function_name?.toLowerCase()}/${value.children?.length}`,
+        `function:${fold(value.function_name)}/${value.children?.length}`,
         `${path}.function`,
         `${value.function_name}/${value.children?.length}`,
       );
@@ -196,7 +197,7 @@ export function inspectTree(ast, map = CONCEPT_MAP, nameContext = {}) {
       // Also report functions beneath rejected optional fields. Rejection must
       // never hide a known requirement elsewhere in that authored subtree.
       if (['FUNCTION', 'WINDOW'].includes(node.class))
-        apply(`function:${node.function_name?.toLowerCase()}/${node.children?.length}`,
+        apply(`function:${fold(node.function_name)}/${node.children?.length}`,
           path, node.function_name);
       if (node.type === 'SELECT_NODE') {
         rule('select', path);
@@ -205,7 +206,7 @@ export function inspectTree(ast, map = CONCEPT_MAP, nameContext = {}) {
           !!node.group_sets?.length || node.aggregate_handling === 'FORCE_AGGREGATES';
       }
       ingredients.cte ||= !!node.cte_map?.map?.length;
-      ingredients.countStar ||= node.function_name?.toLowerCase() === 'count_star';
+      ingredients.countStar ||= fold(node.function_name) === 'count_star';
       if (node.type === 'JOIN') {
         ingredients.join = true;
         ingredients.outer ||= ['LEFT', 'RIGHT', 'OUTER', 'FULL'].includes(node.join_type);
@@ -277,8 +278,8 @@ export async function detectComputedZeros(conn, ast, result, map = CONCEPT_MAP, 
         return castTypes.has(node.cast_type?.id) && constantOnly(node.child);
       case 'FUNCTION':
         return (
-          scalarFunctions.has(node.function_name) &&
-          !!map.entries[`function:${node.function_name}/${node.children.length}`] &&
+          scalarFunctions.has(fold(node.function_name)) &&
+          !!map.entries[`function:${fold(node.function_name)}/${node.children.length}`] &&
           node.children.every(constantOnly)
         );
       case 'OPERATOR':
@@ -476,9 +477,9 @@ export function detectScopeProofs(facts, result, map = CONCEPT_MAP, negatedState
     if (grouped && rootJoin && ['INNER', 'LEFT'].includes(rootJoin.node.join_type) &&
         exactKeys(rootJoin).length && query.joins.length === 1) prove('join_group');
     for (const expression of node.select_list) {
-      if (grouped && plainAggregate(expression) && expression.function_name === 'count_star')
+      if (grouped && plainAggregate(expression) && fold(expression.function_name) === 'count_star')
         prove('group_count');
-      if (plainQuery(node) && plainWindow(expression) && expression.function_name === 'sum' &&
+      if (plainQuery(node) && plainWindow(expression) && fold(expression.function_name) === 'sum' &&
           expression.orders.length && expression.orders.every(order => plainColumn(order.expression) &&
             ['ASCENDING', 'ORDER_DEFAULT'].includes(order.type)) &&
           expression.orders.some(order => !expression.partitions.some(partition =>

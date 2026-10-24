@@ -1,5 +1,6 @@
+import { identifierKey, identifierErrors, sqlIdentifierErrors, contextIdentifierErrors, inspectIdentifierTokens } from './concept-identifiers.mjs';
 import { lessonStatements } from '../game/db/lesson-policy.mjs';
-import { nativeTokens, nativeStatements } from '../game/db/sql.js';
+import { nativeStatements } from '../game/db/sql.js';
 import { CONCEPT_MAP } from './concept-map.mjs';
 import { checkBound, inspectBoundPlan } from './concept-bound.mjs';
 import { blankVariants } from './sql-blanks.mjs';
@@ -166,11 +167,13 @@ export async function detectSQL(
     referenceSql = nameContext.referenceSql,
   } = {},
 ) {
-  const errors = [],
+  const errors = contextIdentifierErrors(nameContext),
     used = [],
     concepts = [],
     confirmed = [];
-  const tokens = await nativeTokens(conn, sql);
+  const inspectedTokens = await inspectIdentifierTokens(conn, sql);
+  const tokens = inspectedTokens.tokens;
+  errors.push(...inspectedTokens.errors);
   // The parser folds NOT (a = b) to a <> b (and the inverse), erasing
   // negation. Retain native-token evidence: such a statement can require a
   // combination concept but cannot serve as its exact positive proof.
@@ -193,7 +196,8 @@ export async function detectSQL(
         errors.push(`unmapped keyword ${word}; quote it if it is a name`);
       else used.push(`keyword:${word}`);
     }
-  const phrase = sql.trim().replace(/\s+/g, ' ').toUpperCase();
+  const phrase = Object.keys(map.phrases).find(phrase =>
+    identifierKey(phrase) === identifierKey(sql.trim().replace(/\s+/g, ' ')));
   if (['inline', 'pre'].includes(kind) && Object.hasOwn(map.phrases, phrase)) {
     used.push(`phrase:${phrase}`);
     concepts.push(...map.phrases[phrase].ids);
@@ -210,7 +214,7 @@ export async function detectSQL(
   const name =
     /^(?:[a-z_][a-z_0-9$]*|"(?:[^"]|"")+")(?:\.(?:[a-z_][a-z_0-9$]*|"(?:[^"]|"")+"))*$/i;
   let queryBlankPrefix = '__concept_query_blank_';
-  while (sql.includes(queryBlankPrefix)) queryBlankPrefix += '_';
+  while (identifierKey(sql).includes(identifierKey(queryBlankPrefix))) queryBlankPrefix += '_';
   const candidates = await filledSources(conn, sql, queryBlankPrefix);
   let selected = null,
     sourceKind = 'complete';
@@ -225,13 +229,14 @@ export async function detectSQL(
     const wrapped = await parse(conn, `SELECT ${sql}`);
     const ref = wrapped?.ast.statements?.[0]?.node?.select_list?.[0];
     if (ref?.class === 'COLUMN_REF') {
-      const value = ref.column_names.at(-1).toLowerCase();
+      errors.push(...sqlIdentifierErrors(wrapped.ast));
+      const value = identifierKey(ref.column_names.at(-1));
       const allowed = new Set(
         [
           ...(nameContext.columns ?? []),
           ...(nameContext.tables ?? []),
           ...(nameContext.defined ?? []),
-        ].map((n) => n.toLowerCase()),
+        ].map(identifierKey),
       );
       if (!allowed.has(value) && value !== '___') errors.push(`unknown name ${value}`);
       const entry = map.entries['name:inline'];
@@ -273,14 +278,14 @@ export async function detectSQL(
   );
   // Parser markers classify query slots; they are not authored definitions.
   tree.definedNames = tree.definedNames.filter(
-    (name) => !name.startsWith(queryBlankPrefix.toLowerCase()),
+    (name) => !identifierKey(name).startsWith(identifierKey(queryBlankPrefix)),
   );
   const queryBlanks = [];
   const findQueryBlanks = (node) => {
     if (!node || typeof node !== 'object') return;
     if (node.type === 'SELECT_NODE' && node.select_list?.length === 1) {
       const alias = node.select_list[0].alias;
-      if (alias?.startsWith(queryBlankPrefix))
+      if (alias && identifierKey(alias).startsWith(identifierKey(queryBlankPrefix)))
         queryBlanks.push(Number(alias.slice(queryBlankPrefix.length)));
     }
     Object.values(node).forEach(findQueryBlanks);
@@ -322,6 +327,8 @@ export async function sourceNameContext(conn, pack) {
     const columns = new Set(),
       schemas = {},
       tables = Object.keys(pack.given ?? {});
+    const invalidTables = identifierErrors(tables);
+    if (invalidTables.length) throw new Error(invalidTables.join('; '));
     const { runLesson } = await import('../game/db/db.js');
     for (const table of tables) {
       const result = await runLesson(
@@ -329,7 +336,9 @@ export async function sourceNameContext(conn, pack) {
         `SELECT * FROM "${table.replaceAll('"', '""')}" LIMIT 0`,
       );
       if (result.error) throw new Error(`Cannot inspect given table ${table}: ${result.error}`);
-      result.columns.forEach((name) => columns.add(name.toLowerCase()));
+      const invalidColumns = identifierErrors(result.columns);
+      if (invalidColumns.length) throw new Error(invalidColumns.join('; '));
+      result.columns.forEach((name) => columns.add(identifierKey(name)));
       const qi = (name) => `"${name.replaceAll('"', '""')}"`;
       const typeQuery =
         'SELECT ' +
@@ -387,7 +396,7 @@ export async function checkConcepts(conn, pack, graph, overrides, { map = CONCEP
       errors.push(`${source.source}: SQL inspection failed: ${e.message}`);
     }
   }
-  nameContext.defined = [...new Set(nameContext.defined)];
+  nameContext.defined = [...new Set(nameContext.defined.map(identifierKey))];
   for (const { source, result: initial } of scans) {
     const result =
       initial.kind === 'name'

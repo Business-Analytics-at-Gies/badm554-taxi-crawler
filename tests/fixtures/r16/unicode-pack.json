@@ -1,0 +1,96 @@
+{
+  "id": 99,
+  "module": "M2",
+  "concepts": [
+    "C003",
+    "C005",
+    "C006",
+    "C007",
+    "C013",
+    "C015",
+    "C016",
+    "C032",
+    "C083",
+    "C085",
+    "C025",
+    "C028",
+    "C033",
+    "C034"
+  ],
+  "given": {
+    "trips_raw": "_base.trips_raw"
+  },
+  "refreshes": {
+    "C083": "proof",
+    "C085": "zero",
+    "C032": "nested",
+    "C025": "window",
+    "C028": "window",
+    "C033": "window",
+    "C034": "window"
+  },
+  "refresher": [
+    {
+      "title": "proof",
+      "text": "Find unmatched keys",
+      "sql": "SELECT l.n FROM (VALUES (1),(2)) l(n)\nLEFT JOIN (VALUES (1)) r(m) ON l.n=r.m WHERE r.m IS NULL"
+    },
+    {
+      "title": "zero",
+      "text": "Test zero",
+      "sql": "SELECT 1\nWHERE 1=0"
+    },
+    {
+      "title": "nested",
+      "text": "Read a nested result",
+      "sql": "SELECT n\nFROM (SELECT 1 AS n) q"
+    },
+    {
+      "title": "window",
+      "text": "Window in a CTE",
+      "sql": "WITH \"Ä\" AS (SELECT row_number() OVER () AS rn),\n\"ä\" AS (SELECT 7 AS rn FROM \"Ä\")\nSELECT rn FROM \"ä\""
+    }
+  ],
+  "guide": "",
+  "referenceSql": "SELECT l.n FROM (VALUES (1),(2)) l(n) LEFT JOIN (VALUES (1)) r(m) ON l.n=r.m WHERE r.m IS NULL",
+  "hints": {
+    "check": [
+      {
+        "text": "Inspect the result"
+      },
+      {
+        "text": "Review the example",
+        "refresher": "proof"
+      },
+      {
+        "text": "Inspect rows",
+        "outline": "SELECT ___"
+      }
+    ]
+  },
+  "input": "trips_raw",
+  "outputs": [
+    "out"
+  ],
+  "title": "Fixture",
+  "task": "Fixture",
+  "guideTask": "Fixture",
+  "context": "Fixture",
+  "taskContext": "Fixture",
+  "summary": "Fixture",
+  "rulesText": "Fixture",
+  "dirt": "SELECT 1",
+  "ruleIds": [
+    "check"
+  ],
+  "reviewLinks": [
+    {
+      "label": "Review",
+      "url": "https://example.com/"
+    }
+  ],
+  "map": {
+    "label": "Fixture",
+    "color": "#000"
+  }
+}
