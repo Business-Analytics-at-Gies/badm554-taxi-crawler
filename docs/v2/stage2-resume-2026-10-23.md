@@ -223,9 +223,13 @@ many spellings, and Codex writes the packs. R3b inverts the default. A construct
 the gate knows which concept it is. R3's rules (`module`, `concepts`, `refreshes`, the override
 file, the fixture packs) stay as they are.
 
-**Change.** Two closed-world layers. Each scanned source (reference, refresher examples, hint
-outlines, guide `<code>` and `<pre>`) belongs to one source kind (item 3), and each kind says
-which layers apply.
+**Change.** Two closed-world layers. The gate scans everything a learner can see: the built
+guide HTML (from `tools/build-floor-packs.mjs`, all Detail levels), every learner-visible pack
+string (task text, hint rungs, refresher prose, control explanations) and every message in the
+floor's `check.js`. It also scans the reference. Text marked as code (`<code>`, `<pre>`, or
+backticks in a plain-text field), the reference, refresher examples and hint outlines are
+sources. Each source belongs to one source kind (item 3), and each kind says which layers apply.
+All other text is prose (item 3a).
 
 1. **Keyword layer.** DuckDB's native tokenizer (`nativeTokens` in `sql.js`) classifies each
    token; comments and strings are skipped. Every keyword token must be in a keyword allowlist.
@@ -282,6 +286,12 @@ which layers apply.
      guides use: `SELECT DISTINCT`, `DISTINCT`, `GROUP BY`. Each phrase maps to its concept ids,
      marked `possible` (item 5). The keyword layer applies.
    - Any other guide `<pre>` block or inline `<code>` fails.
+3a. **Prose.** SQL must not appear outside code. In prose, the gate tries each stretch that
+   starts at `SELECT` or `WITH` (any case) and ends at `;` or the end of the sentence, and each
+   name followed by a bracketed argument list. If DuckDB parses the stretch as a statement, or
+   as `SELECT <stretch>` with a function call in its tree, the gate fails: `SQL outside code:
+   <text>`. Ordinary English that mentions a concept by name, such as "use a left join", is not
+   SQL and passes.
 4. **One construct, one id.** Each map entry names the id of one construct. A graph id that
    names more than one construct and is not taught at the pack's module (for example C036,
    "EXTRACT date part and UNION ALL") is not used in the map. Each of its constructs gets its own
@@ -336,6 +346,11 @@ which layers apply.
   The floor 1 `DISTINCT ON` reference (7,171 rows, same result as the current reference) fails.
 - Plain `UNION` added to floor 3's guide, with floor 3's current declarations and its `UNION_ALL`
   refresher, fails.
+- Prose: on floor 2, a control explanation that reads "Use SELECT coalesce(do_location_id, 0)
+  FROM trips; to replace a missing drop-off id with zero." fails as SQL outside code. The same
+  sentence in `<code>`, with a demonstrated C020 refresher and C020 declared, passes. A hint
+  rung, a task text and a `check.js` message that carry `coalesce(x, 0)` in prose also fail.
+  The current prose on floors 1 to 3 passes.
 - `SELECT min(fare_amount, 2) FROM trips` and the same with `max`, added to floor 3's guide, fail.
   Ordinary `min(fare_amount)` and `max(fare_amount)` pass. An inline `(row_id, reason)` fails as
   unmapped `row`; the rewritten separate names pass.
