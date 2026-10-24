@@ -243,7 +243,9 @@ which layers apply.
    `DISTINCT`, `FILTER`, ordered aggregates, sample and the query modifiers. Zero ids means known
    and neutral, for example a column reference. Functions are checked here, on the tree's
    function nodes only, so a CTE column list such as `rides(id)` or an alias list such as `t(n)`
-   is not a function. The walker visits every object and every field, at every depth. An
+   is not a function. A function entry names the function and its argument count, because one
+   name can do different jobs: `min(fare_amount)` returns one value, but `min(fare_amount, 2)`
+   returns a list of the two smallest. A call with an unlisted argument count is unmapped. The walker visits every object and every field, at every depth. An
    unlisted element, field or enum value fails: `unmapped construct <path>: <value>`.
    **No neutral value by default.** The map names, field by field, each value that is neutral.
    It never infers it from an empty list, null, false or a default enum value. Every other value
@@ -270,7 +272,10 @@ which layers apply.
      statements but parses as `SELECT <code>` after blank filling. Both layers apply, and the
      tree layer reads the wrapped tree, so its concepts are detected as for complete SQL.
      Examples: inline `trip_distance = 0` detects C085; the `<pre>` blocks on floors 2 and 3 that
-     start with `CASE WHEN` and end with a column alias are expressions.
+     start with `CASE WHEN` and end with a column alias are expressions. A column group in
+     parentheses, such as floor 2's `(row_id, pu_zone, do_zone, zone_flag)` and floor 3's
+     `(row_id, reason)`, parses as `row(...)`, which builds a structured value. Rewrite those
+     guide passages as separate names, one `<code>` each. `row(...)` stays unmapped.
    - **Inline name**: a bare or qualified name, such as `trips_raw` or `t.row_id`. The keyword
      layer applies. It detects no concept.
    - **Inline phrase**: an exact match with a short phrase list in the map. Start with what the
@@ -331,6 +336,9 @@ which layers apply.
   The floor 1 `DISTINCT ON` reference (7,171 rows, same result as the current reference) fails.
 - Plain `UNION` added to floor 3's guide, with floor 3's current declarations and its `UNION_ALL`
   refresher, fails.
+- `SELECT min(fare_amount, 2) FROM trips` and the same with `max`, added to floor 3's guide, fail.
+  Ordinary `min(fare_amount)` and `max(fare_amount)` pass. An inline `(row_id, reason)` fails as
+  unmapped `row`; the rewritten separate names pass.
 - The map is used: remove any one map entry that floors 1 to 3 use, and the gate fails on that
   floor. Remove any one keyword allowlist entry or phrase entry that they use, and the gate fails.
 - Source kinds: a reference, lesson or outline that does not parse after blank filling fails. A
