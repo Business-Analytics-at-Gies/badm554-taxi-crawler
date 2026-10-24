@@ -279,7 +279,13 @@ All other text is prose, which the gate does not check (item 3a).
      start with `CASE WHEN` and end with a column alias are expressions. A column group in
      parentheses, such as floor 2's `(row_id, pu_zone, do_zone, zone_flag)` and floor 3's
      `(row_id, reason)`, parses as `row(...)`, which builds a structured value. Rewrite those
-     guide passages as separate names, one `<code>` each. `row(...)` stays unmapped.
+     passages as separate names, one code mark each. `row(...)` stays unmapped.
+   - **Migration.** Run the source rules on every code-marked span in every learner-visible
+     string on floors 1 to 3, not only in the guides, and rewrite each span that fails. Known
+     cases: the column groups in floor 1's and floor 2's `rulesText` (separate names), and floor
+     1's `loaded_at = 2024-02-01 06:40` (write it with a typed literal, `loaded_at = TIMESTAMP
+     '2024-02-01 06:40:00'`, and declare what it detects). List each rewrite in the verification
+     note.
    - **Inline name**: a bare or qualified name, such as `trips_raw` or `t.row_id`. The keyword
      layer applies. It detects no concept.
    - **Inline phrase**: an exact match with a short phrase list in the map. This kind is checked
@@ -355,7 +361,8 @@ All other text is prose, which the gate does not check (item 3a).
   fails on floor 2 as undeclared C020.
 - `SELECT min(fare_amount, 2) FROM trips` and the same with `max`, added to floor 3's guide, fail.
   Ordinary `min(fare_amount)` and `max(fare_amount)` pass. An inline `(row_id, reason)` fails as
-  unmapped `row`; the rewritten separate names pass.
+  unmapped `row`; the rewritten separate names pass. The migrated `rulesText` of floors 1 and 2
+  passes.
 - The map is used: remove any one map entry that floors 1 to 3 use, and the gate fails on that
   floor. Remove any one keyword allowlist entry or phrase entry that they use, and the gate fails.
 - Source kinds: a reference, lesson or outline that does not parse after blank filling fails. A
