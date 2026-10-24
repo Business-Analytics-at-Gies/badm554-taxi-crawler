@@ -281,8 +281,10 @@ All other text is prose, which the gate does not check (item 3a).
      Every CTE must be reachable from the final query through the tree's table references.
      Otherwise the source fails: `unused CTE <name>`. A used CTE keeps all its expressions in the
      plan, even a column that is not selected.
-   - For blanks, try these fills in order and use the first combination that binds: `NULL`,
-     each given column, `SELECT NULL`, `SELECT * FROM <given table>`.
+   - For blanks, try these fills in order and use the first combination that binds. A blank
+     that stands for a whole query (for example `WITH answer AS (___)`) is filled first with the
+     floor's reference query, so that it has the real answer's columns. Then, for any blank:
+     `NULL`, each given column, `SELECT NULL`, `SELECT * FROM <given table>`.
    - A source that is SQL (item 3) but does not bind with any fill fails: `cannot bind:
      <error>`. Never skip it.
    - A bound allowlist lists each bound expression class and each bound function name, with
@@ -335,8 +337,9 @@ All other text is prose, which the gate does not check (item 3a).
      passages as separate names, one code mark each. `row(...)` stays unmapped.
    - **Migration.** Run the source rules on every code-marked span in every learner-visible
      string on floors 1 to 3, not only in the guides, and rewrite each span that fails. Known
-     cases: the reconciliation queries on floors 2 and 3 need explicit CTE output names
-     (`answer(zone_flag)`, `answer(reason)`) so that they bind; floor 2's standalone `CASE`
+     cases: the reconciliation queries on floors 2 and 3 bind through the reference fill above,
+     with no CTE column list (a column list such as `answer(zone_flag)` renames the answer's
+     first column, `row_id`, and breaks the example; code review r12); floor 2's standalone `CASE`
      example needs its `t.` qualifiers removed so that it binds; the column groups in
      floor 1's and floor 2's `rulesText` (separate names); and floor
      1's `loaded_at = 2024-02-01 06:40` (write it with a typed literal, `loaded_at = TIMESTAMP
@@ -369,8 +372,12 @@ All other text is prose, which the gate does not check (item 3a).
    required, so the author must declare it. Only a `confirmed` detection in a refresher's own
    example earns refresher credit. Inline phrase detections are `possible`. Example: a lesson that
    tests `t.n IS NULL` after `LEFT JOIN ... ON true` makes C083 possible, not confirmed, so it
-   cannot earn C083 credit. A constant operand is judged by the value DuckDB computes for it,
-   not by its spelling, so `+0`, `0::INT` and `-0.0` are all zero.
+   cannot earn C083 credit. Confirmed C083 needs a join condition that compares a column of
+   the left input with a column of the right input (resolved by the scope check), and a
+   `IS NULL` test on a right-input column; `ON r.id = r.id` is only possible. A constant operand
+   is judged by the value DuckDB computes for it, not by its spelling: the gate evaluates every
+   constant-only subtree, nested casts and arithmetic included, so `+0`, `0::INT`, `-0.0`,
+   `CAST(1 - 1 AS INTEGER)` and `CAST(CAST(0 AS INTEGER) AS INTEGER)` are all zero.
 6. **Lessons.** A refresher example is one or more SELECT-family statements (`SELECT`, `WITH`,
    `VALUES`, set operations). Each statement passes the same native statement and function checks
    as the Answer box: no catalog, file, setting or state-changing function. Any other statement
@@ -398,6 +405,13 @@ All other text is prose, which the gate does not check (item 3a).
 - `SELECT EXTRACT(year FROM DATE '2024-01-01')` in a pack that refreshes `UNION_ALL` fails as
   undeclared `EXTRACT`.
 - A lesson whose only proof of a concept is `possible` earns no credit (the C083 example above).
+  So does a lesson that joins `ON r.id = r.id` and tests `r.id IS NULL` (code review r12).
+- `SELECT 1 WHERE 1 = CAST(1 - 1 AS INTEGER)` and the same with
+  `CAST(CAST(0 AS INTEGER) AS INTEGER)` detect C085, in each kind of source.
+- The guide reconciliation blocks on floors 2 and 3 give the right result when the blank holds
+  the floor's reference query. A test fills each one with the reference and checks the result:
+  on floor 3, 6,955 clean, 216 bad and 7,171 in total; on floor 2, the same flag totals as
+  grouping the reference by `zone_flag`.
 - Nested fields are read. For each object type and each array field that the map supports, a
   test puts an unknown field and an unknown enum value beneath it, and both fail. For each
   expression slot, a test puts `coalesce(...)` (C020, untaught) in it, and it is detected. The
