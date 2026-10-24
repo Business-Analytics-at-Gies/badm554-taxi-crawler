@@ -1,5 +1,6 @@
 import { CONCEPT_MAP } from './concept-map.mjs';
 import { blankVariants } from './sql-blanks.mjs';
+import { inspectScope, scopePreflight } from './concept-scope.mjs';
 const qi = (name) => `"${name.replaceAll('"', '""')}"`;
 const literal = (sql) => `'${sql.replaceAll("'", "''")}'`;
 export function inspectBoundPlan(plan, map = CONCEPT_MAP) {
@@ -122,7 +123,8 @@ export async function checkBound(
       'SELECT NULL',
       ...tables.map((t) => `SELECT * FROM ${qi(t)}`),
     ];
-    let failure = 'no candidate binds';
+    let failure = 'no candidate binds',
+      failureScope = [];
     for (const filled of await blankVariants(conn, sql, () => choices)) {
       const candidates = expression
         ? tables.length
@@ -153,12 +155,39 @@ export async function checkBound(
           const plan = JSON.parse(rows.toArray()[0].plan);
           if (plan.error) {
             failure = plan.error_message;
+            failureScope = await inspectScope(parsed, schema);
             continue;
           }
           const unused = unusedCTEs(parsed);
+          const scope = await inspectScope(parsed, schema, async (node, env) => {
+            const copy = structuredClone(node);
+            copy.cte_map = {
+              map: [...env.values()].map((value) => value.entry),
+            };
+            const ast = {
+              error: false,
+              statements: [{ node: copy, named_param_map: [] }],
+            };
+            const normalize = (value) => {
+              if (!value || typeof value !== 'object') return;
+              if ('query_location' in value) value.query_location = 0;
+              Object.values(value).forEach(normalize);
+            };
+            normalize(ast);
+            const sql = (
+              await fresh.query(
+                `SELECT system.main.json_deserialize_sql(${literal(JSON.stringify(ast))}) AS sql`,
+              )
+            ).toArray()[0].sql;
+            return (await fresh.query(`DESCRIBE ${sql}`))
+              .toArray()
+              .map((row) => row.column_name);
+          });
+          const preflight = await scopePreflight(conn, parsed);
+          const bound = inspectBoundPlan(plan, map);
           return {
-            ...inspectBoundPlan(plan, map),
-            ...(unused.length ? { errors: unused } : {}),
+            ...bound,
+            errors: [...new Set([...bound.errors, ...unused, ...preflight, ...scope])],
             boundSql: candidate,
           };
         } catch (e) {
@@ -166,7 +195,7 @@ export async function checkBound(
         }
       }
     }
-    return { errors: [`cannot bind: ${failure}`], used: [] };
+    return { errors: [`cannot bind: ${failure}`, ...failureScope], used: [] };
   } finally {
     await fresh.close();
   }

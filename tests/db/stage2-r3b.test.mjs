@@ -40,6 +40,24 @@ before(async () => {
       window.db = await import('/game/db/db.js');
     });
   }
+  if (process.env.R3B_SCOPE_BASELINE) {
+    assert.equal(process.env.R3B_SCOPE_BASELINE, '9f0bbfe');
+    for (const path of ['concept-gate', 'concept-bound', 'concept-tree', 'concept-map']) {
+      const body = execFileSync(
+        'git',
+        [
+          '-C',
+          new URL('../../', import.meta.url).pathname,
+          'show',
+          `9f0bbfe:site/floors/${path}.mjs`,
+        ],
+        { encoding: 'utf8' },
+      );
+      await h.page.route(`**/floors/${path}.mjs`, (route) =>
+        route.fulfill({ contentType: 'text/javascript', body }),
+      );
+    }
+  }
   await h.page.evaluate(async () => {
     window.gate = await import('/floors/concept-gate.mjs');
     const d = await import('/vendor/duckdb/duckdb-browser.mjs');
@@ -607,8 +625,8 @@ for (const [name, sql, pass, inline] of [
   ['implicit function', 'SELECT current_schema;', false, false],
   ['inline implicit function', 'current_schema', false, true],
   [
-    'explicitly defined column control',
-    'SELECT current_schema FROM (SELECT 7 AS current_schema) t;',
+    'explicitly defined ordinary column control',
+    'SELECT active_schema_value FROM (SELECT 7 AS active_schema_value) t;',
     true,
     false,
   ],
@@ -644,8 +662,8 @@ for (const [name, sql, pass] of [
     'WITH x AS (SELECT 7 AS unnamed_subquery) SELECT unnamed_subquery FROM (SELECT row_id FROM trips_raw);',
     false,
   ],
-  ['explicit function alias', 'SELECT current_schema FROM (SELECT 7 AS current_schema) t;', true],
-  ['renamed schema label', 'SELECT schema_label FROM (SELECT 7 AS schema_label) t;', true],
+  ['ordinary explicit alias', 'SELECT active_schema_value FROM (SELECT 7 AS active_schema_value) t;', true],
+  ['renamed schema value', 'SELECT active_schema_value FROM (SELECT 7 AS active_schema_value) t;', true],
   ['pseudo rowid', 'SELECT rowid FROM trips_raw;', false],
 ])
   test(`R3b amendment3 ${name}`, async () => {
@@ -723,12 +741,12 @@ test('R3b inactive optional fields have separate active entries or fail closed',
   assert.ok(report.checked > 30);
   t.diagnostic(JSON.stringify(report));
 });
-test('R3b binding distinguishes a genuine given column from an implicit function', async () => {
-  const r = await detect('SELECT current_schema FROM supplied', {
+test('R3b binding accepts an ordinary genuine given column', async () => {
+  const r = await detect('SELECT active_schema_value FROM supplied', {
     nameContext: {
-      columns: ['current_schema'],
+      columns: ['active_schema_value'],
       tables: ['supplied'],
-      schemas: { supplied: [{ name: 'current_schema', type: 'INTEGER' }] },
+      schemas: { supplied: [{ name: 'active_schema_value', type: 'INTEGER' }] },
     },
   });
   assert.deepEqual(r.errors, []);
@@ -762,7 +780,7 @@ for (const [name, sql, pass] of [
     'SELECT payload.* FROM (SELECT row_id AS payload FROM (SELECT 7 AS vendor_id) row_id) q;',
     false,
   ],
-  ['actual supplied column', 'SELECT current_schema FROM (SELECT 7 AS current_schema) t;', true],
+  ['actual ordinary supplied column', 'SELECT active_schema_value FROM (SELECT 7 AS active_schema_value) t;', true],
 ])
   test(`R3b amendment4 bound ${name}`, async () => {
     const p = await packFloor(1);
@@ -936,4 +954,343 @@ for (const [name, frame, pass] of [
     const r = await check(p);
     if (pass) assert.deepEqual(r.errors, []);
     else assert.match(r.errors.join('\n'), /C029: refresher window does not demonstrate/);
+  });
+
+// Each 2c regression retains the real floor's module, declarations and refreshers.
+// Passing controls are paired with the refusal so the whole regression is red at 9f0bbfe.
+const scopeCases = [
+  [
+    'clock LIMIT',
+    2,
+    'SELECT row_id FROM trips LIMIT ("current_timestamp" IS NOT NULL)',
+    /unresolved name current_timestamp/,
+    'SELECT row_id FROM trips LIMIT 1',
+  ],
+  [
+    'clock OFFSET',
+    2,
+    'SELECT row_id FROM trips OFFSET ("current_timestamp" IS NOT NULL)',
+    /unresolved name current_timestamp/,
+    'SELECT row_id FROM trips LIMIT 1',
+  ],
+  ...['current_user', 'session_user', 'current_role', 'user', 'current_catalog'].map((name) => [
+    `implicit ${name}`,
+    1,
+    `SELECT "${name}"`,
+    new RegExp(`unresolved name ${name}`),
+    'SELECT 7 AS person',
+  ]),
+  [
+    'HAVING built-in precedence',
+    1,
+    `SELECT 'different' AS "current_user" HAVING "current_user" = 'duckdb'`,
+    /built-in name current_user: rename it/,
+    'SELECT count(*) AS copies FROM trips_raw HAVING copies > 1',
+  ],
+  [
+    'surplus built-in CTE name',
+    1,
+    'WITH rides(id, "current_user") AS (VALUES (1)) SELECT "current_user" FROM rides',
+    /built-in name current_user: rename it/,
+    'WITH rides(id) AS (VALUES (1)) SELECT id FROM rides',
+  ],
+  [
+    'real built-in derived column',
+    1,
+    'SELECT current_user FROM (SELECT 7 AS current_user) t',
+    /built-in name current_user: rename it/,
+    'SELECT active_user_value FROM (SELECT 7 AS active_user_value) t',
+  ],
+  [
+    'real built-in CTE column',
+    1,
+    'WITH rides("current_user") AS (VALUES (7)) SELECT "current_user" FROM rides',
+    /built-in name current_user: rename it/,
+    'WITH rides(id) AS (VALUES (7)) SELECT id FROM rides',
+  ],
+  [
+    'round17 consistent schema control',
+    1,
+    'SELECT current_schema FROM (SELECT 7 AS current_schema) t',
+    /built-in name current_schema: rename it/,
+    'SELECT active_schema_value FROM (SELECT 7 AS active_schema_value) t',
+  ],
+  [
+    'surplus ordinary CTE name',
+    1,
+    'WITH rides(id, extra) AS (VALUES (1)) SELECT id FROM rides',
+    /too many column names/,
+    'WITH rides(id) AS (VALUES (1)) SELECT id FROM rides',
+  ],
+  [
+    'unused built-in select alias',
+    1,
+    'SELECT 7 AS "current_user"',
+    /built-in name current_user: rename it/,
+    'SELECT 7 AS ordinary_alias',
+  ],
+  [
+    'unused built-in table column alias',
+    1,
+    'SELECT 1 FROM (VALUES (7)) t("current_user")',
+    /built-in name current_user: rename it/,
+    'SELECT 1 FROM (VALUES (7)) t(ordinary_alias)',
+  ],
+  [
+    'case insensitive built-in',
+    1,
+    'SELECT 7 AS "CuRrEnT_UsEr"',
+    /built-in name CuRrEnT_UsEr: rename it/,
+    'SELECT 7 AS "ordinary name"',
+  ],
+  [
+    'outer scalar reference',
+    1,
+    'SELECT (SELECT t.row_id) FROM trips_raw t',
+    /unresolved name t.row_id/,
+    'SELECT q.row_id FROM (SELECT row_id FROM trips_raw) q',
+  ],
+  [
+    'implicit lateral reference',
+    1,
+    'SELECT b.row_id FROM trips_raw a, (SELECT a.row_id) b',
+    /unresolved name a.row_id/,
+    'SELECT b.row_id FROM (SELECT row_id FROM trips_raw) b',
+  ],
+  [
+    'unmodelled QUALIFY',
+    1,
+    'SELECT row_id FROM trips_raw QUALIFY row_number() OVER () = 1',
+    /unmodelled scope QUALIFY/,
+    'SELECT row_id FROM trips_raw',
+  ],
+];
+for (const [name, id, sql, want, control] of scopeCases)
+  test(`R3b 2c ${name}`, async () => {
+    if (name === 'round17 consistent schema control') {
+      const values = await h.page.evaluate(async ({ sql, control }) => [
+        (await c.query(sql)).toArray()[0].current_schema,
+        (await c.query(control)).toArray()[0].active_schema_value,
+      ], { sql, control });
+      assert.deepEqual(values, [7, 7]);
+    }
+    const p = await packFloor(id);
+    const bad = await check({
+      ...p,
+      guide: p.guide + `<pre><code>${sql}</code></pre>`,
+    });
+    assert.match(bad.errors.join('\n'), want);
+    const good = await check({
+      ...p,
+      guide: p.guide + `<pre><code>${control}</code></pre>`,
+    });
+    assert.deepEqual(good.errors, []);
+  });
+for (const kind of ['reference', 'lesson', 'outline', 'pre', 'inline'])
+  test(`R3b 2c built-in names in ${kind}`, async () => {
+    const p = await packFloor(1),
+      sql = 'SELECT "current_user"';
+    if (kind === 'reference') p.referenceSql = sql;
+    if (kind === 'lesson') p.refresher.push({ title: 'built-in regression', sql });
+    if (kind === 'outline') p.hints.scope = [{ outline: sql }];
+    if (kind === 'pre') p.guide += `<pre>${sql}</pre>`;
+    if (kind === 'inline') p.guide += `<code>${sql}</code>`;
+    assert.match((await check(p)).errors.join('\n'), /unresolved name current_user/);
+  });
+for (const kind of ['limit', 'offset', 'user', 'surplus'])
+  test(`R3b 2c unchanged real reference ${kind}`, async () => {
+    const id = ['limit', 'offset'].includes(kind) ? 2 : 1;
+    const p = await packFloor(id),
+      expected = p.referenceSql;
+    if (kind === 'limit')
+      p.referenceSql = expected.replace(
+        /;\s*$/,
+        ' LIMIT CASE WHEN "current_timestamp" IS NOT NULL THEN 100000 ELSE 0 END;',
+      );
+    if (kind === 'offset')
+      p.referenceSql = expected.replace(
+        /;\s*$/,
+        ' OFFSET CASE WHEN "current_timestamp" IS NOT NULL THEN 0 ELSE 100000 END;',
+      );
+    if (kind === 'user')
+      p.referenceSql = expected.replace(/;\s*$/, ` AND "current_user" = 'duckdb';`);
+    if (kind === 'surplus') {
+      const names = (await check(p)).nameContext.schemas.trips_raw.map(
+        (c) => '"' + c.name + '"',
+      );
+      assert.equal(names.length, 13);
+      p.referenceSql = expected
+        .replace(/WITH "source" AS/, `WITH "source"(${names.join(', ')}, "current_user") AS`)
+        .replace(/;\s*$/, ` AND "current_user" = 'duckdb';`);
+    }
+    await h.call('init');
+    await h.call('loadFloor', id);
+    const result = await h.call(
+      'query',
+      `WITH candidate AS (${p.referenceSql.trim().replace(/;$/, '')}), expected AS (${expected.trim().replace(/;$/, '')}) SELECT (SELECT count(*) FROM candidate), (SELECT count(*) FROM ((SELECT * FROM candidate EXCEPT ALL SELECT * FROM expected) UNION ALL (SELECT * FROM expected EXCEPT ALL SELECT * FROM candidate)) differences)`,
+    );
+    assert.equal(result.error, undefined);
+    assert.deepEqual(result.rows, [[7171, 0]]);
+    const errors = (await check(p)).errors.join('\n');
+    assert.match(
+      errors,
+      /reference: (?:unresolved name current_(?:timestamp|user)|built-in name current_user: rename it|too many column names)/,
+    );
+    if (kind === 'surplus') assert.match(errors, /too many column names/);
+  });
+
+test('R3b 2c given columns cannot authorize built-in names', async () => {
+  const r = await detect('SELECT current_schema FROM supplied', {
+    nameContext: {
+      columns: ['current_schema'],
+      tables: ['supplied'],
+      schemas: { supplied: [{ name: 'current_schema', type: 'INTEGER' }] },
+    },
+  });
+  assert.match(r.errors.join('\n'), /built-in name current_schema: rename it/);
+  const control = await detect('SELECT active_schema_value FROM supplied', {
+    nameContext: {
+      columns: ['active_schema_value'],
+      tables: ['supplied'],
+      schemas: { supplied: [{ name: 'active_schema_value', type: 'INTEGER' }] },
+    },
+  });
+  assert.deepEqual(control.errors, []);
+});
+
+const scopePairs = [
+  ['Unicode names retain case', 'SELECT "Σ" FROM (VALUES (1)) t("σ")', /unresolved name Σ/,
+    'SELECT "σ" FROM (VALUES (1)) t("σ")'],
+  [
+    'missing name',
+    'SELECT missing FROM (VALUES (1)) t(n)',
+    /unresolved name missing/,
+    'SELECT n FROM (VALUES (1)) t(n)',
+  ],
+  [
+    'ambiguous join name',
+    'SELECT n FROM (VALUES (1)) t(n) JOIN (VALUES (2)) u(n) ON true',
+    /unresolved name n/,
+    'SELECT t.n FROM (VALUES (1)) t(n) JOIN (VALUES (2)) u(n) ON true',
+  ],
+  [
+    'wrong qualifier',
+    'SELECT wrong.n FROM (VALUES (1)) t(n)',
+    /unresolved name wrong.n/,
+    'SELECT t.n FROM (VALUES (1)) t(n)',
+  ],
+  [
+    'ambiguous select aliases',
+    'SELECT 1 AS n, 2 AS n WHERE n > 0',
+    /unresolved name n/,
+    'SELECT 1 AS n, 2 AS m WHERE n > 0',
+  ],
+  [
+    'surplus table names',
+    'SELECT n FROM (VALUES (1)) t(n,extra)',
+    /too many column names/,
+    'SELECT n FROM (VALUES (1)) t(n)',
+  ],
+  [
+    'surplus CTE names after star',
+    'WITH a AS (SELECT * FROM (VALUES (1,2)) t(n,m)), b(x,y,z) AS (SELECT * FROM a) SELECT x FROM b',
+    /too many column names/,
+    'WITH a AS (SELECT * FROM (VALUES (1,2)) t(n,m)), b(x,y) AS (SELECT * FROM a) SELECT x FROM b',
+  ],
+  [
+    'CTE columns stay local',
+    'WITH a(n) AS (VALUES (1)) SELECT n',
+    /unresolved name n/,
+    'WITH a(n) AS (VALUES (1)) SELECT n FROM a',
+  ],
+  [
+    'outer alias stays local',
+    'SELECT 7 AS n, (SELECT n)',
+    /unresolved name n/,
+    'SELECT t.n FROM (SELECT 7 AS n) t',
+  ],
+  [
+    'base table aliases',
+    'SELECT missing FROM supplied t(n)',
+    /unresolved name missing/,
+    'SELECT t.n FROM supplied t(n)',
+  ],
+  [
+    'WHERE aliases',
+    'SELECT n AS renamed FROM (VALUES (1)) t(n) WHERE absent > 0',
+    /unresolved name absent/,
+    'SELECT n AS renamed FROM (VALUES (1)) t(n) WHERE renamed > 0',
+  ],
+  [
+    'GROUP BY aliases',
+    'SELECT n AS renamed FROM (VALUES (1)) t(n) GROUP BY absent',
+    /unresolved name absent/,
+    'SELECT n AS renamed FROM (VALUES (1)) t(n) GROUP BY renamed',
+  ],
+  [
+    'HAVING aliases',
+    'SELECT count(*) AS copies FROM (VALUES (1)) t(n) HAVING absent > 0',
+    /unresolved name absent/,
+    'SELECT count(*) AS copies FROM (VALUES (1)) t(n) HAVING copies > 0',
+  ],
+  [
+    'ORDER BY aliases',
+    'SELECT n AS renamed FROM (VALUES (1)) t(n) ORDER BY absent',
+    /unresolved name absent/,
+    'SELECT n AS renamed FROM (VALUES (1)) t(n) ORDER BY renamed',
+  ],
+  [
+    'set output names',
+    'SELECT 1 AS n UNION ALL SELECT 2 AS m ORDER BY absent',
+    /unresolved name absent/,
+    'SELECT 1 AS n UNION ALL SELECT 2 AS m ORDER BY n',
+  ],
+  [
+    'qualified star output',
+    'SELECT absent FROM (SELECT t.* FROM (VALUES (1,2)) t(n,m)) q',
+    /unresolved name absent/,
+    'SELECT q.n, q.m FROM (SELECT t.* FROM (VALUES (1,2)) t(n,m)) q',
+  ],
+  [
+    'partial alias list',
+    'WITH t(x) AS (SELECT 1 AS n, 2 AS m) SELECT n FROM t',
+    /unresolved name n/,
+    'WITH t(x) AS (SELECT 1 AS n, 2 AS m) SELECT x,m FROM t',
+  ],
+  [
+    'computed output names',
+    'SELECT absent FROM (SELECT 1+2) q',
+    /unresolved name absent/,
+    'SELECT "(1 + 2)" FROM (SELECT 1+2) q',
+  ],
+  [
+    'VALUES output names',
+    'SELECT absent FROM (VALUES (1))',
+    /unresolved name absent/,
+    'SELECT col0 FROM (VALUES (1))',
+  ],
+  [
+    'shadowed CTE outputs',
+    'WITH a AS (SELECT 7 AS n) SELECT x.n, a.n FROM a, (WITH a AS (SELECT 8 AS m) SELECT n FROM a) x',
+    /unresolved name n/,
+    'WITH a AS (SELECT 7 AS n) SELECT x.m, a.n FROM a, (WITH a AS (SELECT 8 AS m) SELECT m FROM a) x',
+  ],
+  [
+    'LIMIT column reference',
+    'SELECT 1 LIMIT (SELECT n FROM (VALUES (1)) t(n))',
+    /unresolved name n/,
+    'SELECT 1 LIMIT 1',
+  ],
+];
+for (const [name, sql, want, control] of scopePairs)
+  test(`R3b 2c resolution ${name}`, async () => {
+    const options = {
+      nameContext: {
+        tables: ['supplied'],
+        columns: ['original'],
+        schemas: { supplied: [{ name: 'original', type: 'INTEGER' }] },
+      },
+    };
+    assert.match((await detect(sql, options)).errors.join('\n'), want);
+    assert.deepEqual((await detect(control, options)).errors, []);
   });

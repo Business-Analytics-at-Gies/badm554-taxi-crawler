@@ -3,6 +3,7 @@ import { nativeTokens, nativeStatements } from '../game/db/sql.js';
 import { CONCEPT_MAP } from './concept-map.mjs';
 import { checkBound, inspectBoundPlan } from './concept-bound.mjs';
 import { blankVariants } from './sql-blanks.mjs';
+import { scopePreflight } from './concept-scope.mjs';
 import { inspectTree, detectComputedZeros } from './concept-tree.mjs';
 export { CONCEPT_MAP, inspectTree, inspectBoundPlan };
 const literal = (sql) => `'${sql.replaceAll("'", "''")}'`;
@@ -232,6 +233,7 @@ export async function detectSQL(
     inspectTree(selected.ast, map, nameContext),
     map,
   );
+  const scopeErrors = await scopePreflight(conn, selected.ast);
   const bound =
     errors.length || tree.errors.length
       ? { errors: [], used: [] }
@@ -244,7 +246,7 @@ export async function detectSQL(
   return {
     ...tree,
     boundSql: bound.boundSql,
-    errors: [...errors, ...tree.errors, ...bound.errors],
+    errors: [...new Set([...errors, ...tree.errors, ...scopeErrors, ...bound.errors])],
     used: [...used, ...tree.used, ...bound.used],
     method: 'parser',
     kind: sourceKind,

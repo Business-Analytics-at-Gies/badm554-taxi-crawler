@@ -281,3 +281,170 @@ Scope check: no changes to site/rerun, server/rerun*, data/rerun, tools/rerun,
 site/game/db/sql.js, server/config.js or server/index.js. runLesson's db.js is
 unchanged. The two node_modules symlinks are excluded. Item 2c is deferred by
 explicit instruction. No merge, PR or deployment.
+
+## Item 2c: scope check (2026-10-24)
+
+This section completes the separate follow-up to `9f0bbfe` described above. Its
+contract is R3b at `1eb12f1`, approved by spec review round 18. The earlier counts
+and exclusions are the historical record for the first implementation.
+
+### Finishing criteria and implementation
+
+Done means: every new regression fails against the actual `9f0bbfe` modules;
+the same tests and every existing assertion pass with 2c; every R3b Acceptance
+bullet has executable coverage; all four complete suites run under
+`caffeinate -dims`; this note records their counts; only the authorized files are
+committed, using the crew author/trailer, and `v2/stage2` is pushed without a
+merge, PR or deployment.
+
+`site/floors/concept-scope.mjs` checks names on the parsed tree, independently of
+what binding removes. Given tables supply their schema columns. CTEs, subqueries,
+VALUES, qualified and unqualified stars, joins and set operations supply their
+actual output positions. Explicit lists rename existing positions only; extra
+names fail with `too many column names`. CTE definitions are sequential and
+lexical. Nested queries receive visible CTE definitions but no outer row or
+select aliases. A reference needs exactly one visible column; otherwise it fails
+with `unresolved name`. Select aliases are visible in WHERE, GROUP BY, HAVING and
+ORDER BY, with output aliases preferred for ORDER BY. Duplicate alias matches
+fail. A scope not modelled by this check, including QUALIFY, fails with
+`unmodelled scope`.
+
+Every parsed column reference, select alias and explicit column-list name is
+probed as `SELECT "<name>"` on a separate empty connection. A successful probe
+fails the source with `built-in name <name>: rename it`, even for a genuinely
+supplied column with that name. Results are cached per parser connection; probe
+errors other than the engine's missing-column refusal propagate as failures.
+References anywhere inside LIMIT or OFFSET fail before binding can erase them,
+including references inside a nested query in either expression. This preflight
+also runs when the keyword/tree layer already refuses OFFSET.
+
+The scope resolver runs on the **first binding blank combination**, with the
+same filled tree as the bound check. Computed select-list display names come from
+DESCRIBE on a reconstructed, already-bound query, after its references have been
+resolved; DESCRIBE supplies labels only, never permission for a reference and no
+row values. Duplicate derived-table labels use the pinned engine's suffix rule.
+Binder refusals also retain scope diagnostics. Scope, unused-CTE and bound-plan
+errors are combined; none suppresses another layer's refusal. The tree map and
+bound allowlists are unchanged.
+
+No floor declaration, refresher teaching claim, guide blank or generated asset
+needed another migration. The existing floor 1/2 rulesText migrations and all
+current sources are checked in the full suite.
+
+### New fixtures and the round 17 control
+
+There are **50 new regression tests**, each paired with a permitted control where
+applicable. Real-pack tests retain their actual M7 module, declarations and
+refresher examples. Direct resolver tests provide an explicit one-column given
+schema and use detectSQL to test scope independently of pack teaching metadata.
+
+- **19 guide regressions:** LIMIT and OFFSET clock names; quoted current_user,
+  session_user, current_role, user and current_catalog; the HAVING/built-in precedence
+  example; surplus CTE built-in names; actual built-in columns in a subquery and
+  CTE; the round 17 current_schema control; an ordinary surplus CTE name; an unused
+  built-in select alias and table column alias; mixed-case built-in spelling;
+  outer scalar and implicit lateral references; and an unmodelled QUALIFY scope.
+- **5 source-kind regressions:** the implicit current_user reproduction in a
+  reference, lesson, outline, guide pre block and inline code.
+- **4 real-reference regressions:** floor 2 LIMIT and OFFSET clock expressions;
+  floor 1's implicit current_user condition; and floor 1's thirteen real source
+  columns with a fourteenth current_user alias. Every candidate still returns
+  **7,171 rows with zero multiset differences** from its reference before the
+  gate refuses it. The OFFSET form uses a zero offset to preserve the result.
+- **1 supplied-column regression:** a genuine given current_schema column still
+  fails the standalone built-in probe; active_schema_value passes.
+- **21 resolver regressions:** missing, ambiguous and wrongly qualified names;
+  duplicate select aliases; surplus table and star-expanded CTE names; CTE-local
+  and outer-select aliases; base-table alias lists; WHERE, GROUP BY, HAVING and
+  ORDER BY aliases; set-operation output names; qualified star expansion; partial
+  CTE renaming; computed output labels; VALUES output labels; CTE shadowing; a column reference inside a LIMIT subquery; and distinct Unicode identifier case.
+
+The previous tests had four positive controls using current_schema as a real
+column. Their permitted-column controls now use **active_schema_value**, exactly
+as round 17/18 requires, and the new fixtures explicitly require the original
+current_schema query to fail as a built-in name in both real-pack and supplied
+schema contexts. The existing ordinary schema_label control is also standardized
+to active_schema_value. All positive controls still assert an empty error list;
+all prior negative assertions, map mutations, grading counts, unchanged values,
+lesson isolation and leak expectations are retained.
+
+### Audit of every R3b Acceptance bullet
+
+Re-read all **17** Acceptance bullets and code reviews r9-r11 plus spec reviews
+1-18. The previous index above covers bullets 1-11 and 13-17. Bullet 11's
+current_schema passing control was stale relative to the final spec and is fixed
+as described above. Bullet 12 and the built-in-name portions of bullet 11 were
+the missing coverage. No other Acceptance bullet lacked an executable test.
+
+| Acceptance bullet | Current executable coverage |
+|---|---|
+| 1: floors and migrations | `R3b floors 1-3`, `source migrations`; all current lessons and rendered guide levels. |
+| 2: every review reproduction | Existing `review`, `spec`, `amendment2` through `amendment5` fixtures; new `2c` fixtures cover spec rounds 15-18, including the superseded built-in positive controls with their final required outcomes. |
+| 3: 22 forms in five source kinds | Existing `closed world` matrix: reference, lesson, outline, pre and inline. |
+| 4: EXTRACT separate from UNION_ALL | `review spec1.3 split EXTRACT` and composite-credit fixture. |
+| 5: possible is not teaching proof | `review spec1.4 possible orphan proof`; C029 confidence controls. |
+| 6: every nested field/slot | Existing supported-object/array mutations and 17 nested expression-slot fixtures. |
+| 7: active optional fields | Existing 13 active-feature fixtures, 54 inactive-field mutations and real DISTINCT ON reference. |
+| 8: plain UNION | `spec4 plain UNION` in the real floor 3 pack. |
+| 9: command phrase versus lesson | `COMMIT and ROLLBACK are phrases`, with lesson refusal. |
+| 10: all visible code markup | Existing `spec6-9 code markup` and checker-literal/interpolation tests. |
+| 11: overloads, bound meanings, built-ins | Existing min/max, row/field/star, ghost CTE, rowid and nested bound-plan fixtures; renamed ordinary controls plus `2c round17 consistent schema control` and `2c given columns cannot authorize built-in names`. |
+| 12: scope check | All 50 new `R3b 2c` tests listed above, including each named guide/reference example and passing HAVING/CTE controls. |
+| 13: map actually used | Existing removal of every used map, keyword and phrase entry on all three floors. |
+| 14: source kinds | Existing malformed-source, blanks, comments/literals, names/phrases and wrapped M1 C085 fixtures; full current-source scan. |
+| 15: names versus functions/clauses | Existing CTE/table alias lists and quoted/unquoted materialized fixtures. |
+| 16: SELECT-family lessons | Existing COMMIT, setseed and CREATE TABLE refusals; all 16 current examples run. |
+| 17: signed leak vocabulary | Existing r11.7 test, stage2-r10 negative-number fixture and stage2-hints must-flag fixtures. |
+
+### Regression and full-suite evidence
+
+The baseline switch serves the committed `9f0bbfe` gate, map, tree and bound
+modules using git show and browser routing. It does not reset this worktree or
+write to another checkout. Both runs use the same new test file, native parser,
+vendored engine, source packs and real synthetic floor data.
+
+```sh
+caffeinate -dims env R3B_SCOPE_BASELINE=9f0bbfe node --test \
+  --test-name-pattern='R3b 2c' tests/db/stage2-r3b.test.mjs
+```
+
+Against `9f0bbfe`, all **50 new tests fail by assertion**, with **0 passing**,
+**0 cancelled** and **0 skipped**. The log is `/tmp/r3b-2c-baseline-50.log`.
+The round 17 fixture was also strengthened to execute both the original and
+renamed queries, asserting `[7, 7]`; its separate baseline rerun fails the name
+ban assertion and its current-tree rerun passes. All **21 generated assets**
+match the output of buildFloorPacks byte for byte.
+
+Exploratory runs exposed two invalid proposed controls (scalar subqueries emit
+bound `first`/`error` helpers, and a comma join needs its own teaching declaration),
+a join-alias example that DuckDB rewrites to an ordinary subquery, and an overly
+narrow match for the native missing-column probe error. These were corrected in
+the new fixtures or resolver; no bound entry or earlier assertion was relaxed.
+The additional current_date probe required an ICU extension absent from this
+vendored test engine; its replacement current_catalog was first verified to bind
+on the empty pinned connection. The Unicode-name regression also established
+that DuckDB folds ASCII case only. Some scope regressions were already refused
+by another layer on 9f0bbfe; their assertions specifically require the new scope
+diagnostic, rather than merely any error.
+The full database run includes **297 passing R3b tests** (247 existing plus
+50 new), and all **2,537** other database tests, for **2,834 passing tests**.
+
+| Suite | Passed | Skipped | Failed |
+|---|---:|---:|---:|
+| Database (`cd tests/db && npm test`) | 2,834 | 0 | 0 |
+| Stub browser (`PORT=4883`, output `/tmp/pw-stub`) | 183 | 25 | 0 |
+| Real-engine browser (`PORT=4884 DB_SITE=../../site`, output `/tmp/pw-real`) | 203 | 5 | 0 |
+| Server (`node --test tests/server/*.test.js`) | 69 | 0 | 0 |
+
+Each command ran under `caffeinate -dims` and exited 0. The full database run
+finished in 1,058.5 seconds. Logs are `/tmp/r3b-2c-db.log`,
+`/tmp/r3b-2c-stub.log`, `/tmp/r3b-2c-real.log`, and
+`/tmp/r3b-2c-server.log`. No test timed out; no sleep-related change or assertion
+relaxation was needed. The database run loaded the final fixture file, including
+the replacement current_catalog probe and the executed round 17 `[7, 7]` control.
+
+All requested 2c behavior and Acceptance fixtures are implemented; nothing in
+this item is deferred. No changes to site/rerun, server/rerun*, data/rerun,
+tools/rerun, site/game/db/sql.js, server/config.js or server/index.js. The map,
+runLesson and generated assets are unchanged. Both node_modules symlinks remain
+untracked and are excluded from the commit. No merge, PR or deployment.
