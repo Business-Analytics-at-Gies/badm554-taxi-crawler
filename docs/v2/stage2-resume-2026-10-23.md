@@ -368,7 +368,31 @@ All other text is prose, which the gate does not check (item 3a).
    refreshes `UNION_ALL` instead of C036.
 5. **Possible and confirmed.** Each map entry and each combination rule is marked `confirmed` or
    `possible`. Combination concepts (C016, C023, C029, C083, C085 and any other) come from rules
-   over the tree. Where a rule cannot decide, it reports `possible`. Both kinds make a concept
+   over the tree. Where a rule cannot decide, it reports `possible`.
+   **Possible means the ingredients are present anywhere** in the statement, whatever their
+   arrangement (code review r13 found arrangements that hid them: `NOT`, `OR`, a nested CTE that
+   reuses a name, `IN` in place of `=`, `IS NOT DISTINCT FROM NULL`). Ingredients, at least:
+   - C016: any outer join (`LEFT`, `RIGHT`, `FULL`).
+   - C083: any outer join, and any NULL-related predicate (`IS NULL`, `IS NOT NULL`,
+     `IS [NOT] DISTINCT FROM`, a comparison or `IN` list with a NULL operand, `coalesce` and
+     the like).
+   - C023: any join, and any grouping (`GROUP BY` in any form, `HAVING`, an aggregate in a query
+     that also groups).
+   - C029: any aggregate used as a window function, and any window with ordering (inline,
+     named or inherited).
+   - C085: any NULL-related predicate; any comparison, `IN` or `NOT IN` list, or `BETWEEN` with
+     an operand that evaluates to zero; any `BETWEEN` outside a window frame; any date, time or
+     interval value.
+   **Confirmed means one exact, listed shape**, checked with names resolved by the scope check,
+   and nothing that changes its meaning around it. Example for C083: the query's `FROM` is a
+   `LEFT JOIN` whose condition equates a left-input column with a right-input column, and its
+   `WHERE` has `<right-input column> IS NULL` as a top-level conjunct (not under `NOT` or
+   `OR`). Any other arrangement is only possible.
+   **Zero ids only for plain parts.** Only column references, constants, stars and structural
+   nodes may map to zero ids. Every operator, predicate and function maps to at least one id,
+   or it is unmapped. `IS [NOT] DISTINCT FROM` gets its own id.
+   **One definition per CTE name.** A statement may define each CTE name once. A nested `WITH`
+   that defines a name again fails as unmodelled scope. Both kinds make a concept
    required, so the author must declare it. Only a `confirmed` detection in a refresher's own
    example earns refresher credit. Inline phrase detections are `possible`. Example: a lesson that
    tests `t.n IS NULL` after `LEFT JOIN ... ON true` makes C083 possible, not confirmed, so it
@@ -406,6 +430,11 @@ All other text is prose, which the gate does not check (item 3a).
   undeclared `EXTRACT`.
 - A lesson whose only proof of a concept is `possible` earns no credit (the C083 example above).
   So does a lesson that joins `ON r.id = r.id` and tests `r.id IS NULL` (code review r12).
+- Code review r13 fixtures: the `NOT (r.id IS NULL)` and `r.id IS NULL OR true` lessons earn no
+  C083 credit; the nested `WITH` that reuses `joined` fails as unmodelled scope; `WHERE r.id IS
+  NOT DISTINCT FROM NULL` after a `LEFT JOIN` makes C016, C083 and C085 possible;
+  `WHERE 1 IN (CAST(1 - 1 AS INTEGER))` and `WHERE 1 IN (0)` make C085 possible. Each one in
+  all seven source places the reviewer used.
 - `SELECT 1 WHERE 1 = CAST(1 - 1 AS INTEGER)` and the same with
   `CAST(CAST(0 AS INTEGER) AS INTEGER)` detect C085, in each kind of source.
 - The guide reconciliation blocks on floors 2 and 3 give the right result when the blank holds
