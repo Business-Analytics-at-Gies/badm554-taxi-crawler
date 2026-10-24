@@ -224,38 +224,47 @@ the gate knows which concept it is. R3's rules (`module`, `concepts`, `refreshes
 file, the fixture packs) stay as they are.
 
 **Change.** Two closed-world layers. Each scanned source (reference, refresher examples, hint
-outlines, guide `<code>` and `<pre>`) goes through the token layer. Complete SQL also goes through
-the tree layer.
+outlines, guide `<code>` and `<pre>`) belongs to one source kind (item 3), and each kind says
+which layers apply.
 
-1. **Token layer, for every source.** DuckDB's native tokenizer (`nativeTokens` in `sql.js`)
-   classifies each token; comments and strings are skipped. Every keyword token must be in a
-   keyword allowlist. Every identifier that is followed by `(` must be in a function allowlist.
-   Each entry maps to zero or more concept ids. An unlisted keyword or function fails the gate:
-   `unmapped keyword <word>` or `unmapped function <name>`. This layer catches what the parse
-   tree drops. The R3b spec review confirmed that `json_serialize_sql` in the pinned engine
-   loses an unused `WINDOW` clause, `LATERAL` and `MATERIALIZED`. Those keywords stay
-   unlisted, so they fail.
-2. **Tree layer, for complete SQL.** The gate reads the source with `json_serialize_sql`. One
-   reviewed map lists each tree element: node and expression classes and types, function names
-   in the form after DuckDB's rewrites (for example `date_part` for `EXTRACT`), operators, and
-   every enum-valued field, by value. Examples: `aggregate_handling` (`GROUP BY ALL` is
-   `FORCE_AGGREGATES`), `setop_type` (`UNION_BY_NAME`), the set-operation `ALL` flag, window frame
-   fields, `DISTINCT`, `FILTER`, ordered aggregates, sample and the query modifiers. Zero ids
-   means known and neutral, for example a column reference. The walker visits every object and
-   every field, at every depth. An unlisted element, field or enum value fails:
-   `unmapped construct <path>: <value>`. Delete the old detector and its token fallback
-   (`site/floors/sql-context.mjs` and the unfinished-SQL path in `concept-gate.mjs`).
-3. **Which sources must be complete SQL.** The reference, every refresher example, every hint
-   outline and every guide `<pre>` block must parse after blank filling. Blanks are written
-   `___`. Fill each blank with a placeholder name. If the source does not parse, also try
-   `SELECT NULL` for each blank and accept the first combination that parses. If none parses,
-   the source fails: "Rewrite it so that each blank stands for one name, value or query." Rewrite
-   the guides' comment blanks to this form and keep the comment as a label, for example
-   `PARTITION BY ___ /* your trip key */` and `WITH answer AS (___ /* your answer query */)`.
-   An inline `<code>` (not in `<pre>`) is complete SQL if it parses. Otherwise it must be one of:
-   a bare or qualified name; an expression that parses as `SELECT <code>`; or a phrase from a
-   short phrase list in the map (start with what the guides use: `SELECT DISTINCT`, `DISTINCT`,
-   `GROUP BY`). Any other inline code fails. Never skip a source because it does not parse.
+1. **Keyword layer.** DuckDB's native tokenizer (`nativeTokens` in `sql.js`) classifies each
+   token; comments and strings are skipped. Every keyword token must be in a keyword allowlist.
+   An unlisted keyword fails the gate: `unmapped keyword <word>`. This layer does not map to
+   concepts. It stops what the parse tree drops: the R3b spec review confirmed that
+   `json_serialize_sql` in the pinned engine loses an unused `WINDOW` clause, `LATERAL` and
+   `MATERIALIZED`, so those keywords stay unlisted. A name that DuckDB tokenizes as a keyword (for
+   example a column called `materialized`) also fails unless it is quoted. The message says:
+   "quote it if it is a name".
+2. **Tree layer.** The gate reads the source with `json_serialize_sql`. One reviewed map lists
+   each tree element: node and expression classes and types, function names in the form after
+   DuckDB's rewrites (for example `date_part` for `EXTRACT`), operators, and every enum-valued
+   field, by value. Examples: `aggregate_handling` (`GROUP BY ALL` is `FORCE_AGGREGATES`),
+   `setop_type` (`UNION_BY_NAME`), the set-operation `ALL` flag, window frame fields,
+   `DISTINCT`, `FILTER`, ordered aggregates, sample and the query modifiers. Zero ids means known
+   and neutral, for example a column reference. Functions are checked here, on the tree's
+   function nodes only, so a CTE column list such as `rides(id)` or an alias list such as `t(n)`
+   is not a function. The walker visits every object and every field, at every depth. An
+   unlisted element, field or enum value fails: `unmapped construct <path>: <value>`. Delete the
+   old detector and its token fallback (`site/floors/sql-context.mjs` and the unfinished-SQL path
+   in `concept-gate.mjs`).
+3. **Source kinds.** Never skip a source because it does not parse.
+   - **Complete SQL**: the reference, every refresher example, every hint outline, every guide
+     `<pre>` block, and any inline `<code>` that parses as one or more statements. Blanks are
+     written `___`. Fill each blank with a placeholder name. If the source does not parse, also
+     try `SELECT NULL` for each blank and accept the first combination that parses. If none
+     parses, the source fails: "Rewrite it so that each blank stands for one name, value or
+     query." Both layers apply. Rewrite the guides' comment blanks to this form and keep the
+     comment as a label, for example `PARTITION BY ___ /* your trip key */` and
+     `WITH answer AS (___ /* your answer query */)`.
+   - **Inline expression**: an inline `<code>` (not in `<pre>`) that parses as `SELECT <code>`.
+     Both layers apply, and the tree layer reads the wrapped tree, so its concepts are detected
+     as for complete SQL. Example: `trip_distance = 0` detects C085.
+   - **Inline name**: a bare or qualified name, such as `trips_raw` or `t.row_id`. The keyword
+     layer applies. It detects no concept.
+   - **Inline phrase**: an exact match with a short phrase list in the map. Start with what the
+     guides use: `SELECT DISTINCT`, `DISTINCT`, `GROUP BY`. Each phrase maps to its concept ids,
+     marked `possible` (item 5). The keyword layer applies.
+   - Any other inline `<code>` fails.
 4. **One construct, one id.** Each map entry names the id of one construct. A graph id that
    names more than one construct and is not taught at the pack's module (for example C036,
    "EXTRACT date part and UNION ALL") is not used in the map. Each of its constructs gets its own
@@ -265,7 +274,7 @@ the tree layer.
    `possible`. Combination concepts (C016, C023, C029, C083, C085 and any other) come from rules
    over the tree. Where a rule cannot decide, it reports `possible`. Both kinds make a concept
    required, so the author must declare it. Only a `confirmed` detection in a refresher's own
-   example earns refresher credit. Token-layer detections are `possible`. Example: a lesson that
+   example earns refresher credit. Inline phrase detections are `possible`. Example: a lesson that
    tests `t.n IS NULL` after `LEFT JOIN ... ON true` makes C083 possible, not confirmed, so it
    cannot earn C083 credit. A constant operand is judged by the value DuckDB computes for it,
    not by its spelling, so `+0`, `0::INT` and `-0.0` are all zero.
@@ -300,9 +309,15 @@ the tree layer.
   branches, function arguments, window partitions and orders, query modifiers, `FILTER`, and
   `ORDER BY` inside an aggregate.
 - The map is used: remove any one map entry that floors 1 to 3 use, and the gate fails on that
-  floor. Remove any one keyword or function allowlist entry that they use, and the gate fails.
-- A source that does not parse after blank filling fails, in each kind of source. All current
-  sources pass after the guide rewrite.
+  floor. Remove any one keyword allowlist entry or phrase entry that they use, and the gate fails.
+- Source kinds: a reference, lesson, outline or guide `<pre>` block that does not parse after
+  blank filling fails. Inline `<code>` that is not a statement, expression, name or listed phrase
+  fails. Inline names and listed phrases pass. `<code>trip_distance = 0</code>` in an M1 pack
+  fails as undeclared C085, which proves the wrapped tree is read. All current sources pass after
+  the guide rewrite.
+- Names are not functions or clauses: a CTE column list (`WITH rides(id) AS ...`), an alias
+  column list (`t(n)`) and a quoted keyword-shaped name (`"materialized"`) pass. An unquoted
+  column `materialized` fails with the quote message. A real `MATERIALIZED` CTE fails.
 - The r10 `COMMIT` lesson, the r11 `setseed` lesson and a `CREATE TABLE` lesson all fail. All
   current lessons pass and run.
 - The r11 `- 987654321` outline is a must-flag leak fixture. All earlier must-flag fixtures are
@@ -312,7 +327,7 @@ the tree layer.
 
 - DuckDB rewrites at parse time (`EXTRACT`, `COALESCE`, `ISNULL`, `::`, `IN`, `BETWEEN`). Key the
   tree map on the rewritten form. Write each test with the spelled form.
-- What the tree drops. The token layer must cover it. Look for any other keyword whose meaning
+- What the tree drops. The keyword layer must cover it. Look for any other keyword whose meaning
   leaves no field in the tree.
 - Fields the walker can skip, at any depth.
 - The tree format can change with the engine version. The gate runs on the pinned engine. A
