@@ -245,9 +245,12 @@ which layers apply.
    function nodes only, so a CTE column list such as `rides(id)` or an alias list such as `t(n)`
    is not a function. The walker visits every object and every field, at every depth. An
    unlisted element, field or enum value fails: `unmapped construct <path>: <value>`.
-   **Active and inactive.** A field with its inactive value (an empty list, null, false, or the
-   default enum value) is neutral. A field with an active value needs its own map entry, keyed on
-   the field and on the fact that it is active. Example: plain `DISTINCT` leaves
+   **No neutral value by default.** The map names, field by field, each value that is neutral.
+   It never infers it from an empty list, null, false or a default enum value. Every other value
+   needs its own map entry, keyed on the field and the value (for a list: empty or not empty).
+   Example: `setop_all` is `true` for `UNION ALL` and `false` for plain `UNION`, which removes
+   duplicates. Both values are listed, each with its own id, so a `UNION_ALL` refresher never
+   covers plain `UNION`. Another example: plain `DISTINCT` leaves
    `distinct_on_targets` empty, but `DISTINCT ON (...)` fills it with ordinary column
    references. So `DISTINCT ON` is unmapped, and fails, until it gets its own override id and its
    own refresher. The `SELECT_DISTINCT` refresher never covers it. Delete the
@@ -326,6 +329,8 @@ which layers apply.
   a window function, an `ORDER BY` inside an aggregate, window `EXCLUDE`, and `USING` in a join
   where floors 1 to 3 use `ON`. Add any other optional field that floors 1 to 3 leave inactive.
   The floor 1 `DISTINCT ON` reference (7,171 rows, same result as the current reference) fails.
+- Plain `UNION` added to floor 3's guide, with floor 3's current declarations and its `UNION_ALL`
+  refresher, fails.
 - The map is used: remove any one map entry that floors 1 to 3 use, and the gate fails on that
   floor. Remove any one keyword allowlist entry or phrase entry that they use, and the gate fails.
 - Source kinds: a reference, lesson or outline that does not parse after blank filling fails. A
