@@ -305,6 +305,15 @@ All other text is prose, which the gate does not check (item 3a).
    - A reference that resolves to nothing, to more than one column, or to an outer query fails:
      `unresolved name <name>`. A reference inside `LIMIT` or `OFFSET` always fails.
    - A construct whose scope the check does not model fails: `unmodelled scope <construct>`.
+   - **Built-in names are banned.** DuckDB gives some names a meaning with no `FROM` at all
+     (`current_user`, `user`, `session_user`, `current_role`, `current_schema`,
+     `current_timestamp` and others), and its precedence between those and a select alias
+     differs by clause. The gate does not model that. For every column reference, every
+     select-list alias and every name in a column list, it binds `SELECT "<name>"` alone on an
+     empty connection. If that binds, the name is a built-in, and the source fails:
+     `built-in name <name>: rename it`.
+   - An explicit column list (on a CTE or a table alias) with more names than the query outputs
+     fails: `too many column names`. DuckDB ignores surplus CTE names silently.
    This check and the bound layer both apply. Either one can fail a source.
 3. **Source kinds.** Never skip a source because it does not parse.
    - **Complete SQL**: the reference, every refresher example, every hint outline, and any guide
@@ -433,8 +442,16 @@ All other text is prose, which the gate does not check (item 3a).
   reference with `LIMIT CASE WHEN "current_timestamp" IS NOT NULL THEN 100000 ELSE 0 END`
   appended (same 7,171 rows), the same with `OFFSET`, `SELECT "current_user";`, `"session_user"`,
   `"current_role"` and `"user"` (floor 1 guide), and floor 1's reference with
-  `AND "current_user" = 'duckdb'` added. `SELECT current_user FROM (SELECT 7 AS current_user) t;`
-  passes (it resolves to the column, 7). Every current source resolves after the migrations. The migrated `rulesText` of floors 1 and 2
+  `AND "current_user" = 'duckdb'` added. These fail as built-in names:
+  `SELECT 'different' AS "current_user" HAVING "current_user" = 'duckdb';`,
+  `WITH rides(id, "current_user") AS (VALUES (1)) SELECT "current_user" FROM rides;`, floor 1's
+  reference with `"current_user"` as a fourteenth CTE name and `AND "current_user" = 'duckdb'`,
+  and, by design, `SELECT current_user FROM (SELECT 7 AS current_user) t;` and
+  `WITH rides("current_user") AS (VALUES (7)) SELECT "current_user" FROM rides;`. These pass:
+  `SELECT count(*) AS copies FROM trips_raw HAVING copies > 1;` (an ordinary `HAVING` alias)
+  and `WITH rides(id) AS (VALUES (1)) SELECT id FROM rides;`.
+  `WITH rides(id, extra) AS (VALUES (1)) SELECT id FROM rides;` fails as too many column names.
+  Every current source resolves after the migrations, and no current name is a built-in. The migrated `rulesText` of floors 1 and 2
   passes.
 - The map is used: remove any one map entry that floors 1 to 3 use, and the gate fails on that
   floor. Remove any one keyword allowlist entry or phrase entry that they use, and the gate fails.
