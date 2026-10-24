@@ -286,12 +286,24 @@ All other text is prose (item 3a).
      guides use: `SELECT DISTINCT`, `DISTINCT`, `GROUP BY`. Each phrase maps to its concept ids,
      marked `possible` (item 5). The keyword layer applies.
    - Any other guide `<pre>` block or inline `<code>` fails.
-3a. **Prose.** SQL must not appear outside code. In prose, the gate tries each stretch that
-   starts at `SELECT` or `WITH` (any case) and ends at `;` or the end of the sentence, and each
-   name followed by a bracketed argument list. If DuckDB parses the stretch as a statement, or
-   as `SELECT <stretch>` with a function call in its tree, the gate fails: `SQL outside code:
-   <text>`. Ordinary English that mentions a concept by name, such as "use a left join", is not
-   SQL and passes.
+3a. **Prose.** SQL must be marked as code, so that the source rules apply to it. The gate flags
+   these spans in prose, using DuckDB's tokenizer with the original text offsets:
+   - a keyword token written in capitals, two letters or more (for example `CASE`, `WHEN`,
+     `NULL`, `COUNT`... where DuckDB classifies it as a keyword);
+   - a name immediately followed by `(`, with no space (for example `coalesce(`, `ROUND(`,
+     `COUNT(*)`, `ROW_NUMBER()`);
+   - a stretch that starts at `SELECT` or `WITH` (any case), ends at `;` or the end of the
+     sentence, and parses as a statement.
+   Each flagged span fails: `SQL outside code: <text>`. The fix is to put the SQL in code
+   markup. A label followed by a space and a bracket, such as `outside_nyc (265)`, is not
+   flagged.
+   **Migration.** Move the SQL in current prose into code markup. Known cases: floor 1's refresher
+   prose `ROUND(value, 2)`, floor 1's `check.js` hint `ROW_NUMBER()`, and `COUNT(*)` in floor 2
+   and in three floor 3 refresher explanations. Run the rule on all floors and migrate everything
+   it flags. List each change in the verification note.
+   **Residual, accepted.** Lowercase SQL written in prose with a space before each bracket and
+   no `SELECT` or `WITH` (for example `use case when x then 1 end`) is not flagged. Code review
+   covers it. Reviews should not report this residual as a defect.
 4. **One construct, one id.** Each map entry names the id of one construct. A graph id that
    names more than one construct and is not taught at the pack's module (for example C036,
    "EXTRACT date part and UNION ALL") is not used in the map. Each of its constructs gets its own
@@ -347,10 +359,13 @@ All other text is prose (item 3a).
 - Plain `UNION` added to floor 3's guide, with floor 3's current declarations and its `UNION_ALL`
   refresher, fails.
 - Prose: on floor 2, a control explanation that reads "Use SELECT coalesce(do_location_id, 0)
-  FROM trips; to replace a missing drop-off id with zero." fails as SQL outside code. The same
-  sentence in `<code>`, with a demonstrated C020 refresher and C020 declared, passes. A hint
-  rung, a task text and a `check.js` message that carry `coalesce(x, 0)` in prose also fail.
-  The current prose on floors 1 to 3 passes.
+  FROM trips; to replace a missing drop-off id with zero." fails as SQL outside code. So do
+  "Use coalesce(do_location_id, 0) for a missing drop-off id." (in a task text, a hint rung and a
+  `check.js` message) and, on floor 1, "Use CASE WHEN total_amount < 0 THEN 'negative' ELSE
+  'other' END for the label." The same SQL in code markup, with a demonstrated refresher and the
+  concept declared, passes. `unknown (264), outside_nyc (265)` in floor 2's `check.js` passes.
+  After the migration, the prose on floors 1 to 3 passes, and each migrated span is detected in
+  its new code markup.
 - `SELECT min(fare_amount, 2) FROM trips` and the same with `max`, added to floor 3's guide, fail.
   Ordinary `min(fare_amount)` and `max(fare_amount)` pass. An inline `(row_id, reason)` fails as
   unmapped `row`; the rewritten separate names pass.
