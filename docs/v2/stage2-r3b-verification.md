@@ -786,3 +786,135 @@ tools/rerun, site/game/db/sql.js, server/config.js or server/index.js. Both
 node_modules symlinks remain untracked and are excluded. There is no deferred
 item. Delivery is one commit on v2/stage2 with the required public author email
 and Agent trailer, followed by a branch push. No merge, PR or deployment.
+
+## Code review round 14: predicate operands and native text decoding
+
+Builder: crew-codex-v2. Base: `a67da1a` (the review/spec amendment).
+Reproduction baseline: `0e148e8`. The finishing criteria are: both classes fixed,
+all applicable source-location reproductions red at that baseline and green
+now, Floors 1–3 and their lessons/guides green, all four required suites green
+under caffeinate, assets reproducible, restricted paths unchanged, one commit
+with the required author/trailer, then a branch push and stop.
+
+### Predicate ingredients
+
+The detector establishes predicate context from WHERE, HAVING, JOIN ON,
+CASE WHEN and aggregate/window FILTER roles. Projected predicate expressions
+also establish context. Once in that context it visits **every descendant
+object and operand**, including the left child and query body of IN/ANY/ALL.
+NULL detection no longer depends on a membership/comparison spelling; zero
+requirements no longer come from a selected list of predicate node types.
+
+Any NULL constant in that walk makes C085 possible, and makes C083 possible if
+an outer join occurs anywhere in the same statement. Explicit NULL-aware
+operations (NULL tests, DISTINCT FROM and COALESCE-family forms) retain their
+existing requirements. Any constant-only subtree evaluated by DuckDB to numeric
+zero in that walk makes C085 possible. This includes an inner zero even when its
+containing operand evaluates to a nonzero value. Bare NULL/zero projections,
+LIMIT 0 and numeric window-frame bounds remain ordinary values when they are
+outside any predicate. Temporal values retain round 13's separate requirement.
+
+The exact teaching proofs are unchanged. In particular, an ordinary comparison
+needs a **direct operand** that evaluates to zero to earn C085 credit; merely
+containing an inner zero cannot earn it. The R12 constant-folding control now
+requires possible C085 for `CAST(0 + 1 AS INTEGER)` inside a comparison and
+explicitly refuses confirmed credit. Its pure nonzero-cast control still
+requires no C085. This is the one migrated existing assertion and follows the
+new position-free ingredient rule; no grading rule or refusal was weakened.
+No map, keyword, function, scope, override or floor declaration was loosened.
+
+### HTML and JavaScript decoder audit
+
+The audit searched first-party site, server, tools and tests for entity/escape
+replacement, decoding helpers, character-code conversion and native decoding
+calls, including a read-only search of the protected Rerun paths. Vendored
+libraries are outside authored source extraction. The relevant paths are:
+
+| Place | Finding and disposition |
+|---|---|
+| `site/floors/concept-gate.mjs`, `markedSources` | Deleted the hand-written entity decoder and regex HTML content extraction. DOMParser now supplies each outer pre/code element's textContent. Nested pre/code pairs are one source; nested inline markup adds no invented whitespace. Remaining visible text supplies backtick spans. HTML comments and script/style/template contents do not become displayed code. Native DOM sentinel placement preserves refusal of incomplete fragments even though the browser repairs markup; sentinels have fresh unguessable ids. |
+| `tools/check-message-literals.mjs`, `checkMessageLiterals` | The manual escape map handled common escapes but missed native template CRLF normalization. It is replaced by the native JavaScript parser for one bounded string/template fragment at a time, in strict mode in a fresh empty VM context. Interpolation bodies and checker statements are never submitted for execution. Results are cached by exact literal token. Static line-comment scanning now recognizes CR, LF, U+2028 and U+2029. |
+| `tests/db/hint-leaks.mjs`, `hintCandidates` | Removed its separate regex/escape decoder. It now shares checkMessageLiterals, fixing both native template line normalization and CR-only line continuations. Raw diagnostic numbers/literals are still collected conservatively; the existing real-check leak assertions remain. |
+| `tools/build-floor-packs.mjs` | Its html helper **encodes** markup; it does not decode entities. Pack, solution and tool data use native JSON.parse. Unchanged. |
+| `tools/decision_html.py` | Uses Python html.escape to **encode** a separate decision-document artifact. No decoder. Unchanged. |
+| `site/floors/sql-blanks.mjs`, `site/game/db/sql.js`, `site/game/db/db.js` | Native TextDecoder reads UTF-8 SQL bytes/offset slices/reference files. It is not an HTML or JavaScript escape decoder. Unchanged, including the protected sql.js. |
+| `site/floors/concept-gate.mjs`, `concept-bound.mjs`; `site/game/db/answer-policy.js`; `site/game/ui/errors.js`, `hint-ladder.mjs`; `site/learn/codes.js`, `tutor/panel.js` | Native JSON.parse reads parser plans, errors, saved state and response data. No custom HTML/JS literal decoding. Unchanged. |
+| `server/config.js`, `index.js`, `store.js`, `static.js`; test server/harness readers | Native JSON.parse handles JSON; native decodeURIComponent handles URL paths. Neither is an HTML/JS literal decoder. store.js's String.fromCharCode generates receipt letters rather than decoding authored strings. Unchanged, including protected config.js/index.js. |
+| Protected Rerun source paths | No separate hand-written HTML/JS source decoder found. `site/rerun/db/db.js` uses native UTF-8 TextDecoder and `site/rerun/codes.js` uses native JSON.parse. No edits. |
+
+Decoding occurs once per representation. `&amp;#x27;` remains the literal text
+`&#x27;` after HTML parsing, rather than becoming a quote in a second pass.
+Complete SQL reference/lesson/outline text is never treated as HTML. Native
+JavaScript tests also establish that strings/template fragments are decoded
+without invoking authored top-level statements or template interpolations.
+No dependency, account, SQL policy or deployment setting changed.
+
+### Fixtures and verification
+
+There are **46 new tests**:
+
+- The two predicate reproductions run in all seven source places: reference,
+  lesson, outline, guide pre, inline code, pack-string backticks and checker-message
+  backticks (**14** cases).
+- Both HTML quote spellings run in guide pre, inline code, built guide,
+  HTML-marked pack strings and HTML-marked checker messages (**10** cases).
+  Entity decoding does not apply to raw reference/lesson/outline SQL; three
+  positive controls require the entity-looking text to stay inside its SQL string.
+- The remaining controls cover predicate roles and both operands; ANY/ALL/query
+  membership; inner zero/NULL subtrees; plain values outside predicates; DOM
+  nesting, comments, native line normalization and single-pass entities;
+  incomplete fragments; native JavaScript escapes, line continuations and
+  comment terminators; and two executions of the actual browser-visible SQL.
+
+```sh
+caffeinate -dims env R14_BASELINE=0e148e8 node --test \
+  --test-name-pattern='R14 reproduction' tests/db/stage2-r3b.test.mjs
+```
+
+All **24** applicable review reproductions fail by assertion on the committed
+baseline (0 passed, 0 skipped/cancelled). Log:
+`/tmp/r14-builder-baseline.log`. The first 13 class/decoder controls also fail
+before implementation (`/tmp/r14-builder-class-red.log`), and the independent
+hint-decoder control is red in `/tmp/r14-builder-js-red.log`. The final focused run
+passes **49** checks: all 46 new tests plus Floors 1–3, the retained static-checker
+test and the migrated R12 control (`/tmp/r14-builder-final-focused.log`). Both extracted
+review SQL examples execute **2** statements and return **1** from the second
+(`/tmp/r14-builder-visible.log`).
+
+All **21** generated assets reproduce byte for byte. No floor content, concept
+declaration, refresher or generated asset needed a change. The complete database run passes **2,980** tests: **443 R3b** tests (397 existing
+plus 46 new) and all **2,537** other database tests. All four required suites ran
+under `caffeinate -dims` and exited **0**.
+
+| Suite | Passed | Skipped | Failed |
+|---|---:|---:|---:|
+| Database (`cd tests/db && npm test`) | 2,980 | 0 | 0 |
+| Stub browser (`PORT=4883`, output `/tmp/pw-stub-r14-builder`) | 183 | 25 | 0 |
+| Real-engine browser (`PORT=4884 DB_SITE=../../site`, output `/tmp/pw-real-r14-builder`) | 203 | 5 | 0 |
+| Server (`node --test tests/server/*.test.js`) | 69 | 0 | 0 |
+
+Database duration: **1,306.5 seconds**. Final logs: `/tmp/r14-builder-db.log`,
+`/tmp/r14-builder-stub.log`, `/tmp/r14-builder-real.log`,
+`/tmp/r14-builder-server.log`. Structural coverage is still **33** object and
+**35** array shapes. All **683** used-entry removal checks still pass: **227**,
+**232**, **224** for floors 1, 2, 3.
+
+The final incomplete-fragment check explicitly attaches a source error after
+inline-name resolution, so rescanning a known name cannot discard the markup
+refusal. Its three checks (including the real floors and retained static-checker
+control) pass in `/tmp/r14-builder-fragments-green.log`. A fresh complete R3b
+run after that final guard change is recorded separately below.
+
+The fresh complete R3b run after the final fragment-error change passes all
+**443** tests (0 failures, 0 skips/cancellations), exit **0**, in **436.0 seconds**.
+Log: `/tmp/r14-builder-final-gate.log`. Its inline-name fragment regression
+confirms that an unmatched closing code tag cannot pass merely because the
+remaining text is a known name. All current sources, exact proof checks,
+closed-world removal checks and the 46 new tests pass together.
+
+The final diff is limited to the gate/tree, shared checker-literal decoder,
+hint-leak oracle, R3b tests and this note (**6 files**). No Rerun path,
+site/game/db/sql.js, server/config.js or server/index.js changed. Both
+node_modules symlinks remain untracked and are excluded. No item is deferred.
+Delivery is one commit on v2/stage2 with the required public author email and
+Agent trailer, followed by a branch push. No merge, PR or deployment.

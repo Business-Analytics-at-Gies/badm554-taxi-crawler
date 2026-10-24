@@ -76,6 +76,15 @@ before(async () => {
         route.fulfill({ contentType: 'text/javascript', body }));
     }
   }
+  if (process.env.R14_BASELINE) {
+    assert.equal(process.env.R14_BASELINE, '0e148e8');
+    for (const path of ['concept-gate', 'concept-bound', 'concept-tree', 'concept-map', 'concept-scope', 'sql-blanks']) {
+      const body = execFileSync('git', ['-C', new URL('../../', import.meta.url).pathname,
+        'show', `0e148e8:site/floors/${path}.mjs`], { encoding: 'utf8' });
+      await h.page.route(`**/floors/${path}.mjs`, route =>
+        route.fulfill({ contentType: 'text/javascript', body }));
+    }
+  }
   await h.page.evaluate(async () => {
     window.gate = await import('/floors/concept-gate.mjs');
     const d = await import('/vendor/duckdb/duckdb-browser.mjs');
@@ -1473,7 +1482,7 @@ test('R12 C023 proof follows the actual input through sequential CTE scopes', as
   assert.deepEqual(control.errors, []);
   assert.ok(control.confirmed.includes('C023'));
 });
-test('R12 constant folding handles pure scalar subtrees and does not mistake inner zero for a zero result', async () => {
+test('R12 constant folding distinguishes a possible inner zero from a confirmed zero operand', async () => {
   for (const expression of [
     "CAST(CAST('0' AS VARCHAR) AS INTEGER)",
     'CAST(round(0.2, 0) AS INTEGER)',
@@ -1482,10 +1491,11 @@ test('R12 constant folding handles pure scalar subtrees and does not mistake inn
     const result = await detect(`SELECT 1 WHERE 1 = ${expression}`);
     assert.ok(result.confirmed.includes('C085'), expression);
   }
-  for (const expression of ['CAST(0 + 1 AS INTEGER)', 'CAST(CAST(1 AS INTEGER) AS INTEGER)']) {
+  for (const [expression, possible] of [['CAST(0 + 1 AS INTEGER)', true], ['CAST(CAST(1 AS INTEGER) AS INTEGER)', false]]) {
     const result = await detect(`SELECT 1 WHERE 1 = ${expression}`);
     assert.deepEqual(result.errors, []);
-    assert.ok(!result.concepts.includes('C085'), expression);
+    assert.equal(result.concepts.includes('C085'), possible, expression);
+    assert.ok(!result.confirmed.includes('C085'), expression);
   }
 });
 
@@ -1644,3 +1654,118 @@ for (const [name, sql, possible, confirmed] of [
   assert.equal(r.concepts.includes('C022'), possible, JSON.stringify(r));
   assert.equal(r.confirmed.includes('C022'), confirmed, JSON.stringify(r));
 });
+
+
+// R14 reproductions: complete SQL is not HTML; entity cases apply to markup.
+for (const [name, sql, ids] of [
+  ['NULL query membership', 'SELECT l.n FROM (VALUES (1)) l(n) LEFT JOIN (VALUES (2)) r(m) ON l.n=r.m WHERE NULL IN (SELECT 1)', ['C083','C085']],
+  ['zero query membership', 'SELECT 1 WHERE 0 IN (SELECT 1)', ['C085']],
+]) for (const place of r13Places)
+  test(`R14 reproduction ${name} in ${place}`, async () => {
+    const p = { ...base(), module: 'M3', concepts: ['C003','C005','C006','C007','C013','C015','C016','C032'] };
+    r13Place(p, place, sql);
+    const r = await check(p);
+    for (const id of ids) {
+      assert.ok(r.detected.some(d => d.concepts.includes(id)), id);
+      assert.match(r.errors.join('\n'), new RegExp('undeclared ' + id));
+    }
+  });
+for (const entity of ['&#x27;', '&#039;'])
+  for (const place of ['pre', 'inline', 'pack string', 'check message', 'built guide'])
+    test(`R14 reproduction HTML ${entity} in ${place}`, async () => {
+      const p = await packFloor(1);
+      const tag = place === 'pre' ? 'pre' : 'code';
+      const marked = `<${tag}>SELECT '${entity}; SELECT coalesce(NULL, 1); --'</${tag}>`;
+      if (place === 'built guide') p.generatedGuide += marked;
+      else if (place === 'pack string') p.task += marked;
+      else if (place === 'check message') p.checkMessages.push(marked);
+      else p.guide += marked;
+      const r = await check(p);
+      assert.match(r.errors.join('\n'), /undeclared C020/);
+      assert.ok(r.detected.some(d => d.concepts.includes('C020')));
+    });
+
+for (const [name, sql, expected, confidence = false] of [
+  ['WHERE constant', 'SELECT 1 WHERE 0', 'C085'],
+  ['HAVING NULL', 'SELECT count(*) HAVING NULL', 'C085'],
+  ['ON NULL', 'SELECT l.n FROM (VALUES (1)) l(n) LEFT JOIN (VALUES (2)) r(m) ON NULL', 'C083'],
+  ['CASE WHEN zero', 'SELECT CASE WHEN CAST(1-1 AS INTEGER) THEN 1 ELSE 2 END', 'C085'],
+  ['FILTER zero', 'SELECT count(*) FILTER (WHERE CAST(1-1 AS INTEGER))', 'C085'],
+  ['ANY left NULL', 'SELECT l.n FROM (VALUES (1)) l(n) LEFT JOIN (VALUES (2)) r(m) ON l.n=r.m WHERE NULL = ANY(SELECT 1)', 'C083'],
+  ['ALL right zero', 'SELECT 1 WHERE 1 = ALL(SELECT CAST(1-1 AS INTEGER))', 'C085'],
+  ['IN query right NULL', 'SELECT l.n FROM (VALUES (1)) l(n) LEFT JOIN (VALUES (2)) r(m) ON l.n=r.m WHERE 1 IN (SELECT NULL)', 'C083'],
+  ['nonzero operand with inner zero', 'SELECT 1 WHERE 1 = CAST(0+1 AS INTEGER)', 'C085'],
+  ['CASE branch inside predicate', 'SELECT 1 WHERE CASE WHEN true THEN NULL ELSE false END', 'C085'],
+  ['projection predicate', 'SELECT 0 IN (SELECT 1)', 'C085'],
+]) test(`R14 predicate ingredients ${name}`, async () => {
+  const r = await detect(sql);
+  assert.ok(r.concepts.includes(expected), JSON.stringify({errors:r.errors,concepts:r.concepts}));
+  assert.equal(r.confirmed.includes(expected), confidence);
+});
+test('R14 zero and NULL outside predicates are plain values', async () => {
+  for (const sql of ['SELECT 0', 'SELECT NULL', 'SELECT 1 LIMIT 0', 'SELECT avg(1) OVER (ROWS 0 PRECEDING)', 'SELECT CASE WHEN true THEN NULL ELSE 0 END']) {
+    const r = await detect(sql);
+    assert.deepEqual(r.errors, []);
+    assert.ok(!r.concepts.includes('C085'), sql);
+  }
+});
+test('R14 native HTML parsing preserves exactly the code text, once per outer code block', async () => {
+  const cases = [
+    ['<pre><code>SELECT <b>1</b>+2</code></pre>', ['SELECT 1+2']],
+    ['<pre><code>SELECT 1</pre></code>', ['SELECT 1']],
+    ['<code>SELECT &apos;x&#x27;</code>', ["SELECT 'x'"]],
+    ['<pre>SELECT &#00039;x&#X27;</pre>', ["SELECT 'x'"]],
+    ['<pre>SELECT &amp;#x27;</pre>', ['SELECT &#x27;']],
+    ['<!-- <code>hidden</code> --><pre>SELECT 1</pre>', ['SELECT 1']],
+    ['<pre>SELECT 1\r\nWHERE 1&lt;2</pre>', ['SELECT 1\nWHERE 1<2']],
+  ];
+  for (const [html, want] of cases) {
+    const got = await h.page.evaluate(html => gate.markedSources(html, 'test').map(s => s.sql), html);
+    assert.deepEqual(got, want);
+  }
+});
+for (const place of ['reference', 'lesson', 'outline'])
+  test(`R14 SQL ${place} never decodes HTML entity text`, async () => {
+    const p = { ...base(), concepts: ['C005'] };
+    r13Place(p, place, "SELECT '&#x27;; SELECT coalesce(NULL, 1); --'");
+    const r = await check(p);
+    assert.deepEqual(r.errors, []);
+    assert.ok(!r.detected.some(d => d.concepts.includes('C020')));
+  });
+test('R14 JavaScript literal decoding matches native line and escape semantics without running interpolation', () => {
+  const source = "globalThis.untrusted(); const a=`SELECT 'a\r\nb'`; const b='Use \\u0060SELECT 1\\u0060';";
+  assert.deepEqual(checkMessageLiterals(source), ["SELECT 'a\nb'", 'Use `SELECT 1`']);
+  const messages = checkMessageLiterals('const m=`before ${globalThis.untrusted()} after`;');
+  assert.deepEqual(messages, ['before ', ' after']);
+});
+
+test('R14 hint vocabulary uses native JavaScript line normalization and continuations', async () => {
+  for (const source of ["const m=`Try 'a\r\nb'`;", "const m=\"Try 'a\\\rb'\";"]) {
+    const vocabulary = await hintCandidates(h, base(), source);
+    assert.ok(vocabulary.includes(source.includes('`') ? "'a\nb'" : "'ab'"));
+  }
+});
+
+test('R14 checker extraction respects every JavaScript line-comment terminator', () => {
+  for (const newline of ['\r', '\u2028', '\u2029'])
+    assert.deepEqual(checkMessageLiterals(`// ignored${newline}const hint='visible';`), ['visible']);
+});
+test('R14 incomplete HTML fragments remain refused after browser repair', async () => {
+  for (const html of ['<code>SELECT 1', '</code>SELECT 1', '</code>n']) {
+    const sources = await h.page.evaluate(html => gate.markedSources(html, 'fragment'), html);
+    assert.ok(sources.some(s => s.source.includes('incomplete code markup')), html);
+    assert.match((await check({ ...base(), referenceSql: 'SELECT 1 AS n', guide: html })).errors.join('\n'), /incomplete code markup/);
+  }
+});
+
+for (const entity of ['&#x27;', '&#039;'])
+  test(`R14 browser-visible ${entity} SQL actually executes both statements`, async () => {
+    const html = `<pre>SELECT '${entity}; SELECT coalesce(NULL, 1); --'</pre>`;
+    const sources = await h.page.evaluate(html => gate.markedSources(html, 'guide'), html);
+    assert.equal(sources.length, 1);
+    assert.equal(sources[0].sql, "SELECT ''; SELECT coalesce(NULL, 1); --'");
+    const result = await h.call('runLesson', await packFloor(1), sources[0].sql);
+    assert.equal(result.error, undefined);
+    assert.equal(result.executed, 2);
+    assert.deepEqual(result.rows, [[1]]);
+  });

@@ -48,44 +48,39 @@ export function parseGraph(csv) {
 }
 
 // Text outside code markup is intentionally prose, per R3b 3a.
-const decode = (html) =>
-  html.replace(
-    /&(?:lt|gt|amp|quot|apos|#39|#96);/g,
-    (s) =>
-      ({
-        '&lt;': '<',
-        '&gt;': '>',
-        '&amp;': '&',
-        '&quot;': '"',
-        '&apos;': "'",
-        '&#39;': "'",
-        '&#96;': '`',
-      })[s],
-  );
 export function markedSources(text, source) {
+  text = String(text ?? '');
+  const parser = new DOMParser();
+  // Read the same characters as the browser, without attaching or executing
+  // anything. Nested pre/code pairs are a single source; markup adds no spaces.
+  const marker = '__r3b_' + crypto.randomUUID();
+  const doc = parser.parseFromString(`${text}<span id="${marker}"></span>`, 'text/html');
+  const end = doc.getElementById(marker);
+  const elements = [...doc.querySelectorAll('pre, code')]
+    .filter(element => !element.parentElement?.closest('pre, code'));
   const out = [];
   let i = 0;
-  // Match the outer pre first, so pre/code pairs are one source, not two.
-  const rest = String(text ?? '').replace(
-    /<pre\b[^>]*>([\s\S]*?)<\/pre>|<code\b[^>]*>([\s\S]*?)<\/code>/gi,
-    (_, pre, code) => {
-      out.push({
-        source: `${source} SQL ${++i}`,
-        sql: decode((pre ?? code).replace(/<[^>]*>/g, ' ')),
-        kind: pre === undefined ? 'inline' : 'pre',
-      });
-      return ' ';
-    },
-  );
-  for (const m of rest.matchAll(/`([^`]+)`/g))
-    out.push({
-      source: `${source} SQL ${++i}`,
-      sql: decode(m[1]),
-      kind: 'inline',
-    });
+  const marked = elements.length || /<\/?(?:pre|code)\b/i.test(text);
+  // Browser parsing repairs incomplete fragments. Native sentinel placement
+  // preserves the existing refusal for code split across JS interpolations.
+  const guard = parser.parseFromString(
+    `<pre><code id="${marker}_start">${text}<span id="${marker}"></span></code></pre>`, 'text/html');
+  const incomplete = marked && (!end || end.closest('pre, code') ||
+    !guard.getElementById(`${marker}_start`)?.contains(guard.getElementById(marker)));
+  end?.remove();
+  for (const element of elements) {
+    out.push({source: `${source} SQL ${++i}`, sql: element.textContent,
+      kind: element.tagName === 'PRE' ? 'pre' : 'inline'});
+    element.remove();
+  }
+  doc.querySelectorAll('script, style, template').forEach(element => element.remove());
+  const rest = doc.body.textContent;
+  for (const match of rest.matchAll(/`([^`]+)`/g))
+    out.push({source: `${source} SQL ${++i}`, sql: match[1], kind: 'inline'});
   const residue = rest.replace(/`([^`]+)`/g, ' ');
-  if (/<\/?(?:code|pre)\b|`/i.test(residue))
-    out.push({ source: `${source} incomplete code markup`, sql: residue, kind: 'inline' });
+  if (incomplete || residue.includes('`'))
+    out.push({source: `${source} incomplete code markup`, sql: residue, kind: 'inline',
+      error: 'Unclosed or split code markup'});
   return out;
 }
 export function sqlSources(pack) {
@@ -388,6 +383,7 @@ export async function checkConcepts(conn, pack, graph, overrides, { map = CONCEP
       initial.kind === 'name'
         ? await detectSQL(conn, source.sql, { kind: source.kind, map, nameContext })
         : initial;
+    if (source.error) result.errors.push(source.error);
     detected.push({ source: source.source, ...result });
     for (const e of result.errors) errors.push(`${source.source}: ${e}`);
   }

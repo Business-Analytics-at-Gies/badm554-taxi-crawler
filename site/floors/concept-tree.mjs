@@ -1,15 +1,31 @@
 import { CONCEPT_MAP } from './concept-map.mjs';
 const nullTest = (n) => ['OPERATOR_IS_NULL', 'OPERATOR_IS_NOT_NULL'].includes(n?.type);
 const temporal = (n) => ['DATE', 'TIME', 'TIMESTAMP', 'INTERVAL'].includes(n?.cast_type?.id ?? n?.value?.type?.id);
-const hasNull = (node) => {
-  let found = false;
-  forObjects(node, n => { if (n.class === 'CONSTANT' && n.value?.is_null) found = true; });
-  return found;
-};
 const nullRelated = (n) => nullTest(n) ||
   ['COMPARE_DISTINCT_FROM', 'COMPARE_NOT_DISTINCT_FROM', 'OPERATOR_COALESCE'].includes(n.type) ||
-  (['COMPARISON', 'BETWEEN'].includes(n.class) || ['COMPARE_IN', 'COMPARE_NOT_IN'].includes(n.type)) && hasNull(n) ||
   ['coalesce', 'ifnull', 'nullif'].includes(n.function_name?.toLowerCase());
+// Roles establish predicate context. Once inside, visit every object/operand,
+// including the left child and the query body of IN/ANY/ALL. Expression classes
+// also identify projected predicates; operator spellings never limit operands.
+function predicateObjects(root) {
+  const found = new Set();
+  const visit = (node, predicate = false) => {
+    if (!node || typeof node !== 'object') return;
+    predicate ||= node.class === 'COMPARISON' || node.class === 'BETWEEN' ||
+      node.class === 'CONJUNCTION' || node.class === 'OPERATOR' && node.type !== 'OPERATOR_COALESCE' ||
+      node.class === 'SUBQUERY' && node.subquery_type !== 'SCALAR';
+    if (predicate && !Array.isArray(node)) found.add(node);
+    for (const [field, child] of Object.entries(node)) {
+      const role = ['where_clause', 'having', 'when_expr'].includes(field) ||
+        node.type === 'JOIN' && field === 'condition' ||
+        node.class === 'FUNCTION' && field === 'filter' ||
+        node.class === 'WINDOW' && field === 'filter_expr';
+      visit(child, predicate || role);
+    }
+  };
+  visit(root);
+  return found;
+}
 const conjuncts = (n) => n?.type === 'CONJUNCTION_AND' ? n.children.flatMap(conjuncts) : n ? [n] : [];
 // A proof is a direct projection or a WHERE conjunct, never a descendant of
 // NOT, OR, CASE, another predicate, or a nested query.
@@ -147,6 +163,7 @@ export function inspectTree(ast, map = CONCEPT_MAP, nameContext = {}) {
   // Ingredients are collected afresh per statement. No scope, traversal order,
   // join lineage, negation or disjunction can hide a possible requirement.
   for (const statement of ast.statements ?? []) {
+    const predicates = predicateObjects(statement);
     const ingredients = { join: false, outer: false, grouping: false, nulls: false, countStar: false,
       aggregateWindow: false, orderedWindow: false, window: false, cte: false };
     const visit = (node, frame = false, path = '$') => {
@@ -174,7 +191,7 @@ export function inspectTree(ast, map = CONCEPT_MAP, nameContext = {}) {
         ingredients.outer ||= ['LEFT', 'RIGHT', 'OUTER', 'FULL'].includes(node.join_type);
         rule('join_key', path);
       }
-      if (nullRelated(node)) {
+      if (nullRelated(node) || predicates.has(node) && node.class === 'CONSTANT' && node.value?.is_null) {
         ingredients.nulls = true;
         rule('null_test', path);
       }
@@ -274,10 +291,11 @@ export async function detectComputedZeros(conn, ast, result, map = CONCEPT_MAP, 
   let cache = constantCaches.get(conn);
   if (!cache) constantCaches.set(conn, (cache = new Map()));
   const values = new Map(),
+    predicates = predicateObjects(ast),
     comparisons = [];
   const constants = [];
   forObjects(ast, (node) => {
-    if (node.class === 'COMPARISON' || node.class === 'BETWEEN' || ['COMPARE_IN', 'COMPARE_NOT_IN'].includes(node.type)) comparisons.push(node);
+    if (node.class === 'COMPARISON') comparisons.push(node);
     if (constantOnly(node)) constants.push(node);
   });
   for (const operand of constants) {
@@ -338,15 +356,15 @@ export async function detectComputedZeros(conn, ast, result, map = CONCEPT_MAP, 
     values.set(operand, value);
     if (value.error) result.errors.push(`Constant inspection failed: ${value.error}`);
   }
+  // A zero anywhere in any predicate requires C085. The direct-operand check
+  // below is solely the exact teaching proof, not the ingredient detector.
+  if ([...predicates].some(node => values.get(node)?.zero))
+    addProof(result, map, 'zero_possible', '$.predicate');
   const zeroPredicates = new Set();
-  for (const node of comparisons) {
-    const operands = node.class === 'COMPARISON' ? [node.left, node.right] :
-      node.class === 'BETWEEN' ? [node.input, node.lower, node.upper] : node.children;
-    if (operands.some(operand => values.get(operand)?.zero)) {
-      addProof(result, map, 'zero_possible', '$.predicate');
-      if (node.class === 'COMPARISON' && !['COMPARE_DISTINCT_FROM', 'COMPARE_NOT_DISTINCT_FROM'].includes(node.type)) zeroPredicates.add(node);
-    }
-  }
+  for (const node of comparisons)
+    if ([node.left, node.right].some(operand => values.get(operand)?.zero) &&
+        !['COMPARE_DISTINCT_FROM', 'COMPARE_NOT_DISTINCT_FROM'].includes(node.type))
+      zeroPredicates.add(node);
   // One exact C085 proof: a direct ordinary comparison with an evaluated
   // numeric-zero operand. Scope success is required before credit.
   for (const [index, statement] of (ast.statements ?? []).entries()) {

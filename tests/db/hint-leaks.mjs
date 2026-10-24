@@ -1,6 +1,7 @@
 // Test-only oracle: complete authored outlines, actually run each variant, and
 // submit every runnable variant to the same isolated answer grader as the UI.
 import { readFile } from 'node:fs/promises';
+import { checkMessageLiterals } from '../../tools/check-message-literals.mjs';
 const qi = (name) => `"${name.replaceAll('"', '""')}"`;
 const quote = (value) => `'${value.replaceAll("'", "''")}'`;
 // Preserve lexical spelling, not JavaScript numeric values. A signed number and
@@ -105,28 +106,10 @@ export async function hintCandidates(h, pack, diagnosticsText = null) {
   for (const text of [pack.task, pack.guideTask, pack.rulesText, ...stringFields(pack.hints)])
     addTextVocabulary(candidates, text);
   addTextVocabulary(candidates, diagnostics, false);
-  // Decode static JS string/template fragments so escaped quotes in legacy
-  // diagnostic text expose the same SQL literals that the learner actually sees.
-  // Interpolations remain text; no diagnostic code is evaluated.
-  for (const match of diagnostics.matchAll(/(['"`])(?:\\[\s\S]|(?!\1)[^\\])*\1/g)) {
-    const text = match[0]
-      .slice(1, -1)
-      .replace(
-        /\\(u\{[0-9A-Fa-f]+\}|u[0-9A-Fa-f]{4}|x[0-9A-Fa-f]{2}|\r\n|\n|[\s\S])/g,
-        (_, escape) => {
-          if (escape.startsWith('u{'))
-            return String.fromCodePoint(parseInt(escape.slice(2, -1), 16));
-          if (escape[0] === 'u' || escape[0] === 'x')
-            return String.fromCodePoint(parseInt(escape.slice(1), 16));
-          return (
-            { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', v: '\v', 0: '\0', '\n': '', '\r\n': '' }[
-              escape
-            ] ?? escape
-          );
-        },
-      );
+  // Share the native literal decoder with the pack builder. No checker
+  // statements or template interpolations are executed.
+  for (const text of checkMessageLiterals(diagnostics))
     addTextVocabulary(candidates, text);
-  }
   for (const table of Object.keys(pack.given)) {
     const inspected = await h.call('inspect', table);
     if (!inspected.ok) throw new Error(inspected.error);

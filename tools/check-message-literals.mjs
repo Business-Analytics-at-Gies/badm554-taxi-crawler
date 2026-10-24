@@ -1,48 +1,40 @@
 // Conservative static extraction: every JS string and template fragment, not
 // just guessed makeRule positions. Never import or execute an authored checker.
-// Dynamic fragments are inspected recursively; pack strings are scanned too.
+// Only a single bounded literal is passed to JavaScript's own parser; template
+// expressions are visited statically and never included in the decoded literal.
+import { Script } from 'node:vm';
+const literalCache = new Map();
+
 export function checkMessageLiterals(source) {
   const result = [];
   let i = 0;
-  const escape = () => {
-    const c = source[i++];
-    if (c === '\n') return '';
-    if (c === '\r') {
-      if (source[i] === '\n') i++;
-      return '';
-    }
-    if (c === 'x' || c === 'u') {
-      const brace = c === 'u' && source[i] === '{';
-      if (brace) i++;
-      const n = brace ? source.indexOf('}', i) - i : c === 'x' ? 2 : 4;
-      const digits = source.slice(i, i + n);
-      if (n < 1 || !/^[\da-f]+$/i.test(digits)) throw new Error('Invalid JS string escape');
-      i += n + (brace ? 1 : 0);
-      return String.fromCodePoint(parseInt(digits, 16));
-    }
-    return { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', v: '\v', 0: '\0' }[c] ?? c;
+  const literal = (raw, quote) => {
+    const token = `${quote}${raw}${quote}`;
+    if (!literalCache.has(token))
+      literalCache.set(token, new Script(`"use strict"; (${token})`)
+        .runInNewContext(Object.create(null), { timeout: 100 }));
+    const value = literalCache.get(token);
+    if (typeof value !== 'string') throw new Error('Expected a checker string literal');
+    result.push(value);
   };
   const string = (quote) => {
-    i++;
-    let text = '';
+    let start = ++i;
     while (i < source.length) {
-      const c = source[i++];
+      const at = i, c = source[i++];
       if (c === quote) {
-        result.push(text);
+        literal(source.slice(start, at), quote);
         return;
       }
       if (c === '\\') {
-        text += escape();
+        if (source[i++] === '\r' && source[i] === '\n') i++;
         continue;
       }
       if (quote === '`' && c === '$' && source[i] === '{') {
         i++;
-        result.push(text);
-        text = '';
+        literal(source.slice(start, at), quote);
         code(true);
-        continue;
+        start = i;
       }
-      text += c;
     }
     throw new Error('Unclosed checker string');
   };
@@ -51,8 +43,8 @@ export function checkMessageLiterals(source) {
     while (i < source.length) {
       const c = source[i];
       if (c === '/' && source[i + 1] === '/') {
-        i = source.indexOf('\n', i + 2);
-        if (i < 0) i = source.length;
+        const end = source.slice(i + 2).search(/[\n\r\u2028\u2029]/);
+        i = end < 0 ? source.length : i + 2 + end;
         continue;
       }
       if (c === '/' && source[i + 1] === '*') {
