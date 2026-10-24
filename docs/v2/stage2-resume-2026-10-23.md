@@ -290,6 +290,22 @@ All other text is prose, which the gate does not check (item 3a).
      `struct_extract`, `current_schema`, `get_current_timestamp` and other session or clock
      functions stay unlisted.
    - This layer only refuses. Concepts still come from the tree layer and the phrase list.
+2c. **Scope check.** The bound plan does not always show what a name became. DuckDB evaluates
+   `LIMIT` and `OFFSET` while binding (`LIMIT ("current_timestamp" IS NOT NULL)` gives the same
+   plan as `LIMIT 1`), and it expands built-in macros into constants (`SELECT "current_user"`
+   gives the same plan as `SELECT 'duckdb'`; also `"session_user"`, `"current_role"`, `"user"`).
+   So the gate resolves names itself, on the parse tree, for the constructs the tree map allows:
+   - Each `FROM` item supplies columns: a given table supplies its columns; a CTE, subquery or
+     `VALUES` supplies its output names (an explicit column list, the select-list names, or the
+     columns that a star expands to). A blank filled for binding supplies what its fill supplies.
+   - A column reference must resolve to one column visible at that point: in the `FROM` items
+     of its own query, or a select-list alias where DuckDB allows one (`WHERE`, `GROUP BY`,
+     `HAVING`, `ORDER BY`). A qualified name `x.c` needs `x` to be a `FROM` item in scope that
+     supplies `c`.
+   - A reference that resolves to nothing, to more than one column, or to an outer query fails:
+     `unresolved name <name>`. A reference inside `LIMIT` or `OFFSET` always fails.
+   - A construct whose scope the check does not model fails: `unmodelled scope <construct>`.
+   This check and the bound layer both apply. Either one can fail a source.
 3. **Source kinds.** Never skip a source because it does not parse.
    - **Complete SQL**: the reference, every refresher example, every hint outline, and any guide
      `<pre>` block or inline `<code>` that parses as one or more statements. The reference,
@@ -411,7 +427,14 @@ All other text is prose, which the gate does not check (item 3a).
   `WITH ghost AS (SELECT t FROM trips_raw t) SELECT row_id FROM trips_raw;` fail as unused CTEs,
   and so does floor 1's reference with the first `ghost` CTE added. `SELECT rowid FROM
   trips_raw;` fails to bind; `SELECT row_id FROM trips_raw;` passes. The bound allowlist
-  includes what current content needs, for example `round` with two arguments. The migrated `rulesText` of floors 1 and 2
+  includes what current content needs, for example `round` with two arguments.
+- Scope check: these fail as unresolved names, in the guide and in the reference where named:
+  `SELECT row_id FROM trips LIMIT ("current_timestamp" IS NOT NULL);` (floor 2 guide), floor 2's
+  reference with `LIMIT CASE WHEN "current_timestamp" IS NOT NULL THEN 100000 ELSE 0 END`
+  appended (same 7,171 rows), the same with `OFFSET`, `SELECT "current_user";`, `"session_user"`,
+  `"current_role"` and `"user"` (floor 1 guide), and floor 1's reference with
+  `AND "current_user" = 'duckdb'` added. `SELECT current_user FROM (SELECT 7 AS current_user) t;`
+  passes (it resolves to the column, 7). Every current source resolves after the migrations. The migrated `rulesText` of floors 1 and 2
   passes.
 - The map is used: remove any one map entry that floors 1 to 3 use, and the gate fails on that
   floor. Remove any one keyword allowlist entry or phrase entry that they use, and the gate fails.
