@@ -226,9 +226,16 @@ file, the fixture packs) stay as they are.
 **Change.** Two closed-world layers. The gate scans everything a learner can see: the built
 guide HTML (from `tools/build-floor-packs.mjs`, all Detail levels), every learner-visible pack
 string (task text, hint rungs, refresher prose, control explanations) and every message in the
-floor's `check.js`. It also scans the reference. The gate reads HTML with the browser's own
-parser (the element's `textContent`), never with a hand-written entity decoder, so it sees what
-the learner sees (code review r14: `&#x27;` and `&#039;` hid a runnable `coalesce`). Text marked
+floor's `check.js`. It also scans the reference. The gate reads each string in the format the
+game displays it, so it sees what the learner sees. HTML (the guide, and any field the game
+renders as HTML) goes through the browser's own parser (the element's `textContent`), never a
+hand-written entity decoder (code review r14: `&#x27;` and `&#039;` hid a runnable `coalesce`).
+A field the game shows as plain text (check this in the rendering code for each field) is read
+as literal text, and a backtick span in it is taken verbatim (code review r15: HTML parsing
+dropped `<coalesce(NULL,1) AND 2>` from a hint). `check.js` is read with a real JavaScript
+parser (for example `acorn`, pinned as a test dependency), which collects every string and
+template literal; a file it cannot parse fails (code review r15: quotes inside a regular
+expression fooled the hand-written reader). Text marked
 as code (`<code>`, `<pre>`, or backticks in a plain-text field), the reference, refresher
 examples and hint outlines are
 sources. Each source belongs to one source kind (item 3), and each kind says which layers apply.
@@ -393,9 +400,11 @@ All other text is prose, which the gate does not check (item 3a).
      `NULL IN (SELECT 1)` and `0 IN (SELECT 1)` hiding C083 and C085.
    **Confirmed means one exact, listed shape**, checked with names resolved by the scope check,
    and nothing that changes its meaning around it. Example for C083: the query's `FROM` is a
-   `LEFT JOIN` whose condition equates a left-input column with a right-input column, and its
-   `WHERE` has `<right-input column> IS NULL` as a top-level conjunct (not under `NOT` or
-   `OR`). Any other arrangement is only possible.
+   `LEFT JOIN` whose condition is only one or more equalities joined by `AND`, each between a
+   left-input column and a right-input column, with nothing else in the condition (code review
+   r15: `ON l.n = r.m AND 1 = 2` earned credit); and its `WHERE` has `<right-input column> IS
+   NULL` as a top-level conjunct (not under `NOT` or `OR`). Any other arrangement is only
+   possible. Apply the same exactness to every confirmed shape.
    **Zero ids only for plain parts.** Only column references, constants, stars and structural
    nodes may map to zero ids. Every operator, predicate and function maps to at least one id,
    or it is unmapped. `IS [NOT] DISTINCT FROM` gets its own id.
@@ -443,6 +452,11 @@ All other text is prose, which the gate does not check (item 3a).
   NOT DISTINCT FROM NULL` after a `LEFT JOIN` makes C016, C083 and C085 possible;
   `WHERE 1 IN (CAST(1 - 1 AS INTEGER))` and `WHERE 1 IN (0)` make C085 possible. Each one in
   all seven source places the reviewer used.
+- Code review r15 fixtures: floor 2's `hints.columns[0].text` set to
+  ``Try `SELECT 1 WHERE 1<coalesce(NULL,1) AND 2>1`.`` fails as undeclared C020, and so does the
+  same text in a `check.js` message; a `check.js` whose message sits between two regular
+  expressions containing `'` still has its message read, and fails as undeclared C020; the
+  `ON l.n = r.m AND 1 = 2` lesson earns no C083 credit.
 - Code review r14 fixtures: `WHERE NULL IN (SELECT 1)` after a `LEFT JOIN` makes C083 and C085
   possible; `SELECT 1 WHERE 0 IN (SELECT 1)` makes C085 possible; floor 1's guide with
   `<pre>SELECT '&#x27;; SELECT coalesce(NULL, 1); --'</pre>` fails as undeclared C020, and so
