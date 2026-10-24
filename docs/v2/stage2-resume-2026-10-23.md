@@ -273,9 +273,14 @@ All other text is prose, which the gate does not check (item 3a).
    function visible; Claude checked this with DuckDB 1.5.5 on 10-24: `current_schema`,
    `get_current_timestamp` and `struct_pack` all appear as `BOUND_FUNCTION`). Confirm that the
    pinned engine supports it before you build on it; if it does not, stop and report.
-   - Bind on a fresh connection that has empty tables with the same names and column types as
-     the floor's given tables. Bind statements as they are. Bind an expression as
-     `SELECT <expression> FROM <given table>`, trying each given table.
+   - Bind on a fresh connection that has, for each given table, a view with the table's name
+     and column types over an empty table. Views have no hidden storage columns, so `rowid`
+     fails to bind (Claude checked this with DuckDB 1.5.5). Bind statements as they are. Bind
+     an expression as `SELECT <expression> FROM <given table>`, trying each given table.
+   - The binder drops a CTE that the statement never uses, so its body is not in the plan.
+     Every CTE must be reachable from the final query through the tree's table references.
+     Otherwise the source fails: `unused CTE <name>`. A used CTE keeps all its expressions in the
+     plan, even a column that is not selected.
    - For blanks, try these fills in order and use the first combination that binds: `NULL`,
      each given column, `SELECT NULL`, `SELECT * FROM <given table>`.
    - A source that is SQL (item 3) but does not bind with any fill fails: `cannot bind:
@@ -306,7 +311,8 @@ All other text is prose, which the gate does not check (item 3a).
    - **Migration.** Run the source rules on every code-marked span in every learner-visible
      string on floors 1 to 3, not only in the guides, and rewrite each span that fails. Known
      cases: the reconciliation queries on floors 2 and 3 need explicit CTE output names
-     (`answer(zone_flag)`, `answer(reason)`) so that they bind; the column groups in
+     (`answer(zone_flag)`, `answer(reason)`) so that they bind; floor 2's standalone `CASE`
+     example needs its `t.` qualifiers removed so that it binds; the column groups in
      floor 1's and floor 2's `rulesText` (separate names); and floor
      1's `loaded_at = 2024-02-01 06:40` (write it with a typed literal, `loaded_at = TIMESTAMP
      '2024-02-01 06:40:00'`, and declare what it detects). List each rewrite in the verification
@@ -400,7 +406,12 @@ All other text is prose, which the gate does not check (item 3a).
   `current_schema` and `AND current_schema = 'main'` added (same 7,171 rows). These pass:
   `SELECT row_id FROM (SELECT row_id FROM trips_raw);` and
   `SELECT current_schema FROM (SELECT 7 AS current_schema) t;` (it binds to the column, 7).
-  Inline `<code>current_schema</code>` fails as an unknown inline name. The migrated `rulesText` of floors 1 and 2
+  Inline `<code>current_schema</code>` fails as an unknown inline name. In floor 1's guide,
+  `WITH ghost AS (SELECT "current_timestamp" AS env) SELECT row_id FROM trips_raw;` and
+  `WITH ghost AS (SELECT t FROM trips_raw t) SELECT row_id FROM trips_raw;` fail as unused CTEs,
+  and so does floor 1's reference with the first `ghost` CTE added. `SELECT rowid FROM
+  trips_raw;` fails to bind; `SELECT row_id FROM trips_raw;` passes. The bound allowlist
+  includes what current content needs, for example `round` with two arguments. The migrated `rulesText` of floors 1 and 2
   passes.
 - The map is used: remove any one map entry that floors 1 to 3 use, and the gate fails on that
   floor. Remove any one keyword allowlist entry or phrase entry that they use, and the gate fails.
@@ -421,6 +432,8 @@ All other text is prose, which the gate does not check (item 3a).
 
 - DuckDB rewrites at parse time (`EXTRACT`, `COALESCE`, `ISNULL`, `::`, `IN`, `BETWEEN`). Key the
   tree map on the rewritten form. Write each test with the spelled form.
+- What the binder drops or hides (unused CTEs, hidden columns). Look for any other part of the
+  parse tree that does not reach the bound plan.
 - What the tree drops. The keyword layer must cover it. Look for any other keyword whose meaning
   leaves no field in the tree.
 - Fields the walker can skip, at any depth.
