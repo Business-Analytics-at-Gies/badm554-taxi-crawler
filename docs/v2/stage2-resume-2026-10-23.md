@@ -244,27 +244,36 @@ which layers apply.
    and neutral, for example a column reference. Functions are checked here, on the tree's
    function nodes only, so a CTE column list such as `rides(id)` or an alias list such as `t(n)`
    is not a function. The walker visits every object and every field, at every depth. An
-   unlisted element, field or enum value fails: `unmapped construct <path>: <value>`. Delete the
+   unlisted element, field or enum value fails: `unmapped construct <path>: <value>`.
+   **Active and inactive.** A field with its inactive value (an empty list, null, false, or the
+   default enum value) is neutral. A field with an active value needs its own map entry, keyed on
+   the field and on the fact that it is active. Example: plain `DISTINCT` leaves
+   `distinct_on_targets` empty, but `DISTINCT ON (...)` fills it with ordinary column
+   references. So `DISTINCT ON` is unmapped, and fails, until it gets its own override id and its
+   own refresher. The `SELECT_DISTINCT` refresher never covers it. Delete the
    old detector and its token fallback (`site/floors/sql-context.mjs` and the unfinished-SQL path
    in `concept-gate.mjs`).
 3. **Source kinds.** Never skip a source because it does not parse.
-   - **Complete SQL**: the reference, every refresher example, every hint outline, every guide
-     `<pre>` block, and any inline `<code>` that parses as one or more statements. Blanks are
+   - **Complete SQL**: the reference, every refresher example, every hint outline, and any guide
+     `<pre>` block or inline `<code>` that parses as one or more statements. The reference,
+     refresher examples and hint outlines must be complete SQL. Blanks are
      written `___`. Fill each blank with a placeholder name. If the source does not parse, also
      try `SELECT NULL` for each blank and accept the first combination that parses. If none
      parses, the source fails: "Rewrite it so that each blank stands for one name, value or
      query." Both layers apply. Rewrite the guides' comment blanks to this form and keep the
      comment as a label, for example `PARTITION BY ___ /* your trip key */` and
      `WITH answer AS (___ /* your answer query */)`.
-   - **Inline expression**: an inline `<code>` (not in `<pre>`) that parses as `SELECT <code>`.
-     Both layers apply, and the tree layer reads the wrapped tree, so its concepts are detected
-     as for complete SQL. Example: `trip_distance = 0` detects C085.
+   - **Expression**: a guide `<pre>` block or an inline `<code>` that does not parse as
+     statements but parses as `SELECT <code>` after blank filling. Both layers apply, and the
+     tree layer reads the wrapped tree, so its concepts are detected as for complete SQL.
+     Examples: inline `trip_distance = 0` detects C085; the `<pre>` blocks on floors 2 and 3 that
+     start with `CASE WHEN` and end with a column alias are expressions.
    - **Inline name**: a bare or qualified name, such as `trips_raw` or `t.row_id`. The keyword
      layer applies. It detects no concept.
    - **Inline phrase**: an exact match with a short phrase list in the map. Start with what the
      guides use: `SELECT DISTINCT`, `DISTINCT`, `GROUP BY`. Each phrase maps to its concept ids,
      marked `possible` (item 5). The keyword layer applies.
-   - Any other inline `<code>` fails.
+   - Any other guide `<pre>` block or inline `<code>` fails.
 4. **One construct, one id.** Each map entry names the id of one construct. A graph id that
    names more than one construct and is not taught at the pack's module (for example C036,
    "EXTRACT date part and UNION ALL") is not used in the map. Each of its constructs gets its own
@@ -290,9 +299,12 @@ which layers apply.
 
 - Floors 1 to 3 pass the gate. List each new declaration, and each rewritten guide blank, in the
   verification note. Say why each declaration is a true teaching claim.
-- Every input from code reviews r9, r10 and r11 (`docs/v2/stage2-review-r9.md` to `-r11.md`)
-  and from the R3b spec review (`docs/v2/stage2-spec-review-r3b.md`) is a fixture with its
-  expected result. All of them fail, except r10 finding 2 (the `AVG` window frame), which passes.
+- Every reproduction from code reviews r9, r10 and r11 (`docs/v2/stage2-review-r9.md` to
+  `-r11.md`) and from the R3b spec reviews (`docs/v2/stage2-spec-review-r3b*.md`) is a fixture.
+  Each fixture states its pack context (module, declarations, refreshers) and its expected
+  result. The bad-pack reproductions fail. These pass: r10 finding 2 (the `AVG` window frame),
+  and the current guide names and listed phrases that the spec reviews quote (for example
+  `trips_raw`, `SELECT DISTINCT`) in their real packs.
 - Each of these fails as unmapped, or maps to the correct concept with a test: `GROUP BY ALL`,
   `UNION ALL BY NAME`, `WITH RECURSIVE`, an unused `WINDOW` clause, `LATERAL`, `MATERIALIZED`,
   `ifnull`, `ISNULL`, `count(t.*)`, `PIVOT`, `USING SAMPLE`, a lambda, a list comprehension, list
@@ -308,11 +320,17 @@ which layers apply.
   slots include frame bounds, CTE bodies, subqueries, set-operation sides, join conditions, CASE
   branches, function arguments, window partitions and orders, query modifiers, `FILTER`, and
   `ORDER BY` inside an aggregate.
+- Active fields are separate entries. Each of these, written with familiar column names, fails
+  as unmapped or maps to its own id with a test: `DISTINCT ON (...)`, `GROUPING SETS`, `ROLLUP`,
+  `CUBE`, `NULLS FIRST`/`NULLS LAST`, `OFFSET`, a percentage `LIMIT`, `IGNORE NULLS`, `FILTER` on
+  a window function, an `ORDER BY` inside an aggregate, window `EXCLUDE`, and `USING` in a join
+  where floors 1 to 3 use `ON`. Add any other optional field that floors 1 to 3 leave inactive.
+  The floor 1 `DISTINCT ON` reference (7,171 rows, same result as the current reference) fails.
 - The map is used: remove any one map entry that floors 1 to 3 use, and the gate fails on that
   floor. Remove any one keyword allowlist entry or phrase entry that they use, and the gate fails.
-- Source kinds: a reference, lesson, outline or guide `<pre>` block that does not parse after
-  blank filling fails. Inline `<code>` that is not a statement, expression, name or listed phrase
-  fails. Inline names and listed phrases pass. `<code>trip_distance = 0</code>` in an M1 pack
+- Source kinds: a reference, lesson or outline that does not parse after blank filling fails. A
+  guide `<pre>` block that is neither statements nor an expression fails. Inline `<code>` that is
+  not a statement, expression, name or listed phrase fails. Inline names and listed phrases pass. `<code>trip_distance = 0</code>` in an M1 pack
   fails as undeclared C085, which proves the wrapped tree is read. All current sources pass after
   the guide rewrite.
 - Names are not functions or clauses: a CTE column list (`WITH rides(id) AS ...`), an alias
