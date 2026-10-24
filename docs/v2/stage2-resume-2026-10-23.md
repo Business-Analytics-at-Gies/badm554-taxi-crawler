@@ -226,8 +226,11 @@ file, the fixture packs) stay as they are.
 **Change.** Two closed-world layers. The gate scans everything a learner can see: the built
 guide HTML (from `tools/build-floor-packs.mjs`, all Detail levels), every learner-visible pack
 string (task text, hint rungs, refresher prose, control explanations) and every message in the
-floor's `check.js`. It also scans the reference. Text marked as code (`<code>`, `<pre>`, or
-backticks in a plain-text field), the reference, refresher examples and hint outlines are
+floor's `check.js`. It also scans the reference. The gate reads HTML with the browser's own
+parser (the element's `textContent`), never with a hand-written entity decoder, so it sees what
+the learner sees (code review r14: `&#x27;` and `&#039;` hid a runnable `coalesce`). Text marked
+as code (`<code>`, `<pre>`, or backticks in a plain-text field), the reference, refresher
+examples and hint outlines are
 sources. Each source belongs to one source kind (item 3), and each kind says which layers apply.
 All other text is prose, which the gate does not check (item 3a).
 
@@ -383,6 +386,11 @@ All other text is prose, which the gate does not check (item 3a).
    - C085: any NULL-related predicate; any comparison, `IN` or `NOT IN` list, or `BETWEEN` with
      an operand that evaluates to zero; any `BETWEEN` outside a window frame; any date, time or
      interval value.
+   - Position does not matter inside a predicate. A NULL constant, or a constant-only subtree
+     that evaluates to zero, anywhere in a predicate (`WHERE`, `HAVING`, `ON`, a `CASE WHEN`
+     condition, `FILTER`), on either side and in any predicate form (`IN` with a list or a
+     subquery, `ANY`, `ALL`, a comparison, `BETWEEN`), is an ingredient. Code review r14 found
+     `NULL IN (SELECT 1)` and `0 IN (SELECT 1)` hiding C083 and C085.
    **Confirmed means one exact, listed shape**, checked with names resolved by the scope check,
    and nothing that changes its meaning around it. Example for C083: the query's `FROM` is a
    `LEFT JOIN` whose condition equates a left-input column with a right-input column, and its
@@ -435,6 +443,10 @@ All other text is prose, which the gate does not check (item 3a).
   NOT DISTINCT FROM NULL` after a `LEFT JOIN` makes C016, C083 and C085 possible;
   `WHERE 1 IN (CAST(1 - 1 AS INTEGER))` and `WHERE 1 IN (0)` make C085 possible. Each one in
   all seven source places the reviewer used.
+- Code review r14 fixtures: `WHERE NULL IN (SELECT 1)` after a `LEFT JOIN` makes C083 and C085
+  possible; `SELECT 1 WHERE 0 IN (SELECT 1)` makes C085 possible; floor 1's guide with
+  `<pre>SELECT '&#x27;; SELECT coalesce(NULL, 1); --'</pre>` fails as undeclared C020, and so
+  does the `&#039;` spelling. Each in all seven source places where it applies.
 - `SELECT 1 WHERE 1 = CAST(1 - 1 AS INTEGER)` and the same with
   `CAST(CAST(0 AS INTEGER) AS INTEGER)` detect C085, in each kind of source.
 - The guide reconciliation blocks on floors 2 and 3 give the right result when the blank holds
