@@ -247,7 +247,11 @@ All other text is prose, which the gate does not check (item 3a).
    `DISTINCT`, `FILTER`, ordered aggregates, sample and the query modifiers. Zero ids means known
    and neutral, for example a column reference. Functions are checked here, on the tree's
    function nodes only, so a CTE column list such as `rides(id)` or an alias list such as `t(n)`
-   is not a function. A function entry names the function and its argument count, because one
+   is not a function. **Whole-row references.** A column reference whose name matches a table
+   name or alias in the same statement (for example `t` in `SELECT t FROM trips t`) returns the
+   whole row as one structured value. Treat it as a whole-row reference, which is unmapped and
+   fails. When a real column has the same name as a table or alias, it also fails; the author
+   renames the alias. A function entry names the function and its argument count, because one
    name can do different jobs: `min(fare_amount)` returns one value, but `min(fare_amount, 2)`
    returns a list of the two smallest. A call with an unlisted argument count is unmapped. The walker visits every object and every field, at every depth. An
    unlisted element, field or enum value fails: `unmapped construct <path>: <value>`.
@@ -361,7 +365,8 @@ All other text is prose, which the gate does not check (item 3a).
   fails on floor 2 as undeclared C020.
 - `SELECT min(fare_amount, 2) FROM trips` and the same with `max`, added to floor 3's guide, fail.
   Ordinary `min(fare_amount)` and `max(fare_amount)` pass. An inline `(row_id, reason)` fails as
-  unmapped `row`; the rewritten separate names pass. The migrated `rulesText` of floors 1 and 2
+  unmapped `row`; the rewritten separate names pass. `SELECT t FROM trips t;` in a floor 3 guide
+  `<pre>` block fails as a whole-row reference; `SELECT t.row_id FROM trips t;` passes. The migrated `rulesText` of floors 1 and 2
   passes.
 - The map is used: remove any one map entry that floors 1 to 3 use, and the gate fails on that
   floor. Remove any one keyword allowlist entry or phrase entry that they use, and the gate fails.
