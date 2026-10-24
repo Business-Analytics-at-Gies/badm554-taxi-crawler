@@ -247,30 +247,12 @@ All other text is prose, which the gate does not check (item 3a).
    `DISTINCT`, `FILTER`, ordered aggregates, sample and the query modifiers. Zero ids means known
    and neutral, for example a column reference. Functions are checked here, on the tree's
    function nodes only, so a CTE column list such as `rides(id)` or an alias list such as `t(n)`
-   is not a function. **Names are closed too.** DuckDB decides what a bare name means when it
-   binds the query, not in the parse tree. So a column reference is neutral only when its name
-   (the last part, for a qualified name) is one of:
-   - a column of the floor's given tables;
-   - a name defined in the same statement: a select-list alias, a CTE column list, an alias
-     column list such as `t(n)`, or a column name that a subquery or CTE in the statement
-     selects;
-   - the blank placeholder.
-   Any other name fails: `unknown name <name>`. **Ambiguous names fail, whatever the scope.**
-   DuckDB can resolve some names to something other than a column, depending on scope: a
-   function without brackets (`SELECT current_schema` reads the session), an implicit subquery
-   name (`SELECT unnamed_subquery FROM (SELECT row_id FROM trips_raw)` returns whole rows), the
-   `rowid` pseudo-column, or a table name or alias (`t` in `SELECT t FROM trips t` returns the
-   whole row as one structured value). The gate does not resolve scope. A column reference
-   fails, `ambiguous name <name>: rename it`, when its name is any of these, unless it is a
-   column of the floor's given tables:
-   - the name of any function in the pinned engine's catalog (`duckdb_functions()`);
-   - `rowid`, or a name that starts with `unnamed_subquery`;
-   - a table name or alias anywhere in the statement.
-   This holds even when the statement defines the name, because a definition in another scope
-   (for example in an unused CTE) does not reach the use. The author renames the alias. A function entry names the function and its argument count, because one
+   is not a function. A function entry names the function and its argument count, because one
    name can do different jobs: `min(fare_amount)` returns one value, but `min(fare_amount, 2)`
-   returns a list of the two smallest. A call with an unlisted argument count is unmapped. The walker visits every object and every field, at every depth. An
-   unlisted element, field or enum value fails: `unmapped construct <path>: <value>`.
+   returns a list of the two smallest. A call with an unlisted argument count is unmapped. The
+   walker visits every object and every field, at every depth. An unlisted element, field or
+   enum value fails: `unmapped construct <path>: <value>`. A column reference is neutral here;
+   the bound layer (2b) checks what it resolves to.
    **No neutral value by default.** The map names, field by field, each value that is neutral.
    It never infers it from an empty list, null, false or a default enum value. Every other value
    needs its own map entry, keyed on the field and the value (for a list: empty or not empty).
@@ -282,6 +264,27 @@ All other text is prose, which the gate does not check (item 3a).
    own refresher. The `SELECT_DISTINCT` refresher never covers it. Delete the
    old detector and its token fallback (`site/floors/sql-context.mjs` and the unfinished-SQL path
    in `concept-gate.mjs`).
+2b. **Bound layer.** What a name means is decided when DuckDB binds the query, not in the
+   parse tree: a bare name can become a function (`current_schema`, a quoted
+   `"current_timestamp"`), a whole row (`t` in `SELECT t FROM trips t`, or an alias spelled like
+   a column), a struct field (`payload.vendor_id`) or a struct expansion (`payload.*`). So the
+   gate also binds each SQL source and reads the bound plan with
+   `json_serialize_plan(<sql>, optimize := false)` (the `optimize := false` keeps every bound
+   function visible; Claude checked this with DuckDB 1.5.5 on 10-24: `current_schema`,
+   `get_current_timestamp` and `struct_pack` all appear as `BOUND_FUNCTION`). Confirm that the
+   pinned engine supports it before you build on it; if it does not, stop and report.
+   - Bind on a fresh connection that has empty tables with the same names and column types as
+     the floor's given tables. Bind statements as they are. Bind an expression as
+     `SELECT <expression> FROM <given table>`, trying each given table.
+   - For blanks, try these fills in order and use the first combination that binds: `NULL`,
+     each given column, `SELECT NULL`, `SELECT * FROM <given table>`.
+   - A source that is SQL (item 3) but does not bind with any fill fails: `cannot bind:
+     <error>`. Never skip it.
+   - A bound allowlist lists each bound expression class and each bound function name, with
+     its argument count. Anything unlisted fails: `unmapped bound <name>`. `struct_pack`,
+     `struct_extract`, `current_schema`, `get_current_timestamp` and other session or clock
+     functions stay unlisted.
+   - This layer only refuses. Concepts still come from the tree layer and the phrase list.
 3. **Source kinds.** Never skip a source because it does not parse.
    - **Complete SQL**: the reference, every refresher example, every hint outline, and any guide
      `<pre>` block or inline `<code>` that parses as one or more statements. The reference,
@@ -303,7 +306,7 @@ All other text is prose, which the gate does not check (item 3a).
    - **Migration.** Run the source rules on every code-marked span in every learner-visible
      string on floors 1 to 3, not only in the guides, and rewrite each span that fails. Known
      cases: the reconciliation queries on floors 2 and 3 need explicit CTE output names
-     (`answer(zone_flag)`, `answer(reason)`) under the closed-name rule; the column groups in
+     (`answer(zone_flag)`, `answer(reason)`) so that they bind; the column groups in
      floor 1's and floor 2's `rulesText` (separate names); and floor
      1's `loaded_at = 2024-02-01 06:40` (write it with a typed literal, `loaded_at = TIMESTAMP
      '2024-02-01 06:40:00'`, and declare what it detects). List each rewrite in the verification
@@ -386,16 +389,18 @@ All other text is prose, which the gate does not check (item 3a).
 - `SELECT min(fare_amount, 2) FROM trips` and the same with `max`, added to floor 3's guide, fail.
   Ordinary `min(fare_amount)` and `max(fare_amount)` pass. An inline `(row_id, reason)` fails as
   unmapped `row`; the rewritten separate names pass. `SELECT t FROM trips t;` in a floor 3 guide
-  `<pre>` block fails as a whole-row reference; `SELECT t.row_id FROM trips t;` passes. In floor
-  1's guide, `SELECT unnamed_subquery FROM (SELECT row_id FROM trips_raw);` fails as an unknown
-  name, and `SELECT row_id FROM (SELECT row_id FROM trips_raw);` passes. `SELECT current_schema;`
-  in a `<pre>` block and inline `<code>current_schema</code>` both fail. These also fail as
-  ambiguous names: `WITH x AS (SELECT 7 AS current_schema) SELECT current_schema;`,
-  `WITH x AS (SELECT 7 AS unnamed_subquery) SELECT unnamed_subquery FROM (SELECT row_id FROM
-  trips_raw);`, floor 1's reference with an unused CTE defining `current_schema` and
-  `AND current_schema = 'main'` added (same 7,171 rows), and, by design,
-  `SELECT current_schema FROM (SELECT 7 AS current_schema) t;`. The renamed control
-  `SELECT schema_label FROM (SELECT 7 AS schema_label) t;` passes. The migrated `rulesText` of floors 1 and 2
+  `<pre>` block fails in the bound layer (`struct_pack`); `SELECT t.row_id FROM trips t;` passes.
+  These also fail in the bound layer, each in a floor 1 guide `<pre>` block with floor 1's
+  current declarations: `SELECT unnamed_subquery FROM (SELECT row_id FROM trips_raw);`,
+  `SELECT current_schema;`, `WITH x AS (SELECT 7 AS current_schema) SELECT current_schema;`,
+  `WITH x AS (SELECT 7 AS "current_timestamp") SELECT "current_timestamp";`,
+  `SELECT row_id FROM (SELECT vendor_id FROM trips_raw) row_id;`, and
+  `SELECT payload.vendor_id FROM (SELECT row_id AS payload FROM (SELECT 7 AS vendor_id) row_id) q;`
+  and the same with `payload.*`. So does floor 1's reference with an unused CTE defining
+  `current_schema` and `AND current_schema = 'main'` added (same 7,171 rows). These pass:
+  `SELECT row_id FROM (SELECT row_id FROM trips_raw);` and
+  `SELECT current_schema FROM (SELECT 7 AS current_schema) t;` (it binds to the column, 7).
+  Inline `<code>current_schema</code>` fails as an unknown inline name. The migrated `rulesText` of floors 1 and 2
   passes.
 - The map is used: remove any one map entry that floors 1 to 3 use, and the gate fails on that
   floor. Remove any one keyword allowlist entry or phrase entry that they use, and the gate fails.
