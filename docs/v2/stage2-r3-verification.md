@@ -170,3 +170,7 @@ acceptance tests remain green, and `git diff --check` passed.
 Protected Rerun paths, sql.js, server/config.js and server/index.js are unchanged.
 No live data, merge or deployment. The physical iPhone check remains unverified;
 WebKit emulation is an automated release guard, not physical-device evidence.
+
+## Round 10 follow-up
+
+Round 10 supersedes the transaction-based execution proof and the keyword-combination detector described above. Lessons now run through the learner runner on fresh given-table copies; complete SQL uses native clause structure and unfinished SQL uses explicit scopes. See [the round-10 class inventory and verification](stage2-r10-verification.md).

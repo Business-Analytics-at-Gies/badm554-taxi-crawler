@@ -135,3 +135,7 @@ Protected Rerun paths, `site/game/db/sql.js`, `server/config.js` and
 `server/index.js` are unchanged. R5 is not started. No merge, PR or deployment.
 The existing physical-iPhone release check remains for Vishal; emulation is not
 physical-device verification.
+
+## Round 10 follow-up
+
+Round 10 expands the fill vocabulary to preserve signed/decimal/scientific numbers, booleans, NULL and displayed literals, and adds the signed-completion must-flag fixture. Historical R4 counts above describe c721a93; see [the round-10 verification](stage2-r10-verification.md) for the larger completion pool and current results.

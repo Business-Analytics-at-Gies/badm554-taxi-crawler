@@ -4,6 +4,7 @@
 import { FLOOR_IDS, validFloor, floorError } from '../../floors/catalog.js';
 import * as duckdb from '../../vendor/duckdb/duckdb-browser.mjs';
 import { cleanError, nativeReadPolicy, nativeStatements } from './sql.js';
+import { lessonStatements } from './lesson-policy.mjs';
 import { answerPolicy } from './answer-policy.js';
 import {
   BASE, FLOORS, HIDDEN_SCHEMAS, PLANT_ID_START, PLANT_KINDS, TUTOR,
@@ -96,7 +97,7 @@ async function runAll(conn, statements) {
   for (const s of statements) for (const one of await nativeStatements(conn, s)) await conn.query(one);
 }
 
-async function startEngine(tutorFloor = null, created = () => {}, answerFloor = null) {
+async function startEngine(tutorFloor = null, created = () => {}, answerFloor = null, lesson = null) {
   const worker = new Worker(new URL('duckdb-browser-eh.worker.js', VENDOR));
   const adb = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
   const e = { adb, broken: false, closed: false,
@@ -131,12 +132,15 @@ async function startEngine(tutorFloor = null, created = () => {}, answerFloor = 
         `SET schema = ${qs(TUTOR)}`,
       ]);
     }
-    if (answerFloor) {
+    if (answerFloor || lesson) {
+      const schema = lesson?.schema ?? 'main';
+      const given = lesson?.given ?? FLOORS[answerFloor].given;
       await runAll(e.sys, [
-        ...Object.entries(FLOORS[answerFloor].given).map(([name, src]) => `CREATE TABLE main."${name}" AS FROM ${src}`),
+        ...(schema === 'main' ? [] : [`CREATE SCHEMA ${schema}`]),
+        ...Object.entries(given).map(([name, src]) => `CREATE TABLE ${schema}."${name.replaceAll('"','""')}" AS FROM ${src}`),
         ...[BASE, ...FLOOR_IDS.map(n => `_ref${n}`)].map(s => `DROP SCHEMA ${s} CASCADE`),
-        "SET schema = 'main'",
-        'CREATE SCHEMA answers',
+        `SET schema = ${qs(schema)}`,
+        ...(answerFloor ? ['CREATE SCHEMA answers'] : []),
       ]);
     }
     await adb.dropFile('trips_raw.parquet');
@@ -145,7 +149,10 @@ async function startEngine(tutorFloor = null, created = () => {}, answerFloor = 
     if (tutorFloor) {
       e.tc = await adb.connect();
       await e.tc.query(`SET schema = ${qs(TUTOR)}`);
-    } else e.lc = await adb.connect();
+    } else {
+      e.lc = await adb.connect();
+      if (lesson) await e.lc.query(`SET schema = ${qs(lesson.schema)}`);
+    }
     e.parser = await adb.connect();
     e.version = await adb.getVersion();
     return e;
@@ -284,7 +291,7 @@ const empty = (extra) => ({ columns: [], rows: [], rowCount: 0, truncated: false
  * Run statements in order on one connection; the last one's result is returned. A soft timer
  * cancels the query; if it does not stop within killGraceMs the result says { hung: true }.
  */
-async function execStatements(conn, stmts, { maxRows, timeoutMs, tutorRole = false, signal }) {
+async function execStatements(conn, stmts, { maxRows, timeoutMs, tutorRole = false, signal, isolated = false }) {
   const t0 = performance.now();
   const ctl = { reason: null };
   let executed = 0;
@@ -299,7 +306,7 @@ async function execStatements(conn, stmts, { maxRows, timeoutMs, tutorRole = fal
   };
   const soft = setTimeout(() => stop('timeout'), timeoutMs);
   const control = { stop };
-  if (tutorRole) tutorRunning = control; else running = control;
+  if (!isolated) { if (tutorRole) tutorRunning = control; else running = control; }
   const abort = () => { ctl.reason='cancel'; wake(STOPPED); };
   signal?.addEventListener('abort', abort, {once:true});
   if (signal?.aborted) abort();
@@ -316,8 +323,10 @@ async function execStatements(conn, stmts, { maxRows, timeoutMs, tutorRole = fal
   clearTimeout(soft);
   clearTimeout(killTimer);
   signal?.removeEventListener('abort', abort);
-  if (tutorRole) { if (tutorRunning === control) tutorRunning=null; }
-  else if (running === control) running=null;
+  if (!isolated) {
+    if (tutorRole) { if (tutorRunning === control) tutorRunning=null; }
+    else if (running === control) running=null;
+  }
   const ms = Math.round(performance.now() - t0);
   const stoppedText = ctl.reason === 'cancel' ? 'Query stopped.' : `Query stopped: it ran longer than ${Math.round(timeoutMs / 1000)} s.`;
   if (out === STOPPED) return empty({ ms, executed, stopped: 'cancel', error: stoppedText });
@@ -458,6 +467,22 @@ export function restartFloor(n) {
       return { ok: false, error: msg(e) };
     }
   });
+}
+
+/** Verify trusted lesson content in its own fresh database, never the workspace.
+ * Uses the console's native statement splitter and exact send/read/timeout runner.
+ * No outer transaction, replay, history entry or learner/tutor cancellation slot.
+ */
+export async function runLesson(pack, sql) {
+  let copy;
+  try {
+    if (!assets) assets = await loadAssets();
+    const schema = validFloor(pack.id) ? learner(pack.id) : 'main';
+    copy = await startEngine(null, () => {}, null, { schema, given: pack.given ?? {} });
+    const statements = await lessonStatements(copy.parser, sql);
+    return await execStatements(copy.lc, statements, { maxRows: LIMITS.learnerRows, timeoutMs: LIMITS.timeoutMs, isolated: true });
+  } catch (e) { return empty({ ms: 0, executed: 0, error: msg(e) }); }
+  finally { copy?.close(); }
 }
 
 /** The learner's console. Statements run in order; the last one's result comes back. */
