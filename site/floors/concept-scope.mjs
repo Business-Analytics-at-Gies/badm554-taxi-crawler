@@ -74,9 +74,9 @@ export async function inspectScope(
   facts = { references: new Map(), queries: [] },
 ) {
   let statementIndex = 0;
-  const queryHasJoin = new WeakMap(), cteQueries = new WeakSet();
+  const queryHasJoin = new WeakMap(), cteQueries = new WeakMap();
   objects(ast, node => {
-    for (const entry of node.cte_map?.map ?? []) cteQueries.add(entry.value.query.node);
+    for (const entry of node.cte_map?.map ?? []) cteQueries.set(entry.value.query.node, entry);
   });
   const errors = [],
     unresolved = (names) => errors.push(`unresolved name ${names.join('.')}`);
@@ -267,7 +267,8 @@ export async function inspectScope(
     const inputs = await from(node.from_table, env, joins);
     const hasJoin = inputs.some((input) => input.hasJoin);
     queryHasJoin.set(node, hasJoin);
-    facts.queries.push({ node, joins, nulls, hasJoin, inCTE: cteQueries.has(node), statementIndex });
+    const fact = { node, joins, nulls, hasJoin, inCTE: cteQueries.has(node), cte: cteQueries.get(node), root: ast.statements[statementIndex].node, statementIndex };
+    facts.queries.push(fact);
     const aliases = node.select_list.filter((e) => e.alias).map((e) => e.alias);
     for (const e of node.select_list) await expression(e, inputs, [], env, false, nulls);
     aliases.bindings = new Map(
@@ -279,15 +280,19 @@ export async function inspectScope(
       await expression(node[clause], inputs, aliases, env, false, nulls);
     if (node.qualify) unmodelled('QUALIFY');
     await modifiers(node, inputs, aliases, env);
-    const columns = node.select_list.flatMap((e) => {
-      if (e.alias) return [e.alias];
-      if (e.class === 'COLUMN_REF') return [e.column_names.at(-1)];
-      if (e.class === 'STAR')
-        return inputs
-          .filter((t) => !e.relation_name || fold(t.name) === fold(e.relation_name))
-          .flatMap((t) => t.columns);
-      return [null];
-    });
+    const columns = [];
+    fact.outputPositions = new Map();
+    for (const expression of node.select_list) {
+      // Record positions after star expansion and before a CTE column list
+      // renames outputs. The two operations preserve the same column positions.
+      fact.outputPositions.set(expression, columns.length);
+      if (expression.alias) columns.push(expression.alias);
+      else if (expression.class === 'COLUMN_REF') columns.push(expression.column_names.at(-1));
+      else if (expression.class === 'STAR')
+        columns.push(...inputs.filter(input => !expression.relation_name ||
+          fold(input.name) === fold(expression.relation_name)).flatMap(input => input.columns));
+      else columns.push(null);
+    }
     // The resolver establishes visibility itself. For computed select-list labels
     // only, ask the engine for its display names, without executing any rows.
     if (columns.includes(null)) {

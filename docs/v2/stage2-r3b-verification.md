@@ -918,3 +918,177 @@ site/game/db/sql.js, server/config.js or server/index.js changed. Both
 node_modules symlinks remain untracked and are excluded. No item is deferred.
 Delivery is one commit on v2/stage2 with the required public author email and
 Agent trailer, followed by a branch push. No merge, PR or deployment.
+
+## Code review round 15: display formats, whole-file JavaScript parsing, exact proofs
+
+Builder: crew-codex-v2. Base: `557ad13`. Reproduction baseline: `543553c`.
+The finishing criteria are: all three review classes fixed; each retained reviewer
+fixture red at 543553c and green now; every learner-visible string family matched
+to its rendering format; every confirmed combination rule audited; Floors 1–3
+and their lessons/guides green; four complete suites under `caffeinate -dims`
+with separate output directories; assets reproducible; restricted paths unchanged;
+one commit with the public author email and Agent trailer, then push and stop.
+
+### Display-format inventory
+
+`sqlSources` now chooses a format explicitly at the display boundary. HTML uses
+DOMParser and each outer pre/code element's textContent. Plain-text fields use
+literal backtick spans without any HTML parsing, entity decoding or whitespace
+normalization. Complete SQL stays complete SQL. The following inventory was
+checked against `site/game/ui/game.js`, `site/game/ui/map.js`,
+`tools/build-floor-packs.mjs`, `site/learn/guide.js`, and the generated guide,
+rules and prompt consumers. Escaping plain text into generated HTML does not
+change that field's original format: the final generated page is independently
+checked as HTML.
+
+| Field family | Display format and rendering evidence |
+|---|---|
+| `pack.title` | Plain text: game title textContent; builder HTML-escapes floor-card heading. |
+| `pack.task`, `guideTask` | Plain text: game task textContent; builder escapes both, adding only its own code marks around known identifiers. |
+| `pack.taskContext`, `context` | Plain text: task context textContent; guide context is HTML-escaped by the builder. |
+| `pack.card` | Plain text: builder HTML-escapes the floor-card paragraph. |
+| `pack.summary` | Plain text: inserted into the tutor prompt, without HTML interpretation. |
+| `pack.rulesText` | Plain text: generated floors-rules.txt and its text consumer; literal backticks remain literal code markers for the gate. |
+| `pack.controls[].levels[]` | Plain text: guideControls HTML-escapes every paragraph at each Detail level. |
+| `pack.refresher[].title`, `.text` | Plain text: HTML-escaped heading/prose in the guide; the lesson link label is textContent. |
+| `pack.refresher[].sql` | Complete literal SQL: HTML-escaped inside generated pre/code; the lesson runner reads code textContent. |
+| `pack.hints.<rule>[].text` | Plain text: appended as a text node beside the rung label in game.js. |
+| `pack.hints.<rule>[].refresher` | Plain text: textContent of the refresher link. |
+| `pack.hints.<rule>[].outline` | Complete literal SQL: code.textContent inside the hint pre block. |
+| `pack.hints.<rule>[].checkHintPrefixes[]` | Plain-text diagnostic selectors; matched with startsWith against the literal checker message. Conservatively scanned as plain text too. |
+| `pack.reviewLinks[].label`, `pack.aboutData.sources[].label` | Plain text: builder HTML-escapes link labels. URL fields are escaped HTML attributes, not rendered prose or SQL; they retain conservative literal-text scanning. |
+| `pack.map.label` | Plain text: SVG titles, legend labels and the map description use textContent. `map.color` is an attribute value, not authored HTML. |
+| `pack.tables.<table>[].name`, `.type`, `.description` | Plain text: column chips use textContent; About the data HTML-escapes names/descriptions, adding its own code marks around names. |
+| `pack.aboutData.description`, `.loadMetadata`, `.locations`, `.renames` | Plain text: builder HTML-escapes all four About the data passages. |
+| Every string/template fragment in `check.js` (`checkMessages[]`) | Plain text: rule labels/expected/got values are appended as text; diagnostic hints use textContent or text-node append. Extract every literal conservatively, including non-message literals. |
+| `pack.guide` / source guide.html | HTML: included directly as guide markup by the builder. Browser parsing supplies code text. |
+| `pack.generatedGuide` | HTML: the final built guide, including shared content, all Detail levels and injected escaped fields. Browser parsing supplies code text. |
+| `pack.referenceSql` | Complete literal SQL; never HTML-parsed. |
+
+Table/input/output identifiers can also appear in generated code elements and
+engine table chips; those appearances are checked through the generated HTML,
+complete SQL/name resolution and the literal table-definition strings above.
+Module/concept ids, paths, rule ids, plant values, CSS colors and image URLs are
+metadata, not learner prose. The conservative recursive string scan remains,
+using literal-text semantics for these fields too.
+
+There are no floor-content, declaration or refresher rewrites. The existing
+control-code fixture now uses backticks because controls are escaped text. The
+four R14 HTML-in-pack/message cases now first assert that HTML-looking prose
+stays literal, then add backtick-marked COALESCE in the same field and retain
+the original undeclared-C020 refusal. Their real HTML guide counterparts remain
+unchanged. The R12 positive ON control replaces `AND true` with a second
+cross-input equality: the amended exact-shape contract explicitly forbids the
+old extra conjunct. Its refusal/control outcomes are unchanged.
+
+### Whole-file JavaScript reader
+
+The hand-written string reader and VM evaluation are removed. Acorn **8.15.0**
+is an exact development dependency in `tests/db/package.json` and its lockfile.
+The development-only pack builder resolves it from that package. It parses the
+entire checker as a module using ECMAScript 2025, then recursively collects every
+string Literal and every cooked TemplateElement, including literals inside
+nested interpolation expressions. Source order is preserved. It never imports
+or executes checker code, interpolations, regexes or tag functions. Syntax errors
+fail the build; tagged templates with an undecodable cooked fragment also fail.
+
+The tests/db dependency link was replaced by a local dependency directory during
+installation; npm did not install through the main checkout's link. The UI link
+remains unchanged. Neither dependency directory nor any link is part of the
+commit. All 21 generated assets remain reproducible without publishing changes.
+
+### Exact confirmed-shape audit
+
+Possible requirements are unchanged and still collect ingredients throughout a
+statement. All extra arrangements below remain possible and therefore still
+need declarations. Only confirmed teaching credit is narrowed.
+
+| Rule | Exact confirmed shape after this change |
+|---|---|
+| C083 orphan; C016 unmatched NULL | Statement-root plain SELECT projecting columns (including resolved stars), one root LEFT JOIN, every ON conjunct an equality between resolved columns from opposite inputs, and the whole WHERE an IS NULL test on one of those right-side key columns. No extra ON/WHERE condition, grouping, HAVING, sampling, QUALIFY or result modifier. Swapped equality operands, multiple valid equality keys and a resolved select alias for the NULL-tested key are supported. |
+| C023 join then group | Statement-root SELECT grouping direct columns from one root INNER/LEFT JOIN with only the cross-input equalities above. Projections are plain columns/resolved stars and simple aggregates, including at least one aggregate. No WHERE/HAVING or result modifiers, aggregate DISTINCT/FILTER/ordering, or nested substitute for the root join. |
+| C022 grouped COUNT(*) | Same plain root grouping/projection checks, with a direct unfiltered/unordered/non-distinct COUNT(*) projection. A grouped count hidden in another query no longer proves the outer query. |
+| C029 running sum | A direct root SUM window projection in a plain ungrouped/unfiltered SELECT, default/ascending ordering by resolved columns, at least one outside the resolved partition keys, UNBOUNDED PRECEDING through CURRENT ROW (RANGE, ROWS or GROUPS). Arguments are simple values and partition/order expressions are columns. Constant ordering and ordering fixed by the partition cannot prove progression. No window DISTINCT/FILTER/argument ordering, EXCLUDE, IGNORE NULLS, offset/default, frame expressions or result modifiers. Descending, rolling and separately ordered windows stay possible. |
+| C085 numeric-zero comparison | Direct ordinary comparison at the statement root, with a direct operand that DuckDB evaluates to numeric zero. It is either the complete WHERE or a direct projection of an otherwise unfiltered plain SELECT. Extra conjuncts, filters around projected comparisons, nested query wrappers, NOT/OR, grouping and result modifiers cannot earn this credit. Constant evaluation and position-free possible detection are unchanged. |
+| C034 window CTE | A plain CTE directly projects a simple window expression with a resolved output position, including explicit CTE column-list names. The root reads that CTE directly and either projects that output (or star), or uses the listed ROW_NUMBER pattern WHERE rn=1 with the resolved output position. No extra root filter or modifier, CTE-local LIMIT/filter/grouping, or unused window output earns credit. Scope facts retain the CTE entry, root and per-expression output positions after star expansion, before output renaming. Explicit CTE column lists and stars before/after the window therefore resolve correctly. |
+
+All other confirmed map entries describe a direct syntax occurrence (for example
+SELECT, FROM, joins, grouping, a window, or a particular function/arity), rather
+than an arrangement of separate ingredients. Their reviewed optional fields and
+enum values are still independently checked by the closed-world tree map and
+scope/bound layers. No keyword, tree, function, bound or scope allowlist was
+expanded. The exact-shape code shares the whole-condition check between C083,
+C016 and C023 rather than finding one acceptable descendant equality.
+
+### Fixtures and verification
+
+The four complete review fixtures are in `tests/fixtures/r15/`, with their module,
+declarations, refreshers and expected outcomes documented in its README. All four
+`R15 reproduction` tests fail by assertion against **543553c** (0 pass, 4 fail,
+0 skip/cancel), log `/tmp/r15-builder-reproductions-baseline.log`. The larger
+baseline run records 23 failing class cases and one already-correct parser
+refusal (`/tmp/r15-builder-baseline-final.log`). Five wrapper tests also fail
+before their fix (`/tmp/r15-builder-wrappers-red.log`).
+
+There are **67 new R15 tests**: four reproductions, five parser refusals, one
+nested-template/no-execution case, five whole-ON-condition cases, ten other
+extra-condition cases, one set of seven exact positive controls, five query-wrapper
+cases, 25 plain-text field-family cases, one HTML/plain-text contrast case, four CTE output-position cases, four resolved-star projection cases, and two running-order cases.
+The first focused run passes **60** tests including the initial 57, Floors 1–3 and
+both retained C029 confidence checks (`/tmp/r15-builder-expanded-final.log`).
+The 14 migrated/current markup tests also pass
+(`/tmp/r15-builder-migrations.log`).
+
+The literal review hint was also exercised in the real game UI with the actual
+stylesheet at 375 px. The whole query remains visible and the document width is
+exactly 375 px. Screenshot: `/tmp/r15-builder-hint-375.png`; assertion log:
+`/tmp/r15-builder-visible.log`.
+
+An independent read-only review caught two over-restrictive details in the first
+exact-proof implementation: CTE column lists could not name a window output, and
+ordinary star projections could not earn the existing join/grouping credits.
+Eight positive controls failed before those fixes and now pass. The same review
+found constant window ordering granting running-total credit. The SQL control
+returns `[6,6,6]` for ORDER BY 1 and `[1,3,6]` for ORDER BY n; only the latter
+now earns C029 credit. A partition-key-only ordering control is also retained.
+Red logs: `/tmp/r15-builder-cte-positions-red.log`,
+`/tmp/r15-builder-star-projections-red.log`,
+`/tmp/r15-builder-running-order-red.log`,
+`/tmp/r15-builder-running-partition-red.log`. No refusal assertion was removed.
+
+The final focused run passes **78** checks: all 67 R15 tests, Floors 1–3,
+the two existing C029 confidence checks, five R12 scope controls and the three
+R13 grouped-count checks (`/tmp/r15-builder-final-controls.log`). The independent
+reviewer separately reran all ten new output-position/star/running-order controls
+and found no remaining actionable issue in the final implementation.
+
+Structural coverage remains **33 object shapes** and **35 array shapes**.
+All **680** currently used-entry removal checks pass: **226**, **231**, **223**
+on floors 1, 2, 3. The map itself is unchanged; the narrower confirmed rules
+reduce which proof entries the current floor examples use. No removal assertion
+or its threshold was changed.
+
+Every required suite completed under `caffeinate -dims` with exit **0** and its
+own output directory. The database run includes all **510 R3b** tests (443
+retained, 67 new) and all **2,537** other tests. Database duration: **1,050.9 s**.
+
+| Suite | Passed | Skipped | Failed | Output directory |
+|---|---:|---:|---:|---|
+| Database (`cd tests/db && npm test`) | 3,047 | 0 | 0 | `/tmp/r15-builder-db` |
+| Stub browser (`PORT=4891`) | 183 | 25 | 0 | `/tmp/r15-builder-stub` |
+| Real-engine browser (`PORT=4892 DB_SITE=../../site`) | 203 | 5 | 0 | `/tmp/r15-builder-real` |
+| Server (`node --test tests/server/*.test.js`) | 69 | 0 | 0 | `/tmp/r15-builder-server` |
+
+Each directory holds `results.log`; each browser suite also used its own explicit
+`--output=<directory>/playwright` artifact directory. All final refusal,
+threshold, negative grading and leak assertions pass. The closed vocabulary and
+all 21 generated assets are unchanged.
+
+Final scope is the gate/scope/tree, whole-file literal reader, exact parser
+dependency/lock, R3b tests, four retained review fixtures with their README, and
+this note. No Rerun path, site/game/db/sql.js, server/config.js or server/index.js
+changed. The UI dependency link stays untracked and excluded; the local database
+dependency directory is ignored and excluded. No item is deferred. Delivery is
+one commit `v2 stage 2: code review round 15 fixes`, with the required public
+author email and Agent trailer, followed by a branch push and stop. No merge,
+PR or deployment.

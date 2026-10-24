@@ -1,0 +1,338 @@
+{
+  "id": 2,
+  "input": "trips",
+  "given": {
+    "trips": "_ref1.trips_clean",
+    "zones": "_base.zones"
+  },
+  "outputs": [
+    "trips_clean"
+  ],
+  "title": "Floor 2: Nowhere zones",
+  "task": "Return every row of trips, plus three columns:\n- pu_zone and do_zone: the zone name from zones (NULL when there is no match)\n- zone_flag: the first label that applies, checking both pu_location_id and do_location_id:\n  1. 'unmatched' if either id is NULL or not in zones\n  2. 'unknown' if either id is 264\n  3. 'outside_nyc' if either id is 265\n  4. 'ok' otherwise",
+  "dirt": "SELECT row_id, pu_location_id, do_location_id FROM trips\nWHERE pu_location_id IS NULL OR do_location_id IS NULL OR pu_location_id IN (264, 265) OR do_location_id IN (264, 265)\n   OR pu_location_id NOT IN (SELECT location_id FROM zones) OR do_location_id NOT IN (SELECT location_id FROM zones)",
+  "guideTask": "return every row of trips, plus three columns: pu_zone, do_zone and zone_flag.",
+  "card": "Some trips start or end in a zone that is not on the map.",
+  "context": "The depot needs to report where every trip started and ended, including trips whose locations cannot be matched. trips holds 7,171 trips with rerun copies already removed; zones is the location lookup. Keeping unmatched trips in the report prevents an incomplete picture of service and revenue.",
+  "refresher": [
+    {
+      "title": "A query in steps: WITH",
+      "text": "WITH names a query result so the next step can read it. The final SELECT returns your answer. These steps are one query; you do not need to save a table.",
+      "sql": "WITH rides(id) AS (VALUES (1), (2))\nSELECT count(*) AS rides FROM rides;"
+    },
+    {
+      "title": "Keep unmatched rows with LEFT JOIN",
+      "text": "A JOIN matches keys between tables. A LEFT JOIN keeps every row on the left and puts NULL in the right columns when there is no match. Aliases such as r and z name the two table copies. Joining twice lets you look up two locations.",
+      "sql": "WITH rides(id, place) AS (VALUES (1, 10), (2, 99)),\nplaces(id, name) AS (VALUES (10, 'Depot'))\nSELECT r.id, z.name FROM rides r\nLEFT JOIN places z ON z.id = r.place;"
+    },
+    {
+      "title": "Label the first matching condition",
+      "text": "CASE tests WHEN conditions in order: the first true branch wins. Here 1 meets both conditions but gets first; 2 gets second, and 3 reaches ELSE. In an answer without ELSE, rows that match no branch get NULL. Test missing values with IS NULL.",
+      "sql": "WITH examples(n) AS (VALUES (1), (2), (3))\nSELECT n, CASE WHEN n < 2 THEN 'first'\nWHEN n < 3 THEN 'second' ELSE 'other' END AS label\nFROM examples;"
+    },
+    {
+      "title": "Count the joined result",
+      "text": "COUNT(*) checks that a join kept the expected number of rows. GROUP BY makes one group per label; HAVING can filter those groups. Use a WITH step to name the result you want to count.",
+      "sql": "WITH labels(flag) AS (VALUES ('known'), ('missing'))\nSELECT flag, count(*) FROM labels GROUP BY flag\nHAVING count(*) > 0;"
+    }
+  ],
+  "reviewLinks": [
+    {
+      "label": "M2I2 LEFT JOIN: keep every member",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M2/I2/#left-join-keep-every-member"
+    },
+    {
+      "label": "M2I2 Always check the row count",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M2/I2/#always-check-the-row-count"
+    },
+    {
+      "label": "M1I4 Anatomy of a Query",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M1/I4/"
+    },
+    {
+      "label": "M2I4 GROUP BY + Aggregate Functions",
+      "url": "https://vishalsachdev.github.io/badm554-textbook/modules/M2/I4/"
+    }
+  ],
+  "summary": "2. Nowhere zones: zone 264 is \"Unknown\" and zone 265 is \"Outside of NYC\" (a real place), both in the lookup; some drop-off ids are 0 or NULL and match nothing. An inner join silently drops 25 rows. Keep every row and add a zone_flag. 7,171 in and out.",
+  "map": {
+    "label": "rows touching a nowhere zone (in the corner)",
+    "color": "#1e3a8a",
+    "double": false
+  },
+  "plant": {
+    "ordinary": "fare_amount > 0 AND dropoff_at > pickup_at AND trip_distance > 0\n  AND pickup_at >= TIMESTAMP '2024-01-01' AND pickup_at < TIMESTAMP '2024-02-01'\n  AND pu_location_id BETWEEN 1 AND 263 AND do_location_id BETWEEN 1 AND 263\n  AND loaded_at = TIMESTAMP '2024-02-01 06:00:00'\n  AND NOT (pickup_at >= TIMESTAMP '2024-01-15' AND pickup_at < TIMESTAMP '2024-01-16')",
+    "replacements": {
+      "duplicate": [
+        "TIMESTAMP '2024-02-01 07:20:00' AS loaded_at"
+      ],
+      "unmatched_zone": [
+        "0 AS do_location_id"
+      ],
+      "negative_fare": [
+        "-fare_amount AS fare_amount",
+        "-total_amount AS total_amount"
+      ],
+      "time_travel": [
+        "pickup_at - INTERVAL '7 minutes' AS dropoff_at"
+      ]
+    }
+  },
+  "tables": {},
+  "rulesText": "## Floor 2: Nowhere zones (joins, NULLs and sentinels)\n\n- **Tables given:** `trips` (floor 1's reference output, 7,171 rows), `zones`.\n- **The dirt:** real: 110 trips touch zone 264 \"Unknown\", 74 touch zone 265 \"Outside of NYC\".\n  Planted: 15 drop-off ids are 0 (not in the lookup) and 10 drop-off ids are NULL.\n- **Task:** return an answer: every row of `trips`, plus `pu_zone`, `do_zone` (the zone name,\n  NULL when there is no match) and `zone_flag`, the first that applies:\n  1. `'unmatched'`: either id is NULL or not in `zones`;\n  2. `'unknown'`: either id is 264;\n  3. `'outside_nyc'`: either id is 265;\n  4. `'ok'`.\n- **Expected:** 7,171 rows in and out. Flags: ok 6,962; unknown 110; outside_nyc 74; unmatched 25.\n  An inner join to `zones` on both ids keeps only 7,146 rows (it silently loses 25).\n- **Pass:** 7,171 rows; the multiset of `row_id`, `pu_zone`, `do_zone`, `zone_flag` equals the reference\n  data/reference/floor2.sql; all columns of `trips` present and unchanged.\n- **Aha line:** a join can drop rows without an error. \"Unknown\" (264) is in the lookup, so an anti-join cannot find it; a missing id (0, NULL) is not, so only a left join shows it. Flag, do not delete.\n\n",
+  "emblem": "/learn/img/floor2.svg",
+  "ruleIds": [
+    "exists",
+    "columns",
+    "row_count",
+    "zone_flags",
+    "unchanged"
+  ],
+  "taskContext": "The depot needs location labels without losing trips whose zone ids do not match.",
+  "controls": [
+    {
+      "id": "task-panel",
+      "levels": [
+        "The task panel above Scratch holds the full rules and a checklist for Answer. Open it before writing your query; it starts collapsed on mobile. The checklist shows whether Answer has been run and its last row count. SQL refresher and About the data links beside it open the guide in a new tab.",
+        "Use the task panel checklist after each Run answer: an empty Answer result shows zero rows. Scratch table changes never count as an Answer run. Check floor grades your current Answer query; a row count alone does not mean correct. The panel remembers your collapse choice in the page address.",
+        "The task panel checklist starts at Answer: not run yet, then reports Answer: N rows (last run). It preserves that last-run count while you edit Answer or use Scratch. Compare it with the full rules; Check floor evaluates the current query independently of the last run."
+      ]
+    },
+    {
+      "id": "table-columns",
+      "levels": [
+        "Under Tables above Scratch, open a table chip to see its columns and types. Start with trips to find the available names before writing a query. Opening a chip leaves your SQL and Result alone; Enter or Space opens and closes it from the keyboard.",
+        "The columns and types describe the table on the active floor, including tables you create. When you replace a table, an open chip refreshes its column view. After switching floors, open the new floor’s chip to inspect that floor’s columns and types.",
+        "Use the table chip’s columns and types to choose names for SELECT, WHERE and joins. The column view reads the table quietly: it adds no query to your history or the tutor’s recent queries and never replaces unfinished SQL."
+      ]
+    },
+    {
+      "id": "table-preview",
+      "levels": [
+        "Choose Preview beside any table chip under Tables to see its first 10 rows in a separate panel beside the console, or below it on a narrow screen. Start with trips to see what a row holds. Preview leaves Scratch, Result and query records alone; Close preview takes you back to the chip.",
+        "Preview shows up to 10 rows from the table on this floor, including your own outputs. An empty table still shows its column names. Preview refreshes after a replacement and closes when you drop its table or change floors. The panel scrolls sideways for wide rows on a phone.",
+        "Preview is a quiet SELECT * with LIMIT 10, without a guaranteed sort order. It does not add a run to either query record. When a transaction is open, Preview explains that you must COMMIT or ROLLBACK before reading rows; it shows columns without running row expressions or changing your transaction."
+      ]
+    },
+    {
+      "id": "answer",
+      "levels": [
+        "Use Scratch to explore the given tables or make your own tables. Put one SELECT or WITH query in Answer. Run answer shows its rows in Result; Check floor grades only that query against the original given tables. You do not need to save a table.",
+        "Answer uses only this floor’s original given tables, even if you change or drop a table in Scratch. Check floor leaves both boxes, Scratch and Result alone. The task checklist says Answer: not run yet, then shows the row count from your last Run answer; it does not say the answer is correct.",
+        "Run answer and Check floor accept the same single SELECT or WITH query. Use Scratch for other statements. Answer text is saved separately for each floor and survives reload, floor switches and Restart floor. Run answer adds an answer entry to both query records; Check floor adds no run."
+      ]
+    },
+    {
+      "id": "hint-ladder",
+      "levels": [
+        "After Check floor, each failed rule has its own hint ladder: first what is wrong, then an idea and a SQL refresher link, then an inspection query outline with blanks. Further failures stay on rung 3. Hints work with the tutor closed. Passing a rule resets its ladder; passing the floor or Restart floor resets that floor’s ladders.",
+        "Check floor advances only the rules that fail: rung 1 explains the problem, rung 2 links an idea to the SQL refresher, and rung 3 gives an inspection query outline with blanks. Complete it in Scratch to investigate; it is not a finished answer. Ladders survive reload and floor switches. A pass or Restart floor resets the relevant ladders, even with the tutor closed.",
+        "Each rule has a separate Check floor counter in this browser, capped at rung 3: problem, idea with refresher link, then an inspection outline with blanks. A parser error or refused answer does not advance it. Passing a rule resets that counter; a full pass or Restart floor resets this floor. Other floors keep their counters. The tutor does not control these hints."
+      ]
+    }
+  ],
+  "module": "M7",
+  "concepts": [
+    "C003",
+    "C005",
+    "C006",
+    "C007",
+    "C008",
+    "C010",
+    "C013",
+    "C014",
+    "C015",
+    "C016",
+    "C018",
+    "C019",
+    "C021",
+    "C022",
+    "C024",
+    "C032",
+    "C033",
+    "C081",
+    "C083",
+    "CASE_WHEN",
+    "C085"
+  ],
+  "refreshes": {
+    "CASE_WHEN": "Label the first matching condition",
+    "C033": "A query in steps: WITH",
+    "C015": "Keep unmatched rows with LEFT JOIN",
+    "C021": "Count the joined result",
+    "C024": "Count the joined result"
+  },
+  "hints": {
+    "exists": [
+      {
+        "text": "There is no answer result to check."
+      },
+      {
+        "text": "Start with trips in a WITH query; the final SELECT returns your answer.",
+        "refresher": "A query in steps: WITH"
+      },
+      {
+        "text": "Inspect a starting column before adding zone information.",
+        "outline": "SELECT ___ FROM trips LIMIT 10;"
+      }
+    ],
+    "columns": [
+      {
+        "text": "The answer is missing required source or zone-label columns."
+      },
+      {
+        "text": "Keep the trip columns, then add pickup and drop-off zone labels with joins.",
+        "refresher": "Keep unmatched rows with LEFT JOIN"
+      },
+      {
+        "text": "Inspect the lookup before choosing a join column.",
+        "outline": "SELECT ___ FROM zones LIMIT 10;"
+      }
+    ],
+    "row_count": [
+      {
+        "text": "The answer lost trips or repeated them."
+      },
+      {
+        "text": "A LEFT JOIN preserves unmatched trips. Check the lookup key and count rows after each join.",
+        "refresher": "Count the joined result"
+      },
+      {
+        "text": "Inspect one lookup column beside each trip identifier.",
+        "outline": "SELECT t.row_id, ___ FROM trips t LEFT JOIN zones z ON t.do_location_id = z.location_id;"
+      }
+    ],
+    "zone_flags": [
+      {
+        "text": "Some zone names or flags do not match the trip."
+      },
+      {
+        "text": "Test both trip ends and put the unmatched condition first; the first true CASE branch wins.",
+        "refresher": "Label the first matching condition"
+      },
+      {
+        "text": "Try one condition on a small sample before writing the complete flag.",
+        "outline": "SELECT row_id, CASE WHEN ___ THEN 'unmatched' ELSE 'ok' END AS trial_flag FROM trips LIMIT 10;"
+      }
+    ],
+    "unchanged": [
+      {
+        "text": "Original trip values changed or trips were lost or repeated."
+      },
+      {
+        "text": "Add labels to the source rows; avoid replacing the trip values.",
+        "refresher": "Keep unmatched rows with LEFT JOIN"
+      },
+      {
+        "text": "Compare a source column with its trip identifier.",
+        "outline": "SELECT row_id, ___ FROM trips LIMIT 10;"
+      }
+    ]
+  },
+  "solutions": [
+    {
+      "name": "valid (a): the reference",
+      "fails": [],
+      "sql": "WITH enriched AS (\nSELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,\n       CASE WHEN pz.location_id IS NULL OR dz.location_id IS NULL THEN 'unmatched'\n            WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'\n            WHEN t.pu_location_id = 265 OR t.do_location_id = 265 THEN 'outside_nyc'\n            ELSE 'ok' END AS zone_flag\nFROM trips t\nLEFT JOIN zones pz ON pz.location_id = t.pu_location_id\nLEFT JOIN zones dz ON dz.location_id = t.do_location_id\n) SELECT * FROM enriched;\n"
+    },
+    {
+      "name": "valid (b): correlated subqueries for the names, CASE tests a NULL name first",
+      "fails": [],
+      "sql": "SELECT *, CASE WHEN pu_zone IS NULL OR do_zone IS NULL THEN 'unmatched'\n                           WHEN pu_location_id = 264 OR do_location_id = 264 THEN 'unknown'\n                           WHEN pu_location_id = 265 OR do_location_id = 265 THEN 'outside_nyc'\n                           ELSE 'ok' END AS zone_flag\n            FROM (SELECT t.*, (SELECT z.zone FROM zones z WHERE z.location_id = t.pu_location_id) AS pu_zone,\n                              (SELECT z.zone FROM zones z WHERE z.location_id = t.do_location_id) AS do_zone\n                  FROM trips t)"
+    },
+    {
+      "name": "wrong (a): inner joins (7,146 rows)",
+      "fails": [
+        "row_count",
+        "zone_flags",
+        "unchanged"
+      ],
+      "sql": "WITH enriched AS (\nSELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,\n       CASE WHEN pz.location_id IS NULL OR dz.location_id IS NULL THEN 'unmatched'\n            WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'\n            WHEN t.pu_location_id = 265 OR t.do_location_id = 265 THEN 'outside_nyc'\n            ELSE 'ok' END AS zone_flag\nFROM trips t\nJOIN zones pz ON pz.location_id = t.pu_location_id\nJOIN zones dz ON dz.location_id = t.do_location_id\n) SELECT * FROM enriched;\n"
+    },
+    {
+      "name": "wrong (b): 265 flagged 'unknown'",
+      "fails": [
+        "zone_flags"
+      ],
+      "sql": "WITH enriched AS (\nSELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,\n       CASE WHEN pz.location_id IS NULL OR dz.location_id IS NULL THEN 'unmatched'\n            WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'\n            WHEN t.pu_location_id = 265 OR t.do_location_id = 265 THEN 'unknown'\n            ELSE 'ok' END AS zone_flag\nFROM trips t\nLEFT JOIN zones pz ON pz.location_id = t.pu_location_id\nLEFT JOIN zones dz ON dz.location_id = t.do_location_id\n) SELECT * FROM enriched;\n"
+    },
+    {
+      "name": "wrong (c): only the pick-up side checked",
+      "fails": [
+        "zone_flags"
+      ],
+      "sql": "SELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,\n                   CASE WHEN pz.location_id IS NULL THEN 'unmatched'\n                        WHEN t.pu_location_id = 264 THEN 'unknown'\n                        WHEN t.pu_location_id = 265 THEN 'outside_nyc'\n                        ELSE 'ok' END AS zone_flag\n            FROM trips t LEFT JOIN zones pz ON pz.location_id = t.pu_location_id LEFT JOIN zones dz ON dz.location_id = t.do_location_id"
+    },
+    {
+      "name": "wrong (d): 'unmatched' only when an id IS NULL (misses the 15 drop-off ids of 0)",
+      "fails": [
+        "zone_flags"
+      ],
+      "sql": "SELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,\n                   CASE WHEN t.pu_location_id IS NULL OR t.do_location_id IS NULL THEN 'unmatched'\n                        WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'\n                        WHEN t.pu_location_id = 265 OR t.do_location_id = 265 THEN 'outside_nyc'\n                        ELSE 'ok' END AS zone_flag\n            FROM trips t LEFT JOIN zones pz ON pz.location_id = t.pu_location_id LEFT JOIN zones dz ON dz.location_id = t.do_location_id"
+    }
+  ],
+  "reference": "/floors/floor2/reference.sql",
+  "check": "/floors/floor2/check.js",
+  "guide": "  <section class=\"room\" id=\"room-floor2\" data-room=\"floor2\" data-title=\"Floor 2: Nowhere zones\" aria-labelledby=\"h-floor2\">\n    <h2 id=\"h-floor2\">Floor 2: Nowhere zones</h2>\n    <p class=\"cleared\" data-cleared-floor=\"2\" hidden>Cleared</p>\n    <article class=\"slide\" id=\"f2-task\" data-title=\"Trips to nowhere\" aria-labelledby=\"h-f2-task\">\n      <h3 id=\"h-f2-task\">Trips to nowhere</h3>\n      {{context}}\n      {{refresher}}\n      <div class=\"lv\" data-lv=\"1\">\n        <p>Some trips start or end in a zone that is not a real place on the map. If you join to the zone lookup the wrong way, those trips vanish without an error.</p>\n        {{task}}\n      </div>\n      <div class=\"lv\" data-lv=\"2\">\n        <p class=\"lv-tag\">Lv 2 · How the check works</p>\n        <p class=\"value-equality\">The check compares values, not formatting: 1.10 and 1.1 are the same, and money is compared to the cent.</p>\n        <p>You get <code>trips</code> (rerun copies already removed, 7,171 rows) and <code>zones</code> (265 rows). <code>pu_zone</code> and <code>do_zone</code> are the zone names from <code>zones</code>, or NULL when there is no match.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"3\">\n        <p class=\"lv-tag\">Lv 3 · The real SQL</p>\n        <pre><code>SELECT * FROM zones WHERE location_id IN (264, 265);</code></pre>\n      </div>\n    </article>\n    <article class=\"slide\" id=\"f2-kinds\" data-title=\"Three kinds of nowhere\" aria-labelledby=\"h-f2-kinds\">\n      <h3 id=\"h-f2-kinds\">Three kinds of nowhere</h3>\n      <div class=\"lv\" data-lv=\"1\">\n        <ul>\n          <li>Zone 264 is \"Unknown\". The lookup has it, but it names no place.</li>\n          <li>Zone 265 is \"Outside of NYC\". It is a real place, outside the zone map.</li>\n          <li>Some drop-off ids are 0 or NULL. They match nothing in the lookup.</li>\n        </ul>\n      </div>\n      <div class=\"lv\" data-lv=\"2\">\n        <p class=\"lv-tag\">Lv 2 · How the check works</p>\n        <p>110 trips touch zone 264, and 74 touch zone 265. These are real TLC rows. 25 trips have a drop-off id that matches nothing: 15 are 0 and 10 are NULL. These are planted for the game.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"3\">\n        <p class=\"lv-tag\">Lv 3 · The real SQL</p>\n        <pre><code>SELECT do_location_id, count(*) AS trips\nFROM trips\nWHERE do_location_id IS NULL\n   OR do_location_id NOT IN (SELECT location_id FROM zones)\nGROUP BY do_location_id;</code></pre>\n      </div>\n    </article>\n    <article class=\"slide\" id=\"f2-join\" data-title=\"A join can drop rows\" aria-labelledby=\"h-f2-join\">\n      <h3 id=\"h-f2-join\">A join can drop rows</h3>\n      <div class=\"lv\" data-lv=\"1\">\n        <p>An inner join keeps only rows that match on both sides. The trips with no matching drop-off zone disappear, and nothing warns you.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"2\">\n        <p class=\"lv-tag\">Lv 2 · How the check works</p>\n        <p>With an inner join on both ids, 7,171 trips become 7,146. A <code>LEFT JOIN</code> keeps every trip and puts NULL where there is no match.</p>\n        <p>An anti-join (a <code>LEFT JOIN</code> where the lookup side IS NULL) lists the rows that match nothing. It cannot find zone 264, because 264 is in the lookup.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"3\">\n        <p class=\"lv-tag\">Lv 3 · The real SQL</p>\n        <pre><code>SELECT count(*) FROM trips t\nJOIN zones pz ON pz.location_id = t.pu_location_id\nJOIN zones dz ON dz.location_id = t.do_location_id;  -- 7,146\n\nSELECT t.row_id, t.do_location_id\nFROM trips t\nLEFT JOIN zones dz ON dz.location_id = t.do_location_id\nWHERE dz.location_id IS NULL;  -- the 25 that match nothing</code></pre>\n      </div>\n    </article>\n    <article class=\"slide\" id=\"f2-flag\" data-title=\"Flag, do not delete\" aria-labelledby=\"h-f2-flag\">\n      <h3 id=\"h-f2-flag\">Flag, do not delete</h3>\n      <div class=\"lv\" data-lv=\"1\">\n        <p>Keep every row, and add a flag that says what is wrong. Someone later can choose what to do with it. A deleted row cannot be explained later.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"2\">\n        <p class=\"lv-tag\">Lv 2 · How the check works</p>\n        <p><code>zone_flag</code> takes the first rule that applies, in this order:</p>\n        <ol>\n          <li><code>'unmatched'</code>: either id is NULL or not in <code>zones</code>;</li>\n          <li><code>'unknown'</code>: either id is 264;</li>\n          <li><code>'outside_nyc'</code>: either id is 265;</li>\n          <li><code>'ok'</code>.</li>\n        </ol>\n        <p>The order matters: test <code>'unmatched'</code> first.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"3\">\n        <p class=\"lv-tag\">Lv 3 · The real SQL</p>\n        <pre><code>CASE WHEN ___ /* a pickup or drop-off with no match */ THEN 'unmatched'\n     WHEN pu_location_id = 264 OR do_location_id = 264 THEN 'unknown'\n     WHEN ___ /* ... 265 ... */ THEN 'outside_nyc'\n     ELSE 'ok' END AS zone_flag</code></pre>\n      </div>\n    </article>\n    <article class=\"slide\" id=\"f2-reconcile\" data-title=\"Count before and after\" aria-labelledby=\"h-f2-reconcile\">\n      <h3 id=\"h-f2-reconcile\">Count before and after</h3>\n      <div class=\"lv\" data-lv=\"1\">\n        <p>7,171 rows in, 7,171 rows out. No row is lost, and each one carries a flag.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"2\">\n        <p class=\"lv-tag\">Lv 2 · How the check works</p>\n        <p>Flags: ok 6,962, unknown 110, outside_nyc 74, unmatched 25. Together they make 7,171.</p>\n        <p>The check passes when your answer has 7,171 rows, keeps every column of <code>trips</code> unchanged, and has the expected <code>row_id</code>, <code>pu_zone</code>, <code>do_zone</code>, <code>zone_flag</code> values.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"3\">\n        <p class=\"lv-tag\">Lv 3 · The real SQL</p>\n        <pre><code>WITH answer AS (___ /* your answer query */)\nSELECT zone_flag, count(*) AS trips\nFROM answer\nGROUP BY zone_flag\nORDER BY trips DESC;</code></pre>\n      </div>\n    </article>\n    <p class=\"room-play js-only\"><button type=\"button\" class=\"play\" data-floor=\"2\">Play this floor</button></p>\n  </section>\n",
+  "checkMessages": [
+    "/game/db/names.js",
+    "/game/db/check-helpers.js",
+    "exists",
+    "The answer has a result",
+    "Write a query in the Answer box, then press Check floor.",
+    "columns",
+    "The answer has every column of trips, plus pu_zone, do_zone and zone_flag",
+    "Keep the columns of trips and add the three new ones.",
+    "row_count",
+    "Row count: every trip stays",
+    "Count the rows before and after: a join can drop rows without an error.",
+    "zone_flags",
+    "Zone names and zone_flag match for every row_id",
+    "The flag is the first that applies: unmatched, unknown (264), outside_nyc (265), ok. Check both sides of the trip.",
+    "unchanged",
+    "The columns from trips keep their values",
+    "Add columns; do not change or drop the ones that came from trips.",
+    "trips",
+    "pu_zone",
+    "VARCHAR",
+    "do_zone",
+    "VARCHAR",
+    "zone_flag",
+    "VARCHAR",
+    "trips_clean",
+    "",
+    ".trips_clean",
+    "SELECT system.main.count(*) FROM ",
+    "",
+    "zone_flag",
+    "an answer result",
+    "not found",
+    "",
+    " columns",
+    "0 changed rows",
+    "an answer result",
+    "found",
+    "",
+    ", pu_zone, do_zone, zone_flag",
+    "",
+    ".trips_clean",
+    "SELECT system.main.count(*) FROM ",
+    "",
+    "row_id",
+    "BIGINT",
+    "zone_flag",
+    "",
+    " (",
+    " rows differ from the expected)",
+    "0 changed rows",
+    "",
+    ".trips",
+    "0 changed, missing or extra rows",
+    "",
+    " changed or extra, ",
+    " missing",
+    "Try `SELECT 1 WHERE 1<coalesce(NULL,1) AND 2>1`."
+  ],
+  "generatedGuide": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Taxi Crawler · BADM 554</title>\n<link rel=\"stylesheet\" href=\"/learn/learn.css\">\n<script>document.documentElement.classList.add('js');</script>\n<script type=\"module\" src=\"/learn/app.js\"></script>\n</head>\n<body>\n<a class=\"skip\" href=\"#guide-body\">Skip to the guide</a>\n<header class=\"top\">\n  <p class=\"brand\"><span class=\"brand-name\">Taxi Crawler</span> <span class=\"brand-sub\">BADM 554 · a data quality game</span></p>\n  <button type=\"button\" id=\"tutor-toggle\" class=\"top-btn js-only\" aria-controls=\"tutor\" aria-expanded=\"true\">Hide tutor</button>\n</header>\n<noscript><p class=\"noscript\">The game and the tutor need JavaScript. You can still read the guide below.</p></noscript>\n<div class=\"tabs js-only\" role=\"tablist\" aria-label=\"Panels\">\n  <button type=\"button\" role=\"tab\" id=\"tab-guide\" aria-controls=\"guide\" aria-selected=\"false\" tabindex=\"-1\">Guide<span class=\"badge\" hidden> (changed)</span></button>\n  <button type=\"button\" role=\"tab\" id=\"tab-game\" aria-controls=\"gamepane\" aria-selected=\"false\" tabindex=\"-1\">Game<span class=\"badge\" hidden> (changed)</span></button>\n  <button type=\"button\" role=\"tab\" id=\"tab-tutor\" aria-controls=\"tutor\" aria-selected=\"true\" tabindex=\"0\">Tutor</button>\n</div>\n<main class=\"layout\" id=\"layout\">\n\n<section id=\"guide\" class=\"panel guide\" data-level=\"1\" aria-label=\"Guide\">\n  <div class=\"guide-bar js-only\">\n    <nav aria-label=\"Rooms\">\n      <ul class=\"rooms\">\n        <li><a href=\"#room=map\" data-room=\"map\">Depot</a></li>\n        <li><a href=\"#room=floor1\" data-room=\"floor1\">Floor 1</a></li>\n        <li><a href=\"#room=floor2\" data-room=\"floor2\">Floor 2</a></li>\n        <li><a href=\"#room=floor3\" data-room=\"floor3\">Floor 3</a></li>\n      </ul>\n    </nav>\n    <fieldset id=\"level-picker\" class=\"level-picker\" aria-describedby=\"level-help\">\n      <legend>Detail level</legend>\n      <label><input type=\"radio\" name=\"lv\" value=\"1\" checked> Lv 1 <span class=\"lv-name\">Big idea</span></label>\n      <label><input type=\"radio\" name=\"lv\" value=\"2\"> Lv 2 <span class=\"lv-name\">How the check works</span></label>\n      <label><input type=\"radio\" name=\"lv\" value=\"3\"> Lv 3 <span class=\"lv-name\">The real SQL</span></label>\n    </fieldset>\n    <p id=\"level-help\" class=\"level-help\">Pick how deep the guide and the tutor go. You can change it any time.</p>\n  </div>\n\n  <div id=\"guide-body\" class=\"guide-body\" tabindex=\"-1\">\n\n  <section class=\"room\" id=\"room-map\" data-room=\"map\" data-title=\"The depot\" aria-labelledby=\"h-map\">\n    <h2 id=\"h-map\">The depot</h2>\n    <picture class=\"hero-pic\"><source srcset=\"/learn/img/depot-hero-still.svg\" media=\"(prefers-reduced-motion: reduce)\"><img class=\"hero-art\" src=\"/learn/img/depot-hero.svg\" alt=\"\" aria-hidden=\"true\" width=\"1200\" height=\"340\" decoding=\"async\"></picture>\n    <article class=\"slide\" id=\"overview\" data-title=\"Three shifts, three problems\" aria-labelledby=\"h-overview\">\n      <h3 id=\"h-overview\">Three shifts, three problems</h3>\n      <div class=\"lv\" data-lv=\"1\">\n        <p>You are the night analyst at a taxi depot. The trip feed for January 2024 has come in, and the dashboard says revenue is up.</p>\n        <p>Before the morning report, you check the feed. There are three shifts and three problems. Each floor is one problem.</p>\n        <p class=\"habit\">Every floor ends on one habit: <strong>say the row count before and after, and make them reconcile.</strong></p>\n      </div>\n      <p>Each floor has slides at three levels. Lv 1 gives the big idea, Lv 2 shows how the check works, Lv 3 shows the real SQL. Start at Lv 1, and switch to Lv 3 when you want to see the code. The tutor follows the level you pick. Use the <a href=\"#level-picker\">Detail level</a> picker above to change levels.</p>\n      <p><strong>To play:</strong> press <strong>Start floor</strong> on a card. It opens that floor's slides here and the game next to them. The Floor 1, Floor 2 and Floor 3 tabs above only show the slides.</p>\n      <p>On a phone, use the Guide, Game and Tutor tabs to choose a view. Scroll the page to reach the SQL box and results in the Game view, or the question box in the Tutor view.</p>\n<ol class=\"floor-cards\"><li class=\"floor-card\" data-floor=\"1\"><img class=\"floor-emblem\" src=\"/learn/img/floor1.svg\" alt=\"\" aria-hidden=\"true\" width=\"56\" height=\"56\" decoding=\"async\"><h4>Floor 1: The double shift</h4><p>One day&#39;s load ran twice.</p><p class=\"cleared\" data-cleared-floor=\"1\" hidden>Cleared</p><p class=\"card-actions js-only\"><button type=\"button\" class=\"play\" data-floor=\"1\">Start floor 1</button></p></li><li class=\"floor-card\" data-floor=\"2\"><img class=\"floor-emblem\" src=\"/learn/img/floor2.svg\" alt=\"\" aria-hidden=\"true\" width=\"56\" height=\"56\" decoding=\"async\"><h4>Floor 2: Nowhere zones</h4><p>Some trips start or end in a zone that is not on the map.</p><p class=\"cleared\" data-cleared-floor=\"2\" hidden>Cleared</p><p class=\"card-actions js-only\"><button type=\"button\" class=\"play\" data-floor=\"2\">Start floor 2</button></p></li><li class=\"floor-card\" data-floor=\"3\"><img class=\"floor-emblem\" src=\"/learn/img/floor3.svg\" alt=\"\" aria-hidden=\"true\" width=\"56\" height=\"56\" decoding=\"async\"><h4>Floor 3: Impossible rides</h4><p>Some rides cannot have happened.</p><p class=\"cleared\" data-cleared-floor=\"3\" hidden>Cleared</p><p class=\"card-actions js-only\"><button type=\"button\" class=\"play\" data-floor=\"3\">Start floor 3</button></p></li></ol>\n<section id=\"about-data\" aria-labelledby=\"about-data-h\"><h4 id=\"about-data-h\">About the data</h4>\n<p>These are NYC Taxi and Limousine Commission yellow taxi trip records for January 2024, with a location lookup and the game&#39;s teaching changes. row_id and loaded_at describe the load, not the trip. Location 264 means Unknown (zone N/A); 265 means Outside of NYC.</p>\n<h5>trips_raw</h5><ul><li class=\"data-column\"><code>row_id</code>: Unique identifier for a physical row in the feed; load metadata, not a trip key.</li><li class=\"data-column\"><code>vendor_id</code>: Provider that recorded the trip.</li><li class=\"data-column\"><code>pickup_at</code>: Pick-up date and time in local time, without a time zone.</li><li class=\"data-column\"><code>dropoff_at</code>: Drop-off date and time in local time, without a time zone.</li><li class=\"data-column\"><code>passenger_count</code>: Reported number of passengers.</li><li class=\"data-column\"><code>trip_distance</code>: Reported trip distance in miles.</li><li class=\"data-column\"><code>pu_location_id</code>: Pick-up location id, matched to zones.location_id.</li><li class=\"data-column\"><code>do_location_id</code>: Drop-off location id, matched to zones.location_id.</li><li class=\"data-column\"><code>payment_type</code>: Code for the reported payment method.</li><li class=\"data-column\"><code>fare_amount</code>: Metered fare amount in dollars.</li><li class=\"data-column\"><code>tip_amount</code>: Recorded tip amount in dollars.</li><li class=\"data-column\"><code>total_amount</code>: Reported total trip amount in dollars.</li><li class=\"data-column\"><code>loaded_at</code>: When the physical row was loaded; load metadata, not a trip key.</li></ul>\n<h5>zones</h5><ul><li class=\"data-column\"><code>location_id</code>: Location id used to match a trip location.</li><li class=\"data-column\"><code>borough</code>: Borough reported for the location.</li><li class=\"data-column\"><code>zone</code>: Name of the location.</li><li class=\"data-column\"><code>service_zone</code>: Service area reported for the location.</li></ul>\n<p>Source: <a href=\"https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page\" target=\"_blank\" rel=\"noopener\">NYC TLC trip records</a> and <a href=\"https://www.nyc.gov/assets/tlc/downloads/pdf/data_dictionary_trip_records_yellow.pdf\" target=\"_blank\" rel=\"noopener\">Yellow taxi data dictionary (PDF)</a>. The game renames columns, for example tpep_pickup_datetime becomes pickup_at, and adds row_id and loaded_at. Use the game&#39;s column list above when writing your SQL.</p></section>\n      <div class=\"lv\" data-lv=\"2\">\n        <p class=\"lv-tag\">Lv 2 · How the check works</p>\n        <p>Each floor gives you tables in an SQL console. The console runs DuckDB inside your browser. You write SQL that creates the tables the floor asks for. Then you press <strong>Check</strong>.</p>\n        <p>The check compares your tables with the expected result, row by row, not only the counts. Floor 2 starts from a correct floor 1 result, and floor 3 from a correct floor 2 result. So you always start a floor clean.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"3\">\n        <p class=\"lv-tag\">Lv 3 · The real SQL</p>\n        <p>The data is 7,345 yellow taxi trips from January 2024, published by the NYC TLC, and the zone lookup with 265 zones. Some dirt is real, as TLC published it. Some is planted for the game: the duplicate load, and 25 drop-off ids that are 0 or empty. Ask the tutor which is which.</p>\n        <pre><code>SELECT count(*) FROM zones;\nSELECT * FROM zones LIMIT 5;</code></pre>\n      </div>\n      <div class=\"credit\">\n        <h4>Extra credit</h4>\n        <p>1% extra credit for clearing all three floors <strong>and</strong> filing one improvement. Each floor you clear gives you a code. Then <a href=\"https://github.com/Business-Analytics-at-Gies/badm554-taxi-crawler/issues/new?template=improvement.yml\" target=\"_blank\" rel=\"noopener\">suggest one improvement as a GitHub issue</a> (the repository is public, so leave out anything personal). Paste your three codes and the link to your issue into the Canvas assignment by 7:00 PM CDT Saturday.</p>\n        <p>The tutor on the side sees the guide and the game. It can light up rows on the map and run queries on its own copy of the data. Your messages to the tutor go to Anthropic's API. Do not type personal information.</p>\n      </div>\n    </article>\n  </section>\n\n\n\n\n\n\n\n  </div>\n</section>\n\n<section id=\"gamepane\" class=\"panel gamepane\" aria-labelledby=\"game-h\">\n  <div class=\"game-bar\">\n    <h2 id=\"game-h\">Game window</h2>\n    <button type=\"button\" id=\"game-close\" class=\"small-btn\">Close game</button>\n  </div>\n  <div id=\"game-slot\" class=\"game-slot\">\n    <div class=\"game-empty\" id=\"game-empty\">\n      <p>The game is not open.</p>\n      <p><button type=\"button\" class=\"play\" data-floor=\"1\">Start floor 1</button></p>\n    </div>\n  </div>\n</section>\n\n<aside id=\"tutor\" class=\"panel tutor\" aria-labelledby=\"tutor-h\">\n  <div class=\"tutor-head\">\n    <img class=\"tutor-avatar\" src=\"/learn/img/tutor.svg\" alt=\"\" aria-hidden=\"true\" width=\"32\" height=\"32\" decoding=\"async\">\n    <h2 id=\"tutor-h\">Tutor</h2>\n    <p id=\"tutor-status\" class=\"tutor-status\" role=\"status\"></p>\n  </div>\n  <div id=\"tutor-log\" class=\"tutor-log\" role=\"log\" aria-live=\"polite\" aria-label=\"Conversation with the tutor\" tabindex=\"0\">\n    <div class=\"msg msg-tutor greeting\">\n      <p class=\"who\">Tutor</p>\n      <div class=\"body\">\n        <p>Hi. I am the tutor for Taxi Crawler. I can see the guide and the game. I can light up rows on the map and run queries on my own copy of the data.</p>\n        <p>Use the Detail level picker (Lv 1 to 3) to choose how deep I go.</p>\n        <p class=\"notice\"><strong>Your messages to the tutor go to Anthropic's API. Do not type personal information.</strong></p>\n        <p>Where would you like to start: the story of the depot, or floor 1?</p>\n      </div>\n    </div>\n  </div>\n  <p id=\"tutor-thinking\" class=\"thinking\" hidden>The tutor is thinking…</p>\n  <form id=\"join-form\" class=\"join-form\" hidden>\n    <p>Sign in to use the tutor and get completion codes.</p>\n    <label for=\"join-code\">Class code</label>\n    <div class=\"form-row\"><input id=\"join-code\" name=\"code\" autocomplete=\"off\" required><button type=\"submit\">Join</button></div>\n    <p id=\"join-error\" class=\"error\" role=\"alert\"></p>\n  </form>\n  <form id=\"tutor-form\" class=\"tutor-form js-only\">\n    <label for=\"tutor-input\">Ask the tutor</label>\n    <textarea id=\"tutor-input\" rows=\"3\" maxlength=\"1500\" aria-describedby=\"tutor-help\"></textarea>\n    <div class=\"form-row\">\n      <span id=\"tutor-help\" class=\"help\"><span id=\"tutor-count\">0 / 1500</span>. Enter sends; Shift+Enter adds a line.</span>\n      <button type=\"submit\" id=\"tutor-send\">Send</button>\n    </div>\n  </form>\n  <div class=\"tutor-foot js-only\">\n    <button type=\"button\" id=\"forget\" class=\"link-btn\">Forget me</button>\n  </div>\n</aside>\n\n</main>\n</body>\n</html>\n\n<section class=\"room\" id=\"room-floor2\" data-room=\"floor2\" data-title=\"Floor 2: Nowhere zones\" aria-labelledby=\"h-floor2\">\n    <h2 id=\"h-floor2\">Floor 2: Nowhere zones</h2>\n    <p class=\"cleared\" data-cleared-floor=\"2\" hidden>Cleared</p>\n    <article class=\"slide\" id=\"f2-task\" data-title=\"Trips to nowhere\" aria-labelledby=\"h-f2-task\">\n      <h3 id=\"h-f2-task\">Trips to nowhere</h3>\n      <div class=\"floor-context\" id=\"f2-context\"><p>The depot needs to report where every trip started and ended, including trips whose locations cannot be matched. trips holds 7,171 trips with rerun copies already removed; zones is the location lookup. Keeping unmatched trips in the report prevents an incomplete picture of service and revenue.</p></div>\n      <section class=\"floor-refresher\" id=\"f2-refresher\" aria-labelledby=\"f2-refresher-h\"><h4 id=\"f2-refresher-h\">SQL refresher</h4><h5>A query in steps: WITH</h5><p>WITH names a query result so the next step can read it. The final SELECT returns your answer. These steps are one query; you do not need to save a table.</p><pre><code>WITH rides(id) AS (VALUES (1), (2))\nSELECT count(*) AS rides FROM rides;</code></pre><h5>Keep unmatched rows with LEFT JOIN</h5><p>A JOIN matches keys between tables. A LEFT JOIN keeps every row on the left and puts NULL in the right columns when there is no match. Aliases such as r and z name the two table copies. Joining twice lets you look up two locations.</p><pre><code>WITH rides(id, place) AS (VALUES (1, 10), (2, 99)),\nplaces(id, name) AS (VALUES (10, &#39;Depot&#39;))\nSELECT r.id, z.name FROM rides r\nLEFT JOIN places z ON z.id = r.place;</code></pre><h5>Label the first matching condition</h5><p>CASE tests WHEN conditions in order: the first true branch wins. Here 1 meets both conditions but gets first; 2 gets second, and 3 reaches ELSE. In an answer without ELSE, rows that match no branch get NULL. Test missing values with IS NULL.</p><pre><code>WITH examples(n) AS (VALUES (1), (2), (3))\nSELECT n, CASE WHEN n &lt; 2 THEN &#39;first&#39;\nWHEN n &lt; 3 THEN &#39;second&#39; ELSE &#39;other&#39; END AS label\nFROM examples;</code></pre><h5>Count the joined result</h5><p>COUNT(*) checks that a join kept the expected number of rows. GROUP BY makes one group per label; HAVING can filter those groups. Use a WITH step to name the result you want to count.</p><pre><code>WITH labels(flag) AS (VALUES (&#39;known&#39;), (&#39;missing&#39;))\nSELECT flag, count(*) FROM labels GROUP BY flag\nHAVING count(*) &gt; 0;</code></pre><h5>Review in the textbook</h5><ul class=\"review-links\"><li><a href=\"https://vishalsachdev.github.io/badm554-textbook/modules/M2/I2/#left-join-keep-every-member\" target=\"_blank\" rel=\"noopener\">M2I2 LEFT JOIN: keep every member</a></li><li><a href=\"https://vishalsachdev.github.io/badm554-textbook/modules/M2/I2/#always-check-the-row-count\" target=\"_blank\" rel=\"noopener\">M2I2 Always check the row count</a></li><li><a href=\"https://vishalsachdev.github.io/badm554-textbook/modules/M1/I4/\" target=\"_blank\" rel=\"noopener\">M1I4 Anatomy of a Query</a></li><li><a href=\"https://vishalsachdev.github.io/badm554-textbook/modules/M2/I4/\" target=\"_blank\" rel=\"noopener\">M2I4 GROUP BY + Aggregate Functions</a></li></ul></section>\n      <div class=\"lv\" data-lv=\"1\"><p class=\"control-task-panel\">The task panel above Scratch holds the full rules and a checklist for Answer. Open it before writing your query; it starts collapsed on mobile. The checklist shows whether Answer has been run and its last row count. SQL refresher and About the data links beside it open the guide in a new tab.</p><p class=\"control-table-columns\">Under Tables above Scratch, open a table chip to see its columns and types. Start with trips to find the available names before writing a query. Opening a chip leaves your SQL and Result alone; Enter or Space opens and closes it from the keyboard.</p><p class=\"control-table-preview\">Choose Preview beside any table chip under Tables to see its first 10 rows in a separate panel beside the console, or below it on a narrow screen. Start with trips to see what a row holds. Preview leaves Scratch, Result and query records alone; Close preview takes you back to the chip.</p><p class=\"control-answer\">Use Scratch to explore the given tables or make your own tables. Put one SELECT or WITH query in Answer. Run answer shows its rows in Result; Check floor grades only that query against the original given tables. You do not need to save a table.</p><p class=\"control-hint-ladder\">After Check floor, each failed rule has its own hint ladder: first what is wrong, then an idea and a SQL refresher link, then an inspection query outline with blanks. Further failures stay on rung 3. Hints work with the tutor closed. Passing a rule resets its ladder; passing the floor or Restart floor resets that floor’s ladders.</p>\n        <p>Some trips start or end in a zone that is not a real place on the map. If you join to the zone lookup the wrong way, those trips vanish without an error.</p>\n        <p class=\"task-rules\">Return every row of trips, plus three columns:\n- pu_zone and do_zone: the zone name from zones (NULL when there is no match)\n- zone_flag: the first label that applies, checking both pu_location_id and do_location_id:\n  1. &#39;unmatched&#39; if either id is NULL or not in zones\n  2. &#39;unknown&#39; if either id is 264\n  3. &#39;outside_nyc&#39; if either id is 265\n  4. &#39;ok&#39; otherwise</p><p class=\"task\"><strong>Your task:</strong> return every row of <code>trips</code>, plus three columns: <code>pu_zone</code>, <code>do_zone</code> and <code>zone_flag</code>. Write your answer as one query in the Answer box. A WITH query is fine: the check runs your query and grades its result. You do not need to save a table.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"2\"><p class=\"control-task-panel\">Use the task panel checklist after each Run answer: an empty Answer result shows zero rows. Scratch table changes never count as an Answer run. Check floor grades your current Answer query; a row count alone does not mean correct. The panel remembers your collapse choice in the page address.</p><p class=\"control-table-columns\">The columns and types describe the table on the active floor, including tables you create. When you replace a table, an open chip refreshes its column view. After switching floors, open the new floor’s chip to inspect that floor’s columns and types.</p><p class=\"control-table-preview\">Preview shows up to 10 rows from the table on this floor, including your own outputs. An empty table still shows its column names. Preview refreshes after a replacement and closes when you drop its table or change floors. The panel scrolls sideways for wide rows on a phone.</p><p class=\"control-answer\">Answer uses only this floor’s original given tables, even if you change or drop a table in Scratch. Check floor leaves both boxes, Scratch and Result alone. The task checklist says Answer: not run yet, then shows the row count from your last Run answer; it does not say the answer is correct.</p><p class=\"control-hint-ladder\">Check floor advances only the rules that fail: rung 1 explains the problem, rung 2 links an idea to the SQL refresher, and rung 3 gives an inspection query outline with blanks. Complete it in Scratch to investigate; it is not a finished answer. Ladders survive reload and floor switches. A pass or Restart floor resets the relevant ladders, even with the tutor closed.</p>\n        <p class=\"lv-tag\">Lv 2 · How the check works</p>\n        <p class=\"value-equality\">The check compares values, not formatting: 1.10 and 1.1 are the same, and money is compared to the cent.</p>\n        <p>You get <code>trips</code> (rerun copies already removed, 7,171 rows) and <code>zones</code> (265 rows). <code>pu_zone</code> and <code>do_zone</code> are the zone names from <code>zones</code>, or NULL when there is no match.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"3\"><p class=\"control-task-panel\">The task panel checklist starts at Answer: not run yet, then reports Answer: N rows (last run). It preserves that last-run count while you edit Answer or use Scratch. Compare it with the full rules; Check floor evaluates the current query independently of the last run.</p><p class=\"control-table-columns\">Use the table chip’s columns and types to choose names for SELECT, WHERE and joins. The column view reads the table quietly: it adds no query to your history or the tutor’s recent queries and never replaces unfinished SQL.</p><p class=\"control-table-preview\">Preview is a quiet SELECT * with LIMIT 10, without a guaranteed sort order. It does not add a run to either query record. When a transaction is open, Preview explains that you must COMMIT or ROLLBACK before reading rows; it shows columns without running row expressions or changing your transaction.</p><p class=\"control-answer\">Run answer and Check floor accept the same single SELECT or WITH query. Use Scratch for other statements. Answer text is saved separately for each floor and survives reload, floor switches and Restart floor. Run answer adds an answer entry to both query records; Check floor adds no run.</p><p class=\"control-hint-ladder\">Each rule has a separate Check floor counter in this browser, capped at rung 3: problem, idea with refresher link, then an inspection outline with blanks. A parser error or refused answer does not advance it. Passing a rule resets that counter; a full pass or Restart floor resets this floor. Other floors keep their counters. The tutor does not control these hints.</p>\n        <p class=\"lv-tag\">Lv 3 · The real SQL</p>\n        <pre><code>SELECT * FROM zones WHERE location_id IN (264, 265);</code></pre>\n      </div>\n    </article>\n    <article class=\"slide\" id=\"f2-kinds\" data-title=\"Three kinds of nowhere\" aria-labelledby=\"h-f2-kinds\">\n      <h3 id=\"h-f2-kinds\">Three kinds of nowhere</h3>\n      <div class=\"lv\" data-lv=\"1\">\n        <ul>\n          <li>Zone 264 is \"Unknown\". The lookup has it, but it names no place.</li>\n          <li>Zone 265 is \"Outside of NYC\". It is a real place, outside the zone map.</li>\n          <li>Some drop-off ids are 0 or NULL. They match nothing in the lookup.</li>\n        </ul>\n      </div>\n      <div class=\"lv\" data-lv=\"2\">\n        <p class=\"lv-tag\">Lv 2 · How the check works</p>\n        <p>110 trips touch zone 264, and 74 touch zone 265. These are real TLC rows. 25 trips have a drop-off id that matches nothing: 15 are 0 and 10 are NULL. These are planted for the game.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"3\">\n        <p class=\"lv-tag\">Lv 3 · The real SQL</p>\n        <pre><code>SELECT do_location_id, count(*) AS trips\nFROM trips\nWHERE do_location_id IS NULL\n   OR do_location_id NOT IN (SELECT location_id FROM zones)\nGROUP BY do_location_id;</code></pre>\n      </div>\n    </article>\n    <article class=\"slide\" id=\"f2-join\" data-title=\"A join can drop rows\" aria-labelledby=\"h-f2-join\">\n      <h3 id=\"h-f2-join\">A join can drop rows</h3>\n      <div class=\"lv\" data-lv=\"1\">\n        <p>An inner join keeps only rows that match on both sides. The trips with no matching drop-off zone disappear, and nothing warns you.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"2\">\n        <p class=\"lv-tag\">Lv 2 · How the check works</p>\n        <p>With an inner join on both ids, 7,171 trips become 7,146. A <code>LEFT JOIN</code> keeps every trip and puts NULL where there is no match.</p>\n        <p>An anti-join (a <code>LEFT JOIN</code> where the lookup side IS NULL) lists the rows that match nothing. It cannot find zone 264, because 264 is in the lookup.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"3\">\n        <p class=\"lv-tag\">Lv 3 · The real SQL</p>\n        <pre><code>SELECT count(*) FROM trips t\nJOIN zones pz ON pz.location_id = t.pu_location_id\nJOIN zones dz ON dz.location_id = t.do_location_id;  -- 7,146\n\nSELECT t.row_id, t.do_location_id\nFROM trips t\nLEFT JOIN zones dz ON dz.location_id = t.do_location_id\nWHERE dz.location_id IS NULL;  -- the 25 that match nothing</code></pre>\n      </div>\n    </article>\n    <article class=\"slide\" id=\"f2-flag\" data-title=\"Flag, do not delete\" aria-labelledby=\"h-f2-flag\">\n      <h3 id=\"h-f2-flag\">Flag, do not delete</h3>\n      <div class=\"lv\" data-lv=\"1\">\n        <p>Keep every row, and add a flag that says what is wrong. Someone later can choose what to do with it. A deleted row cannot be explained later.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"2\">\n        <p class=\"lv-tag\">Lv 2 · How the check works</p>\n        <p><code>zone_flag</code> takes the first rule that applies, in this order:</p>\n        <ol>\n          <li><code>'unmatched'</code>: either id is NULL or not in <code>zones</code>;</li>\n          <li><code>'unknown'</code>: either id is 264;</li>\n          <li><code>'outside_nyc'</code>: either id is 265;</li>\n          <li><code>'ok'</code>.</li>\n        </ol>\n        <p>The order matters: test <code>'unmatched'</code> first.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"3\">\n        <p class=\"lv-tag\">Lv 3 · The real SQL</p>\n        <pre><code>CASE WHEN ___ /* a pickup or drop-off with no match */ THEN 'unmatched'\n     WHEN pu_location_id = 264 OR do_location_id = 264 THEN 'unknown'\n     WHEN ___ /* ... 265 ... */ THEN 'outside_nyc'\n     ELSE 'ok' END AS zone_flag</code></pre>\n      </div>\n    </article>\n    <article class=\"slide\" id=\"f2-reconcile\" data-title=\"Count before and after\" aria-labelledby=\"h-f2-reconcile\">\n      <h3 id=\"h-f2-reconcile\">Count before and after</h3>\n      <div class=\"lv\" data-lv=\"1\">\n        <p>7,171 rows in, 7,171 rows out. No row is lost, and each one carries a flag.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"2\">\n        <p class=\"lv-tag\">Lv 2 · How the check works</p>\n        <p>Flags: ok 6,962, unknown 110, outside_nyc 74, unmatched 25. Together they make 7,171.</p>\n        <p>The check passes when your answer has 7,171 rows, keeps every column of <code>trips</code> unchanged, and has the expected <code>row_id</code>, <code>pu_zone</code>, <code>do_zone</code>, <code>zone_flag</code> values.</p>\n      </div>\n      <div class=\"lv\" data-lv=\"3\">\n        <p class=\"lv-tag\">Lv 3 · The real SQL</p>\n        <pre><code>WITH answer AS (___ /* your answer query */)\nSELECT zone_flag, count(*) AS trips\nFROM answer\nGROUP BY zone_flag\nORDER BY trips DESC;</code></pre>\n      </div>\n    </article>\n    <p class=\"room-play js-only\"><button type=\"button\" class=\"play\" data-floor=\"2\">Play this floor</button></p>\n  </section>\n",
+  "referenceSql": "WITH enriched AS (\nSELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,\n       CASE WHEN pz.location_id IS NULL OR dz.location_id IS NULL THEN 'unmatched'\n            WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'\n            WHEN t.pu_location_id = 265 OR t.do_location_id = 265 THEN 'outside_nyc'\n            ELSE 'ok' END AS zone_flag\nFROM trips t\nLEFT JOIN zones pz ON pz.location_id = t.pu_location_id\nLEFT JOIN zones dz ON dz.location_id = t.do_location_id\n) SELECT * FROM enriched;\n"
+}

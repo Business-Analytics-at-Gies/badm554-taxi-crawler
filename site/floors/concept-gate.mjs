@@ -48,8 +48,18 @@ export function parseGraph(csv) {
 }
 
 // Text outside code markup is intentionally prose, per R3b 3a.
-export function markedSources(text, source) {
+export function markedSources(text, source, format = 'html') {
   text = String(text ?? '');
+  if (format === 'text') {
+    const out = [];
+    for (const match of text.matchAll(/`([^`]+)`/g))
+      out.push({ source: `${source} SQL ${out.length + 1}`, sql: match[1], kind: 'inline' });
+    if (text.replace(/`([^`]+)`/g, ' ').includes('`'))
+      out.push({ source: `${source} incomplete code markup`, sql: text, kind: 'inline',
+        error: 'Unclosed or split code markup' });
+    return out;
+  }
+  if (format !== 'html') throw new Error(`Unknown display format ${format}`);
   const parser = new DOMParser();
   // Read the same characters as the browser, without attaching or executing
   // anything. Nested pre/code pairs are a single source; markup adds no spaces.
@@ -94,7 +104,7 @@ export function sqlSources(pack) {
     });
   const walk = (value, path) => {
     if (typeof value === 'string') {
-      out.push(...markedSources(value, path));
+      out.push(...markedSources(value, path, path === 'guide' ? 'html' : 'text'));
       return;
     }
     if (!value || typeof value !== 'object') return;
@@ -120,7 +130,7 @@ export function sqlSources(pack) {
   // fragments) without executing check.js. Scan all of them, conservatively,
   // rather than guessing which branch might display a message.
   for (const [i, text] of (pack.checkMessages ?? []).entries())
-    out.push(...markedSources(text, `check.js message ${i + 1}`));
+    out.push(...markedSources(text, `check.js message ${i + 1}`, 'text'));
   return out;
 }
 const rewriteMessage = 'Rewrite it so that each blank stands for one name, value or query.';

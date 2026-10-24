@@ -30,6 +30,26 @@ const conjuncts = (n) => n?.type === 'CONJUNCTION_AND' ? n.children.flatMap(conj
 // A proof is a direct projection or a WHERE conjunct, never a descendant of
 // NOT, OR, CASE, another predicate, or a nested query.
 const predicateRoots = (query) => [...query.select_list, ...conjuncts(query.where_clause)];
+// Exact combination proofs use a plain SELECT with no result-changing wrapper.
+// Local WHERE proofs must be the entire predicate, not one conjunct among others.
+const plainQuery = (query, where = null, grouped = false) =>
+  query.where_clause === where && !query.having && !query.qualify && !query.sample &&
+  !query.modifiers.length && query.aggregate_handling === 'STANDARD_HANDLING' &&
+  (grouped || !query.group_expressions.length && !query.group_sets.length);
+const plainColumn = node => node?.class === 'COLUMN_REF';
+const plainProjection = node => plainColumn(node) || node?.class === 'STAR';
+const plainValue = node => plainColumn(node) || node?.class === 'CONSTANT';
+const plainAggregate = node => node?.class === 'FUNCTION' &&
+  !node.distinct && !node.filter && !node.order_bys?.orders?.length &&
+  (node.function_name === 'count_star' && !node.children.length ||
+    ['count', 'sum', 'avg', 'min', 'max'].includes(node.function_name) &&
+    node.children.length === 1 && plainValue(node.children[0]));
+const plainWindow = node => node?.class === 'WINDOW' &&
+  !node.distinct && !node.filter_expr && !node.ignore_nulls &&
+  !node.arg_orders?.length && node.exclude_clause === 'NO_OTHER' &&
+  !node.offset_expr && !node.default_expr &&
+  node.children.every(plainValue) && node.partitions.every(plainColumn) &&
+  node.orders.every(order => plainValue(order.expression));
 const forObjects = (node, fn) => {
   if (!node || typeof node !== 'object') return;
   if (!Array.isArray(node)) fn(node);
@@ -369,12 +389,13 @@ export async function detectComputedZeros(conn, ast, result, map = CONCEPT_MAP, 
   // numeric-zero operand. Scope success is required before credit.
   for (const [index, statement] of (ast.statements ?? []).entries()) {
     if (negatedStatements.has(index)) continue;
-    forObjects(statement, query => {
-    if (query.type !== 'SELECT_NODE') return;
+    const query = statement.node;
+    if (query.type !== 'SELECT_NODE') continue;
     for (const predicate of predicateRoots(query))
-      if (zeroPredicates.has(predicate))
+      if (zeroPredicates.has(predicate) &&
+          plainQuery(query, query.where_clause === predicate ? predicate : null) &&
+          [predicate.left, predicate.right].every(operand => plainColumn(operand) || constantOnly(operand)))
         addProof(result, map, 'zero', '$.predicate');
-    });
   }
   result.errors = [...new Set(result.errors)];
   result.concepts = [...new Set(result.concepts)].sort();
@@ -404,51 +425,75 @@ export function detectScopeProofs(facts, result, map = CONCEPT_MAP, negatedState
     if (entry.ids.every((id) => detected.has(id))) addProof(result, map, name, '$.scope');
   };
   const same = (a, b) => a && b && a.input === b.input && a.index === b.index;
-  const equalities = (node) =>
-    node?.type === 'COMPARE_EQUAL'
-      ? [node]
-      : node?.type === 'CONJUNCTION_AND'
-        ? node.children.flatMap(equalities)
-        : [];
+  // Every ON conjunct must be a resolved cross-input column equality. Finding
+  // one acceptable equality anywhere in a larger condition is insufficient.
+  const exactKeys = join => {
+    const conditions = conjuncts(join.node.condition);
+    if (!conditions.length) return [];
+    const keys = [];
+    for (const eq of conditions) {
+      if (eq.type !== 'COMPARE_EQUAL' || !plainColumn(eq.left) || !plainColumn(eq.right)) return [];
+      const a = facts.references.get(eq.left), b = facts.references.get(eq.right);
+      const right = join.left.includes(a?.input) && join.right.includes(b?.input) ? b :
+        join.left.includes(b?.input) && join.right.includes(a?.input) ? a : null;
+      if (!right) return [];
+      keys.push(right);
+    }
+    return keys;
+  };
+  const windowCTEConsumer = (query, expression) => {
+    const root = query.root, entry = query.cte;
+    if (!entry || root.type !== 'SELECT_NODE' || !plainQuery(root, root.where_clause) ||
+        root.from_table.type !== 'BASE_TABLE' || fold(root.from_table.table_name) !== fold(entry.key) ||
+        root.from_table.schema_name || root.from_table.catalog_name ||
+        !root.select_list.every(node => plainColumn(node) || node.class === 'STAR')) return false;
+    const index = query.outputPositions.get(expression);
+    const refersToWindow = node => {
+      const ref = facts.references.get(node);
+      return ref?.index === index && fold(ref.input.name) === fold(root.from_table.alias || entry.key);
+    };
+    const predicate = root.where_clause;
+    if (!predicate) return root.select_list.some(node => node.class === 'STAR' || refersToWindow(node));
+    // The listed C034 filter is the taught ROW_NUMBER pattern: WHERE rn = 1.
+    return expression.type === 'WINDOW_ROW_NUMBER' && predicate.type === 'COMPARE_EQUAL' &&
+      [[predicate.left, predicate.right], [predicate.right, predicate.left]].some(([column, one]) =>
+        plainColumn(column) && refersToWindow(column) && one.class === 'CONSTANT' &&
+        !one.value.is_null && one.value.value === 1);
+  };
   for (const query of facts.queries) {
     if (negatedStatements.has(query.statementIndex)) continue;
-    if (query.node.group_expressions.length && query.node.from_table.type === 'JOIN' &&
-        query.joins.some(join => join.node === query.node.from_table && equalities(join.node.condition).some(eq => {
-          const a = facts.references.get(eq.left), b = facts.references.get(eq.right);
-          return join.left.includes(a?.input) && join.right.includes(b?.input) ||
-            join.left.includes(b?.input) && join.right.includes(a?.input);
-        }))) prove('join_group');
-    for (const expression of query.node.select_list) {
-      if (query.node.group_expressions.length && expression.class === 'FUNCTION' &&
-          expression.function_name?.toLowerCase() === 'count_star') prove('group_count');
-      if (expression.class === 'WINDOW' && expression.function_name?.toLowerCase() === 'sum' &&
-          expression.orders?.length && expression.start === 'UNBOUNDED_PRECEDING' &&
+    const node = query.node;
+    for (const expression of node.select_list)
+      if (query.inCTE && plainQuery(node) && plainWindow(expression) && windowCTEConsumer(query, expression))
+        prove('window_cte');
+    // A nested or CTE-local pattern cannot prove a different outer query.
+    if (node !== query.root) continue;
+    const grouped = node.group_expressions.length &&
+      node.group_expressions.every(plainColumn) && plainQuery(node, null, true) &&
+      node.select_list.every(expression => plainProjection(expression) || plainAggregate(expression)) &&
+      node.select_list.some(plainAggregate);
+    const rootJoin = query.joins.find(join => join.node === node.from_table);
+    if (grouped && rootJoin && ['INNER', 'LEFT'].includes(rootJoin.node.join_type) &&
+        exactKeys(rootJoin).length && query.joins.length === 1) prove('join_group');
+    for (const expression of node.select_list) {
+      if (grouped && plainAggregate(expression) && expression.function_name === 'count_star')
+        prove('group_count');
+      if (plainQuery(node) && plainWindow(expression) && expression.function_name === 'sum' &&
+          expression.orders.length && expression.orders.every(order => plainColumn(order.expression) &&
+            ['ASCENDING', 'ORDER_DEFAULT'].includes(order.type)) &&
+          expression.orders.some(order => !expression.partitions.some(partition =>
+            same(facts.references.get(order.expression), facts.references.get(partition)))) &&
+          expression.start === 'UNBOUNDED_PRECEDING' && !expression.start_expr && !expression.end_expr &&
           ['CURRENT_ROW_RANGE', 'CURRENT_ROW_ROWS', 'CURRENT_ROW_GROUPS'].includes(expression.end))
         prove('running_sum_proof');
-      if (query.inCTE && expression.class === 'WINDOW') prove('window_cte');
     }
-    for (const join of query.joins) {
-      if (join.node !== query.node.from_table || join.node.join_type !== 'LEFT') continue;
-      for (const eq of equalities(join.node.condition)) {
-        const a = facts.references.get(eq.left),
-          b = facts.references.get(eq.right);
-        const right =
-          join.left.includes(a?.input) && join.right.includes(b?.input)
-            ? b
-            : join.left.includes(b?.input) && join.right.includes(a?.input)
-              ? a
-              : null;
-        if (
-          right &&
-          conjuncts(query.node.where_clause).some(
-            (n) =>
-              n.type === 'OPERATOR_IS_NULL' && same(facts.references.get(n.children[0]), right),
-          )
-        ) {
-          prove('orphan_proof');
-          prove('unmatched_null');
-        }
-      }
+    if (!rootJoin || rootJoin.node.join_type !== 'LEFT' || query.joins.length !== 1 ||
+        !node.select_list.every(plainProjection) || !plainQuery(node, node.where_clause)) continue;
+    const predicate = node.where_clause;
+    if (predicate?.type !== 'OPERATOR_IS_NULL' || predicate.children.length !== 1) continue;
+    if (exactKeys(rootJoin).some(right => same(facts.references.get(predicate.children[0]), right))) {
+      prove('orphan_proof');
+      prove('unmatched_null');
     }
   }
   result.concepts = [...new Set(result.concepts)].sort();

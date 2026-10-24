@@ -15,6 +15,10 @@ const { hintCandidates, scanHintLeaks } = await import(
       ]).toString('base64')
     : './hint-leaks.mjs'
 );
+import { checkMessageLiterals as currentCheckMessageLiterals } from '../../tools/check-message-literals.mjs';
+const { checkMessageLiterals } = process.env.R15_BASELINE
+  ? await import('data:text/javascript;base64,' + execFileSync('git', ['-C', new URL('../../', import.meta.url).pathname, 'show', '543553c:tools/check-message-literals.mjs']).toString('base64'))
+  : { checkMessageLiterals: currentCheckMessageLiterals };
 let h, graph, overrides;
 before(async () => {
   h = await openDb();
@@ -81,6 +85,15 @@ before(async () => {
     for (const path of ['concept-gate', 'concept-bound', 'concept-tree', 'concept-map', 'concept-scope', 'sql-blanks']) {
       const body = execFileSync('git', ['-C', new URL('../../', import.meta.url).pathname,
         'show', `0e148e8:site/floors/${path}.mjs`], { encoding: 'utf8' });
+      await h.page.route(`**/floors/${path}.mjs`, route =>
+        route.fulfill({ contentType: 'text/javascript', body }));
+    }
+  }
+  if (process.env.R15_BASELINE) {
+    assert.equal(process.env.R15_BASELINE, '543553c');
+    for (const path of ['concept-gate', 'concept-tree']) {
+      const body = execFileSync('git', ['-C', new URL('../../', import.meta.url).pathname,
+        'show', `543553c:site/floors/${path}.mjs`], { encoding: 'utf8' });
       await h.page.route(`**/floors/${path}.mjs`, route =>
         route.fulfill({ contentType: 'text/javascript', body }));
     }
@@ -196,7 +209,7 @@ for (const [name, sql] of active)
   });
 
 import { buildFloorPacks } from '../../tools/build-floor-packs.mjs';
-import { checkMessageLiterals } from '../../tools/check-message-literals.mjs';
+
 let built;
 const packFloor = async (id) => {
   built ??= await buildFloorPacks();
@@ -282,7 +295,7 @@ for (const [name, fields] of [
       controls: [
         {
           id: 'answer',
-          levels: ['Use <code>coalesce(x, 0)</code> for a label.'],
+          levels: ['Use `coalesce(x, 0)` for a label.'],
         },
       ],
     },
@@ -1387,7 +1400,7 @@ for (const [name, badSQL, goodSQL] of [
   [
     'OR condition is not a key match',
     orphanSQL('l.id = r.id OR true'),
-    orphanSQL('l.id = r.id AND true'),
+    orphanSQL('l.id = r.id AND r.id = l.id'),
   ],
   [
     'nested query equality is not a join key',
@@ -1680,6 +1693,16 @@ for (const entity of ['&#x27;', '&#039;'])
       else if (place === 'pack string') p.task += marked;
       else if (place === 'check message') p.checkMessages.push(marked);
       else p.guide += marked;
+      if (['pack string', 'check message'].includes(place)) {
+        // R15: these fields display literal text. HTML-looking prose is not
+        // parsed as markup; the same SQL in actual backticks must still fail.
+        const literalResult = await check(p);
+        assert.deepEqual(literalResult.errors, []);
+        assert.ok(!literalResult.detected.some(d => d.concepts.includes('C020')));
+        const code = 'Try `SELECT coalesce(NULL, 1)`.';
+        if (place === 'pack string') p.task += code;
+        else p.checkMessages.push(code);
+      }
       const r = await check(p);
       assert.match(r.errors.join('\n'), /undeclared C020/);
       assert.ok(r.detected.some(d => d.concepts.includes('C020')));
@@ -1769,3 +1792,159 @@ for (const entity of ['&#x27;', '&#039;'])
     assert.equal(result.executed, 2);
     assert.deepEqual(result.rows, [[1]]);
   });
+
+
+// R15: retained complete reviewer fixtures, with the corrected outcomes.
+const r15Fixture = async name => readFile(new URL(`../fixtures/r15/${name}`, import.meta.url), 'utf8');
+for (const name of ['hint', 'message']) test(`R15 reproduction literal ${name}`, async () => {
+  const p = JSON.parse(await r15Fixture(name + '.json'));
+  const r = await check(p);
+  assert.match(r.errors.join('\n'), /undeclared C020/);
+  assert.ok(r.detected.some(d => d.concepts.includes('C020')));
+});
+test('R15 reproduction regular expression quotes in complete checker', async () => {
+  const p = await packFloor(2);
+  p.checkMessages = checkMessageLiterals(await r15Fixture('check.mjs'));
+  assert.ok(p.checkMessages.includes('Try `SELECT coalesce(NULL, 1)`.'));
+  assert.match((await check(p)).errors.join('\n'), /undeclared C020/);
+});
+test('R15 reproduction contradictory join gets no teaching credit', async () => {
+  const p = JSON.parse(await r15Fixture('credit.json'));
+  const r = await check(p);
+  assert.match(r.errors.join('\n'), /C083: refresher proof does not demonstrate/);
+  const proof = r.detected.find(d => d.source === 'refresher: proof');
+  assert.ok(proof.concepts.includes('C083'));
+  assert.ok(!proof.confirmed.includes('C083'));
+  assert.ok(!proof.confirmed.includes('C016'));
+});
+for (const invalid of ["const = 'hidden';", "const a = ;", "const r = /unterminated;", "const a = `unterminated", "const a='ok'; @"]) test(`R15 parser refuses ${invalid}`, () => {
+  assert.throws(() => checkMessageLiterals(invalid));
+});
+test('R15 parser visits nested interpolation literals and never executes authored code', () => {
+  const source = 'throw Error("never execute"); const r=/[\'"`]/; const a=`before ${fn("inside", `nested ${"deep"} end`)} after`;';
+  const got = checkMessageLiterals(source);
+  for (const text of ['never execute', 'before ', 'inside', 'nested ', 'deep', ' end', ' after']) assert.ok(got.includes(text), JSON.stringify(got));
+});
+for (const condition of ['l.id=r.id AND 1=2', 'l.id=r.id AND true', 'l.id=r.id AND r.id=r.id', 'l.id=r.id AND l.id>0', '(l.id=r.id OR true) AND l.id=r.id'])
+  test(`R15 exact orphan ON ${condition}`, async () => {
+    const r = await detect(orphanSQL(condition));
+    assert.ok(r.concepts.includes('C083'));
+    assert.ok(!r.confirmed.includes('C083'), JSON.stringify(r));
+    assert.ok(!r.confirmed.includes('C016'), JSON.stringify(r));
+  });
+for (const [id, sql] of [
+  ['C083', orphanSQL('l.id=r.id') + ' AND false'],
+  ['C016', orphanSQL('l.id=r.id') + ' LIMIT 0'],
+  ['C023', 'SELECT l.n,count(*) FROM (VALUES (1)) l(n) JOIN (VALUES (1)) r(m) ON l.n=r.m AND 1=2 GROUP BY l.n'],
+  ['C023', 'SELECT l.n,count(*) FROM (VALUES (1)) l(n) JOIN (VALUES (1)) r(m) ON l.n=r.m GROUP BY l.n HAVING false'],
+  ['C022', 'SELECT n,count(*) FROM (VALUES (1)) t(n) GROUP BY n HAVING false'],
+  ['C029', 'SELECT sum(n) OVER (ORDER BY n) FROM (VALUES (1)) t(n) LIMIT 0'],
+  ['C029', 'SELECT sum(n) OVER (ORDER BY n DESC) FROM (VALUES (1)) t(n)'],
+  ['C085', 'SELECT n FROM (VALUES (1)) t(n) WHERE n=0 AND false'],
+  ['C085', 'SELECT n=0 FROM (VALUES (1)) t(n) WHERE false'],
+  ['C034', 'WITH t AS (SELECT row_number() OVER () AS rn LIMIT 0) SELECT rn FROM t'],
+]) test(`R15 exact ${id} extra condition ${sql}`, async () => {
+  const r = await detect(sql);
+  assert.ok(r.concepts.includes(id), JSON.stringify(r));
+  assert.ok(!r.confirmed.includes(id), JSON.stringify(r));
+});
+test('R15 exact positive controls still earn teaching credit', async () => {
+  for (const [id, sql] of [
+    ['C083', orphanSQL('l.id=r.id AND r.id=l.id')],
+    ['C016', orphanSQL('r.id=l.id')],
+    ['C023', 'SELECT l.n,count(*) FROM (VALUES (1)) l(n) JOIN (VALUES (1)) r(m) ON l.n=r.m GROUP BY l.n'],
+    ['C022', 'SELECT n,count(*) FROM (VALUES (1)) t(n) GROUP BY n'],
+    ['C029', 'SELECT sum(n) OVER (ORDER BY n) FROM (VALUES (1)) t(n)'],
+    ['C085', 'SELECT n FROM (VALUES (1)) t(n) WHERE n=0'],
+    ['C034', 'WITH t AS (SELECT row_number() OVER () AS rn) SELECT rn FROM t'],
+  ]) {
+    const r = await detect(sql);
+    assert.deepEqual(r.errors, [], sql);
+    assert.ok(r.confirmed.includes(id), JSON.stringify({id, sql, r}));
+  }
+});
+
+for (const [id, sql] of [
+  ['C083', 'SELECT * FROM (' + orphanSQL('l.id=r.id') + ') q WHERE false'],
+  ['C085', 'SELECT * FROM (SELECT n FROM (VALUES (1)) t(n) WHERE n=0) q WHERE false'],
+  ['C029', 'SELECT * FROM (SELECT sum(n) OVER (ORDER BY n) AS running FROM (VALUES (1)) t(n)) q LIMIT 0'],
+  ['C034', 'WITH t AS (SELECT row_number() OVER () AS rn) SELECT rn FROM t LIMIT 0'],
+  ['C034', 'WITH t AS (SELECT row_number() OVER () AS rn) SELECT rn FROM t WHERE false'],
+]) test(`R15 exact wrapper ${id}: ${sql}`, async () => {
+  const r = await detect(sql);
+  assert.ok(r.concepts.includes(id));
+  assert.ok(!r.confirmed.includes(id), JSON.stringify(r));
+});
+const r15PlainFields = [
+  'title', 'task', 'guideTask', 'context', 'taskContext', 'card', 'summary', 'rulesText',
+  'controls.0.levels.0', 'refresher.0.title', 'refresher.0.text',
+  'hints.columns.0.text', 'hints.columns.1.refresher', 'hints.columns.0.checkHintPrefixes.0',
+  'reviewLinks.0.label', 'map.label', 'tables.trips.0.name', 'tables.trips.0.type',
+  'tables.trips.0.description', 'aboutData.description', 'aboutData.loadMetadata',
+  'aboutData.locations', 'aboutData.renames', 'aboutData.sources.0.label', 'checkMessages.0',
+];
+for (const field of r15PlainFields) test(`R15 display format literal ${field}`, async () => {
+  const text = 'Try `SELECT 1 WHERE 1<coalesce(NULL,1) AND 2>1` and `SELECT \'&amp;#x27;\'`.';
+  const p = { referenceSql: 'SELECT 1' };
+  let target = p;
+  const keys = field.split('.');
+  for (let i = 0; i < keys.length - 1; i++) target = target[keys[i]] ??= /^\d+$/.test(keys[i + 1]) ? [] : {};
+  target[keys.at(-1)] = text;
+  // checkMessages must be an array for its additional conservative scan.
+  if (field === 'checkMessages.0') p.checkMessages = [text];
+  const sources = await h.page.evaluate(p => gate.sqlSources(p), p);
+  assert.ok(sources.some(s => s.sql === 'SELECT 1 WHERE 1<coalesce(NULL,1) AND 2>1'), JSON.stringify(sources));
+  assert.ok(sources.some(s => s.sql === "SELECT '&amp;#x27;'"), JSON.stringify(sources));
+});
+test('R15 plain HTML-looking prose stays literal; HTML guide markup uses the browser parser', async () => {
+  const r = await h.page.evaluate(() => ({
+    plain: gate.markedSources("<code>SELECT '&#x27;; SELECT coalesce(NULL,1); --'</code>", 'plain', 'text'),
+    html: gate.markedSources("<code>SELECT '&#x27;; SELECT coalesce(NULL,1); --'</code>", 'guide', 'html'),
+  }));
+  assert.deepEqual(r.plain, []);
+  assert.equal(r.html[0].sql, "SELECT ''; SELECT coalesce(NULL,1); --'");
+});
+
+for (const sql of [
+  'WITH t(rn) AS (SELECT row_number() OVER ()) SELECT rn FROM t',
+  'WITH t(rn) AS (SELECT row_number() OVER ()) SELECT * FROM t',
+  'WITH t(n,rn) AS (SELECT *,row_number() OVER () FROM (VALUES (1)) x(n)) SELECT n FROM t WHERE rn=1',
+  'WITH t(rn,n) AS (SELECT row_number() OVER (),* FROM (VALUES (1)) x(n)) SELECT n FROM t WHERE rn=1',
+]) test(`R15 exact C034 resolves CTE output position: ${sql}`, async () => {
+  const r = await detect(sql);
+  assert.deepEqual(r.errors, []);
+  assert.ok(r.confirmed.includes('C034'), JSON.stringify(r));
+});
+for (const [ids, sql] of [
+  [['C016','C083'], 'WITH l(id) AS (VALUES (1)),r(id) AS (VALUES (2)) SELECT l.* FROM l LEFT JOIN r ON l.id=r.id WHERE r.id IS NULL'],
+  [['C016','C083'], 'SELECT * FROM (VALUES (1)) l(n) LEFT JOIN (VALUES (2)) r(m) ON l.n=r.m WHERE r.m IS NULL'],
+  [['C022','C023'], 'SELECT l.*,count(*) FROM (VALUES (1)) l(n) JOIN (VALUES (1)) r(m) ON l.n=r.m GROUP BY l.n'],
+  [['C022'], 'SELECT *,count(*) FROM (VALUES (1)) t(n) GROUP BY n'],
+]) test(`R15 exact resolved star projections: ${sql}`, async () => {
+  const r = await detect(sql);
+  assert.deepEqual(r.errors, []);
+  for (const id of ids) assert.ok(r.confirmed.includes(id), JSON.stringify({id,r}));
+});
+test('R15 exact running total needs a resolved ordering column rather than constant peers', async () => {
+  const constant = await detect('SELECT n,sum(n) OVER (ORDER BY 1) AS s FROM (VALUES (1),(2),(3)) t(n)');
+  assert.deepEqual(constant.errors, []);
+  assert.ok(constant.concepts.includes('C029'));
+  assert.ok(!constant.confirmed.includes('C029'), JSON.stringify(constant));
+  const column = await detect('SELECT n,sum(n) OVER (ORDER BY n) AS s FROM (VALUES (1),(2),(3)) t(n)');
+  assert.deepEqual(column.errors, []);
+  assert.ok(column.confirmed.includes('C029'));
+  const rows = await h.page.evaluate(async () => ({
+    constant: (await c.query('SELECT sum(n) OVER (ORDER BY 1) AS s FROM (VALUES (1),(2),(3)) t(n)')).toArray().map(row => Number(row.s)),
+    column: (await c.query('SELECT sum(n) OVER (ORDER BY n) AS s FROM (VALUES (1),(2),(3)) t(n)')).toArray().map(row => Number(row.s)),
+  }));
+  assert.deepEqual(rows, {constant:[6,6,6],column:[1,3,6]});
+});
+test('R15 exact running total ordering must vary within its partition by scope', async () => {
+  const sameKey = await detect('SELECT sum(n) OVER (PARTITION BY n ORDER BY n) FROM (VALUES (1),(1),(2)) t(n)');
+  assert.deepEqual(sameKey.errors, []);
+  assert.ok(sameKey.concepts.includes('C029'));
+  assert.ok(!sameKey.confirmed.includes('C029'), JSON.stringify(sameKey));
+  const separateKey = await detect('SELECT sum(n) OVER (PARTITION BY g ORDER BY n) FROM (VALUES (1,1),(1,2),(2,3)) t(g,n)');
+  assert.deepEqual(separateKey.errors, []);
+  assert.ok(separateKey.confirmed.includes('C029'));
+});

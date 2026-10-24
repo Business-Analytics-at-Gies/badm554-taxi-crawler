@@ -9,6 +9,7 @@
   "license": "UNLICENSED",
   "devDependencies": {
     "@duckdb/duckdb-wasm": "1.33.1-dev57.0",
+    "acorn": "8.15.0",
     "esbuild": "0.28.2",
     "playwright": "1.64.0"
   },

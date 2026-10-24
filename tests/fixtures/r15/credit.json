@@ -1,0 +1,77 @@
+{
+  "id": 99,
+  "module": "M3",
+  "concepts": [
+    "C003",
+    "C005",
+    "C006",
+    "C007",
+    "C013",
+    "C015",
+    "C016",
+    "C032",
+    "C083",
+    "C085"
+  ],
+  "given": {
+    "trips_raw": "_base.trips_raw"
+  },
+  "refreshes": {
+    "C083": "proof",
+    "C085": "zero"
+  },
+  "refresher": [
+    {
+      "title": "proof",
+      "text": "Find unmatched keys",
+      "sql": "SELECT l.n FROM (VALUES (1),(2)) l(n)\nLEFT JOIN (VALUES (1)) r(m) ON l.n=r.m AND 1=2 WHERE r.m IS NULL"
+    },
+    {
+      "title": "zero",
+      "text": "Test zero",
+      "sql": "SELECT 1\nWHERE 1=0"
+    }
+  ],
+  "guide": "",
+  "referenceSql": "SELECT l.n FROM (VALUES (1),(2)) l(n) LEFT JOIN (VALUES (1)) r(m) ON l.n=r.m WHERE r.m IS NULL",
+  "hints": {
+    "check": [
+      {
+        "text": "Inspect the result"
+      },
+      {
+        "text": "Review the example",
+        "refresher": "proof"
+      },
+      {
+        "text": "Inspect rows",
+        "outline": "SELECT ___"
+      }
+    ]
+  },
+  "input": "trips_raw",
+  "outputs": [
+    "out"
+  ],
+  "title": "Fixture",
+  "task": "Fixture",
+  "guideTask": "Fixture",
+  "context": "Fixture",
+  "taskContext": "Fixture",
+  "summary": "Fixture",
+  "rulesText": "Fixture",
+  "dirt": "SELECT 1",
+  "ruleIds": [
+    "check"
+  ],
+  "reviewLinks": [
+    {
+      "label": "Review",
+      "url": "https://example.com/"
+    }
+  ],
+  "map": {
+    "label": "Fixture",
+    "color": "#000"
+  }
+}
