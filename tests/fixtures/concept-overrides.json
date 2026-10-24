@@ -38,5 +38,17 @@
   "UNION": {
     "name": "UNION (remove duplicates)",
     "reason": "Plain UNION removes duplicates; a UNION ALL lesson teaches keeping duplicates and cannot earn credit for this separate operation."
+  },
+  "IS_DISTINCT_FROM": {
+    "name": "IS [NOT] DISTINCT FROM",
+    "reason": "NULL-safe comparison has different truth rules from ordinary equality and NULL tests; requires its own runnable example."
+  },
+  "CAST": {
+    "name": "CAST type conversion",
+    "reason": "Explicit type conversion is not a column, literal or structural node; teach the conversion locally."
+  },
+  "ARITHMETIC": {
+    "name": "Scalar arithmetic",
+    "reason": "Unary signs and binary arithmetic compute values; no dedicated graph lesson establishes teaching credit."
   }
 }

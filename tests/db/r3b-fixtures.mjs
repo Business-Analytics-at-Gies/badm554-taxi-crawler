@@ -54,7 +54,7 @@ export const reviews = [
     name: 'r10.2 valid AVG frame',
     context: {
       module: 'M3',
-      concepts: ['C005', 'C008', 'C022', 'C025', 'C027'],
+      concepts: ['C005', 'C008', 'C022', 'C025', 'C027', 'C029'],
       referenceSql: 'SELECT avg(1) OVER (ORDER BY 1 ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)',
     },
     pass: true,

@@ -166,6 +166,21 @@ export async function detectSQL(
     concepts = [],
     confirmed = [];
   const tokens = await nativeTokens(conn, sql);
+  // The parser folds NOT (a = b) to a <> b (and the inverse), erasing
+  // negation. Retain native-token evidence: such a statement can require a
+  // combination concept but cannot serve as its exact positive proof.
+  const negatedStatements = new Set();
+  let statementIndex = 0, meaningful = false;
+  for (const token of tokens) {
+    if (token.type === 5) continue;
+    if (token.type === 3 && token.text.startsWith(';')) {
+      if (meaningful) statementIndex++;
+      meaningful = false;
+    } else {
+      meaningful = true;
+      if (token.type === 4 && /^NOT\b/i.test(token.text)) negatedStatements.add(statementIndex);
+    }
+  }
   for (const t of tokens)
     if (t.type === 4) {
       const word = t.text.match(/^[A-Za-z_][A-Za-z_0-9$]*/)?.[0].toUpperCase();
@@ -249,6 +264,7 @@ export async function detectSQL(
     selected.ast,
     inspectTree(selected.ast, map, nameContext),
     map,
+    negatedStatements,
   );
   // Parser markers classify query slots; they are not authored definitions.
   tree.definedNames = tree.definedNames.filter(
@@ -277,7 +293,9 @@ export async function detectSQL(
           referenceSql,
           map,
         });
-  if (bound.scopeFacts) detectScopeProofs(bound.scopeFacts, tree, map);
+  if (bound.scopeFacts && !scopeErrors.length && !bound.errors.length)
+    detectScopeProofs(bound.scopeFacts, tree, map, negatedStatements);
+  else tree.confirmed = [];
   return {
     ...tree,
     boundSql: bound.boundSql,

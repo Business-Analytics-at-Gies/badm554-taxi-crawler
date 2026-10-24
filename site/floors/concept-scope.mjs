@@ -25,6 +25,18 @@ export async function scopePreflight(conn, ast) {
             errors.push(`unresolved name ${ref.column_names.join('.')}`);
         });
   });
+  // The closed scope model permits one definition per folded CTE name in each
+  // statement, including nested WITH blocks and disjoint subqueries.
+  for (const statement of ast.statements ?? []) {
+    const ctes = new Set();
+    objects(statement, node => {
+      for (const entry of node.cte_map?.map ?? []) {
+        const name = fold(entry.key);
+        if (ctes.has(name)) errors.push(`unmodelled scope duplicate CTE ${entry.key}`);
+        ctes.add(name);
+      }
+    });
+  }
   let cache = builtinCaches.get(conn);
   if (!cache) builtinCaches.set(conn, (cache = new Map()));
   // This connection has no tables or views, including the givens used for plans.
@@ -61,7 +73,11 @@ export async function inspectScope(
   outputNames,
   facts = { references: new Map(), queries: [] },
 ) {
-  const queryHasJoin = new WeakMap();
+  let statementIndex = 0;
+  const queryHasJoin = new WeakMap(), cteQueries = new WeakSet();
+  objects(ast, node => {
+    for (const entry of node.cte_map?.map ?? []) cteQueries.add(entry.value.query.node);
+  });
   const errors = [],
     unresolved = (names) => errors.push(`unresolved name ${names.join('.')}`);
   const unmodelled = (construct) => errors.push(`unmodelled scope ${construct}`);
@@ -251,7 +267,7 @@ export async function inspectScope(
     const inputs = await from(node.from_table, env, joins);
     const hasJoin = inputs.some((input) => input.hasJoin);
     queryHasJoin.set(node, hasJoin);
-    facts.queries.push({ node, joins, nulls, hasJoin });
+    facts.queries.push({ node, joins, nulls, hasJoin, inCTE: cteQueries.has(node), statementIndex });
     const aliases = node.select_list.filter((e) => e.alias).map((e) => e.alias);
     for (const e of node.select_list) await expression(e, inputs, [], env, false, nulls);
     aliases.bindings = new Map(
@@ -286,6 +302,9 @@ export async function inspectScope(
     }
     return columns;
   };
-  for (const statement of ast.statements ?? []) await query(statement.node);
+  for (const [index, statement] of (ast.statements ?? []).entries()) {
+    statementIndex = index;
+    await query(statement.node);
+  }
   return [...new Set(errors)];
 }

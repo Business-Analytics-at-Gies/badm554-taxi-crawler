@@ -67,6 +67,15 @@ before(async () => {
         route.fulfill({contentType: 'text/javascript', body}));
     }
   }
+  if (process.env.R13_BASELINE) {
+    assert.equal(process.env.R13_BASELINE, 'a7a91fb');
+    for (const path of ['concept-gate', 'concept-bound', 'concept-tree', 'concept-map', 'concept-scope', 'sql-blanks']) {
+      const body = execFileSync('git', ['-C', new URL('../../', import.meta.url).pathname,
+        'show', `a7a91fb:site/floors/${path}.mjs`], { encoding: 'utf8' });
+      await h.page.route(`**/floors/${path}.mjs`, route =>
+        route.fulfill({ contentType: 'text/javascript', body }));
+    }
+  }
   await h.page.evaluate(async () => {
     window.gate = await import('/floors/concept-gate.mjs');
     const d = await import('/vendor/duckdb/duckdb-browser.mjs');
@@ -955,10 +964,10 @@ for (const [name, frame, pass] of [
     const p = {
       ...base(),
       module: 'M2',
-      concepts: ['C003', 'C005', 'C006', 'C022', 'C025', 'C027', 'C029', 'C033'],
+      concepts: ['C003', 'C005', 'C006', 'C022', 'C025', 'C027', 'C029', 'C033', 'C034'],
       referenceSql: 'SELECT sum(1) OVER (ORDER BY 1)',
-      refreshes: { C025: 'window', C027: 'window', C029: 'window', C033: 'window' },
-      refresher: [{ title: 'window', sql }],
+      refreshes: { C025: 'window', C027: 'window', C029: 'window', C033: 'window', C034: 'window step' },
+      refresher: [{ title: 'window', sql }, { title: 'window step', sql: 'WITH w AS (SELECT sum(1) OVER () AS n) SELECT n FROM w' }],
     };
     const r = await check(p);
     if (pass) assert.deepEqual(r.errors, []);
@@ -1282,7 +1291,7 @@ const scopePairs = [
     'shadowed CTE outputs',
     'WITH a AS (SELECT 7 AS n) SELECT x.n, a.n FROM a, (WITH a AS (SELECT 8 AS m) SELECT n FROM a) x',
     /unresolved name n/,
-    'WITH a AS (SELECT 7 AS n) SELECT x.m, a.n FROM a, (WITH a AS (SELECT 8 AS m) SELECT m FROM a) x',
+    'WITH a AS (SELECT 7 AS n) SELECT x.m, a.n FROM a, (WITH b AS (SELECT 8 AS m) SELECT m FROM b) x',
   ],
   [
     'LIMIT column reference',
@@ -1356,7 +1365,7 @@ test('R12 exact M2 misleading orphan refresher receives no credit and fails', as
     refreshes: { C033: 'steps', C085: 'nulls', C083: 'orphan' },
     refresher: [
       { title: 'steps', sql: 'WITH t(n) AS (VALUES (1)) SELECT n FROM t' },
-      { title: 'nulls', sql: 'SELECT NULL IS NULL' },
+      { title: 'nulls', sql: 'SELECT NULL IS NULL; SELECT 1 = 0' },
       { title: 'orphan', sql },
     ],
   };
@@ -1478,4 +1487,160 @@ test('R12 constant folding handles pure scalar subtrees and does not mistake inn
     assert.deepEqual(result.errors, []);
     assert.ok(!result.concepts.includes('C085'), expression);
   }
+});
+
+
+// R13: each published reproduction travels through every authored SQL source.
+const r13Places = ['reference', 'lesson', 'outline', 'pre', 'inline', 'pack string', 'check message'];
+function r13Place(p, place, sql) {
+  if (place === 'reference') p.referenceSql = sql;
+  if (place === 'lesson') p.refresher.push({ title: 'reproduction', sql });
+  if (place === 'outline') p.hints = { rule: [{ outline: sql }] };
+  if (place === 'pre') p.guide = `<pre>${sql}</pre>`;
+  if (place === 'inline') p.guide = `<code>${sql}</code>`;
+  if (place === 'pack string') p.task = `Inspect \`${sql}\`.`;
+  if (place === 'check message') p.checkMessages = [`Inspect \`${sql}\`.`];
+}
+const r13Join = `WITH l(id) AS (VALUES (1), (2)), r(id) AS (VALUES (2))
+SELECT l.id FROM l LEFT JOIN r ON l.id = r.id WHERE `;
+const r13Shadow = `WITH joined AS (
+  SELECT a.n FROM (VALUES (1), (1)) a(n)
+  JOIN (VALUES (1)) b(n) ON a.n = b.n
+)
+SELECT * FROM (
+  WITH older AS (SELECT * FROM joined), joined AS (SELECT 1 AS n)
+  SELECT n, count(*) AS copies FROM older
+  WHERE n IN (SELECT n FROM joined) GROUP BY n
+) q`;
+const r13Cases = [
+  ['negated orphan', r13Join + 'NOT (r.id IS NULL)', 'proof'],
+  ['disjunctive orphan', r13Join + 'r.id IS NULL OR true', 'proof'],
+  ['reused CTE', r13Shadow, 'scope'],
+  ['distinct null', r13Join + 'r.id IS NOT DISTINCT FROM NULL', 'null'],
+  ['computed IN zero', 'SELECT 1 WHERE 1 IN (CAST(1 - 1 AS INTEGER))', 'zero'],
+  ['literal IN zero', 'SELECT 1 WHERE 1 IN (0)', 'zero'],
+];
+for (const [name, sql, kind] of r13Cases)
+  for (const place of r13Places)
+    test(`R13 reproduction ${name} in ${place}`, async () => {
+      const p = { ...base(), concepts: ['C003','C005','C006','C007','C010','C013','C014','C015','C021','C022','C032','C033'] };
+      if (kind === 'proof') p.concepts.push('C016', 'C083', 'C085');
+      r13Place(p, place, sql);
+      const r = await check(p);
+      if (kind === 'proof') {
+        // No source may earn teaching credit from NOT/OR, even when it is not a lesson.
+        const scans = r.detected.filter(d => d.concepts.includes('C083'));
+        assert.ok(scans.length, JSON.stringify(r));
+        assert.ok(scans.every(d => !d.confirmed.includes('C083') && !d.confirmed.includes('C016')), JSON.stringify(scans));
+      } else if (kind === 'scope') {
+        assert.match(r.errors.join('\n'), /unmodelled scope.*CTE.*joined/i);
+        assert.ok(r.detected.some(d => d.concepts.includes('C023')));
+      } else if (kind === 'null') {
+        for (const id of ['C016', 'C083', 'C085', 'IS_DISTINCT_FROM'])
+          assert.ok(r.detected.some(d => d.concepts.includes(id)), id + JSON.stringify(r));
+        assert.match(r.errors.join('\n'), /undeclared IS_DISTINCT_FROM/);
+      } else {
+        assert.match(r.errors.join('\n'), /undeclared C085/);
+        assert.ok(r.detected.some(d => d.concepts.includes('C085')));
+      }
+    });
+
+for (const [id, sql, confirmed = false] of [
+  ['C016', 'SELECT * FROM (VALUES (1)) l(n) RIGHT JOIN (VALUES (2)) r(n) ON true'],
+  ['C083', 'SELECT coalesce(n, 1) FROM (SELECT l.n FROM (VALUES (1)) l(n) FULL JOIN (VALUES (2)) r(n) ON true) q'],
+  ['C083', 'SELECT l.n FROM (VALUES (1)) l(n) LEFT JOIN (VALUES (2)) r(n) ON true WHERE l.n IN (NULL)'],
+  ['C023', 'SELECT * FROM (SELECT * FROM (VALUES (1)) l(n) JOIN (VALUES (1)) r(m) ON true) j, (SELECT count(*) FROM (VALUES (1)) t(n) HAVING count(*) > 1) g'],
+  ['C029', 'SELECT sum(n) OVER (), row_number() OVER (ORDER BY n) FROM (VALUES (1)) t(n)'],
+  ['C029', 'SELECT avg(n) OVER (ORDER BY n ROWS 1 PRECEDING) FROM (VALUES (1)) t(n)'],
+  ['C034', 'WITH t AS (SELECT 1 AS n) SELECT sum(n) OVER () FROM t'],
+  ['C085', 'SELECT coalesce(NULL, 1)'],
+  ['C085', 'SELECT 1 WHERE 1 NOT IN (CAST(1-1 AS INTEGER))'],
+  ['C085', 'SELECT 1 WHERE 1 BETWEEN CAST(1-1 AS INTEGER) AND 2'],
+  ['C085', "SELECT DATE '2024-01-01'"],
+]) test(`R13 ingredients ${id}: ${sql}`, async () => {
+  const r = await detect(sql);
+  assert.deepEqual(r.errors, []);
+  assert.ok(r.concepts.includes(id), JSON.stringify(r));
+  assert.equal(r.confirmed.includes(id), confirmed, JSON.stringify(r));
+});
+
+test('R13 one CTE definition per statement, folded names and independent statements', async () => {
+  assert.match((await detect(r13Shadow.replace('joined AS (SELECT 1', '"JOINED" AS (SELECT 1'))).errors.join('\n'), /unmodelled scope.*CTE/i);
+  assert.deepEqual((await detect('WITH t AS (SELECT 1 AS n) SELECT n FROM t; WITH t AS (SELECT 2 AS n) SELECT n FROM t')).errors, []);
+});
+test('R13 operators predicates and functions have concept ids in both maps', async () => {
+  const failures = await h.page.evaluate(() => Object.entries(gate.CONCEPT_MAP.entries)
+    .filter(([key,e]) => !e.ids.length && (
+      /^(?:function:|bound-function:)/.test(key) ||
+      /^(?:COMPARISON|CONJUNCTION|OPERATOR|CAST|SUBQUERY_EXPR)\.(?:type|subquery_type|comparison_type):/.test(key) && !key.endsWith(':"INVALID"')
+    )).map(([key]) => key));
+  assert.deepEqual(failures, []);
+});
+
+for (const [id, sql] of [
+  ['C083', 'SELECT * FROM (VALUES (1)) l(n) LEFT JOIN (VALUES (2)) r(m) ON true; SELECT NULL IS NULL'],
+  ['C023', 'SELECT * FROM (VALUES (1)) l(n) JOIN (VALUES (2)) r(m) ON true; SELECT n FROM (VALUES (1)) t(n) GROUP BY n'],
+  ['C029', 'SELECT sum(1) OVER (); SELECT row_number() OVER (ORDER BY 1)'],
+  ['C034', 'WITH t AS (SELECT 1 AS n) SELECT n FROM t; SELECT sum(1) OVER ()'],
+]) test(`R13 ingredients stay inside their statement: ${id}`, async () => {
+  const r = await detect(sql);
+  assert.deepEqual(r.errors, []);
+  assert.ok(!r.concepts.includes(id), JSON.stringify(r));
+});
+for (const predicate of ['NOT (n = 0)', 'n = 0 OR true', 'NOT (n IS NULL)', 'n IS NULL OR true'])
+  test(`R13 C085 keeps possible without credit for ${predicate}`, async () => {
+    const r = await detect(`SELECT n FROM (VALUES (1)) t(n) WHERE ${predicate}`);
+    assert.deepEqual(r.errors, []);
+    assert.ok(r.concepts.includes('C085'));
+    assert.ok(!r.confirmed.includes('C085'));
+  });
+for (const condition of ['l.n = r.m OR true', 'NOT (l.n <> r.m)', 'r.m = r.m'])
+  test(`R13 join grouping requires a positive resolved cross-input key: ${condition}`, async () => {
+    const r = await detect(`SELECT l.n, count(*) FROM (VALUES (1)) l(n) JOIN (VALUES (1)) r(m) ON ${condition} GROUP BY l.n`);
+    assert.deepEqual(r.errors, []);
+    assert.ok(r.concepts.includes('C023'));
+    assert.ok(!r.confirmed.includes('C023'));
+  });
+for (const [id, sql] of [
+  ['CAST', "SELECT CAST('1' AS INTEGER)"],
+  ['ARITHMETIC', 'SELECT 1 + 2'],
+  ['IS_DISTINCT_FROM', 'SELECT NULL IS DISTINCT FROM 1'],
+]) test(`R13 mapped ${id} requires its own runnable refresher`, async () => {
+  const p = { ...base(), concepts: ['C005', 'C085', id], referenceSql: sql };
+  assert.match((await check(p)).errors.join('\n'), new RegExp(id + ': .*needs'));
+  p.refreshes = { [id]: 'operation' };
+  p.refresher = [{ title: 'operation', sql }];
+  assert.deepEqual((await check(p)).errors, []);
+});
+
+
+test('R13 empty statements and comments cannot hide parser-folded negation', async () => {
+  for (const prefix of [';; /* NOT in a comment */', 'SELECT 1;; -- empty statement\n']) {
+    const r = await detect(`${prefix} SELECT n FROM (VALUES (1)) t(n) WHERE NOT (n = 0)`);
+    assert.deepEqual(r.errors, []);
+    assert.ok(r.concepts.includes('C085'));
+    assert.ok(!r.confirmed.includes('C085'));
+  }
+});
+
+
+test('R13 interval values inside a window frame still require C085', async () => {
+  const r = await detect(`SELECT avg(n) OVER (ORDER BY stamp RANGE BETWEEN INTERVAL '1 day' PRECEDING AND CURRENT ROW) FROM supplied`, {
+    nameContext: { schemas: { supplied: [{ name: 'n', type: 'INTEGER' }, { name: 'stamp', type: 'TIMESTAMP' }] } },
+  });
+  assert.deepEqual(r.errors, []);
+  assert.ok(r.concepts.includes('C085'));
+  assert.ok(!r.confirmed.includes('C085'));
+});
+
+
+for (const [name, sql, possible, confirmed] of [
+  ['direct grouped count', 'SELECT n, count(*) FROM (VALUES (1)) t(n) GROUP BY n', true, true],
+  ['separate query parts', 'WITH a AS (SELECT count(*) AS copies FROM (VALUES (1)) t(n)), b AS (SELECT n FROM (VALUES (1)) u(n) GROUP BY n) SELECT a.copies, b.n FROM a, b', true, false],
+  ['separate statements', 'SELECT count(*) FROM (VALUES (1)) t(n); SELECT n FROM (VALUES (1)) u(n) GROUP BY n', false, false],
+]) test(`R13 grouped-count ingredients and proof: ${name}`, async () => {
+  const r = await detect(sql);
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.concepts.includes('C022'), possible, JSON.stringify(r));
+  assert.equal(r.confirmed.includes('C022'), confirmed, JSON.stringify(r));
 });

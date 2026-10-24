@@ -159,14 +159,9 @@ for (const f of ['exclude_list', 'replace_list', 'qualified_exclude_list', 'rena
 exact('STAR', 'columns', [false]);
 exact('STAR', 'expr', [null]);
 exact('FUNCTION', 'type', ['FUNCTION']);
-exact('WINDOW', 'type', [
-  'WINDOW_AGGREGATE',
-  'WINDOW_ROW_NUMBER',
-  'WINDOW_RANK',
-  'WINDOW_RANK_DENSE',
-  'WINDOW_LAG',
-  'WINDOW_LEAD',
-]);
+exact('WINDOW', 'type', ['WINDOW_AGGREGATE'], 'C025');
+exact('WINDOW', 'type', ['WINDOW_ROW_NUMBER', 'WINDOW_RANK', 'WINDOW_RANK_DENSE'], 'C028');
+exact('WINDOW', 'type', ['WINDOW_LAG', 'WINDOW_LEAD'], 'C030');
 for (const owner of ['FUNCTION', 'WINDOW']) {
   scalar(owner, 'function_name', 'string');
   exact(owner, 'schema', ['', 'main']);
@@ -204,7 +199,7 @@ field('WINDOW', 'end', [
   ['"CURRENT_ROW_GROUPS"', 'C027'],
 ]);
 for (const f of ['start_expr', 'end_expr']) object('WINDOW', f, 'auto', 'C027', true);
-for (const f of ['offset_expr', 'default_expr']) object('WINDOW', f, 'auto', null, true);
+for (const f of ['offset_expr', 'default_expr']) object('WINDOW', f, 'auto', 'C030', true);
 exact('WINDOW', 'ignore_nulls', [false]);
 exact('WINDOW', 'filter_expr', [null]);
 exact('WINDOW', 'exclude_clause', ['NO_OTHER']);
@@ -217,19 +212,18 @@ exact('COMPARISON', 'type', [
   'COMPARE_GREATERTHAN',
   'COMPARE_LESSTHANOREQUALTO',
   'COMPARE_GREATERTHANOREQUALTO',
-  'COMPARE_DISTINCT_FROM',
-  'COMPARE_NOT_DISTINCT_FROM',
-]);
+], 'C007');
+exact('COMPARISON', 'type', ['COMPARE_DISTINCT_FROM', 'COMPARE_NOT_DISTINCT_FROM'], 'IS_DISTINCT_FROM');
 object('COMPARISON', 'left');
 object('COMPARISON', 'right');
-exact('CONJUNCTION', 'type', ['CONJUNCTION_AND', 'CONJUNCTION_OR']);
+exact('CONJUNCTION', 'type', ['CONJUNCTION_AND', 'CONJUNCTION_OR'], 'C007');
 list('CONJUNCTION', 'children', 'auto');
-exact('OPERATOR', 'type', ['OPERATOR_NOT', 'COMPARE_IN', 'COMPARE_NOT_IN']);
+exact('OPERATOR', 'type', ['OPERATOR_NOT', 'COMPARE_IN', 'COMPARE_NOT_IN'], 'C007');
 field('OPERATOR', 'type', [['"OPERATOR_COALESCE"', 'C020']]);
 // Null tests participate in context-sensitive C016/C083/C085 rules below.
-exact('OPERATOR', 'type', ['OPERATOR_IS_NULL', 'OPERATOR_IS_NOT_NULL']);
+exact('OPERATOR', 'type', ['OPERATOR_IS_NULL', 'OPERATOR_IS_NOT_NULL'], 'C007');
 list('OPERATOR', 'children', 'auto');
-exact('CAST', 'type', ['OPERATOR_CAST']);
+exact('CAST', 'type', ['OPERATOR_CAST'], 'CAST');
 object('CAST', 'child');
 object('CAST', 'cast_type', 'logical_type');
 exact('CAST', 'try_cast', [false]);
@@ -239,13 +233,14 @@ object('CASE', 'else_expr');
 put('object:case_check');
 object('case_check', 'when_expr');
 object('case_check', 'then_expr');
-exact('BETWEEN', 'type', ['COMPARE_BETWEEN'], 'C085');
+put('BETWEEN.type:"COMPARE_BETWEEN"', 'C085', 'possible');
 for (const f of ['input', 'lower', 'upper']) object('BETWEEN', f);
 exact('SUBQUERY_EXPR', 'type', ['SUBQUERY'], 'C032');
-exact('SUBQUERY_EXPR', 'subquery_type', ['SCALAR', 'EXISTS', 'ANY']);
+exact('SUBQUERY_EXPR', 'subquery_type', ['SCALAR', 'EXISTS', 'ANY'], 'C032');
 object('SUBQUERY_EXPR', 'subquery', 'statement');
 object('SUBQUERY_EXPR', 'child', 'auto', null, true);
-exact('SUBQUERY_EXPR', 'comparison_type', ['INVALID', 'COMPARE_EQUAL']);
+exact('SUBQUERY_EXPR', 'comparison_type', ['INVALID']);
+exact('SUBQUERY_EXPR', 'comparison_type', ['COMPARE_EQUAL'], 'C007');
 for (const owner of ['ORDER_MODIFIER', 'LIMIT_MODIFIER', 'DISTINCT_MODIFIER']) type(owner, owner);
 list('ORDER_MODIFIER', 'orders', 'order', 'C008');
 object('LIMIT_MODIFIER', 'limit', 'auto', 'C008', true);
@@ -276,33 +271,37 @@ for (const [name, arity, id] of [
   ['lead', 1, 'C030'],
   ['lead', 2, 'C030'],
   ['lead', 3, 'C030'],
-  // Arithmetic is familiar query syntax; list/row construction and unreviewed
-  // overloads remain unmapped. Parser rewrites unary + and - to these calls.
-  ['+', 1, null],
-  ['+', 2, null],
-  ['-', 1, null],
-  ['-', 2, null],
-  ['*', 2, null],
-  ['/', 2, null],
+  // Arithmetic has its own teaching proof. Parser rewrites unary + and - to these calls.
+  ['+', 1, 'ARITHMETIC'],
+  ['+', 2, 'ARITHMETIC'],
+  ['-', 1, 'ARITHMETIC'],
+  ['-', 2, 'ARITHMETIC'],
+  ['*', 2, 'ARITHMETIC'],
+  ['/', 2, 'ARITHMETIC'],
 ])
   put(`function:${name}/${arity}`, id);
 for (const [name, id, confidence] of [
   ['select', 'C005', 'confirmed'],
   ['from', 'C006', 'confirmed'],
   ['join_key', 'C013', 'possible'],
-  ['null_test', 'C085', 'confirmed'],
+  ['null_test', 'C085', 'possible'],
   ['null_after_join', 'C016', 'possible'],
   ['unmatched_null', 'C016', 'confirmed'],
   ['orphan', 'C083', 'possible'],
   ['orphan_proof', 'C083', 'confirmed'],
   ['zero', 'C085', 'confirmed'],
-  ['date', 'C085', 'confirmed'],
+  ['date', 'C085', 'possible'],
+  ['between', 'C085', 'possible'],
+  ['zero_possible', 'C085', 'possible'],
   ['window', 'C025', 'confirmed'],
   ['window_cte', 'C034', 'confirmed'],
+  ['window_cte_possible', 'C034', 'possible'],
   ['running_sum', 'C029', 'possible'],
   ['running_sum_proof', 'C029', 'confirmed'],
   ['join_group', 'C023', 'confirmed'],
+  ['join_group_possible', 'C023', 'possible'],
   ['group_count', 'C022', 'confirmed'],
+  ['group_count_possible', 'C022', 'possible'],
 ])
   put(`rule:${name}`, id, confidence);
 export const CONCEPT_MAP = {
@@ -344,7 +343,11 @@ for (const cls of [
   'BOUND_CASE',
   'BOUND_BETWEEN',
 ])
-  put(`bound-class:${cls}`);
+  put(`bound-class:${cls}`, ({
+    BOUND_CAST: 'CAST', BOUND_AGGREGATE: 'C022',
+    BOUND_WINDOW: 'C025', BOUND_COMPARISON: 'C007', BOUND_CONJUNCTION: 'C007',
+    BOUND_OPERATOR: 'C007', BOUND_CASE: 'CASE_WHEN', BOUND_BETWEEN: 'C085',
+  })[cls]);
 for (const [fn, arity] of [
   ['seq_scan', 0],
   ['count_star', 0],
@@ -367,4 +370,8 @@ for (const [fn, arity] of [
   ['*', 2],
   ['/', 2],
 ])
-  put(`bound-function:${fn}/${arity}`);
+  put(`bound-function:${fn}/${arity}`, ({
+    seq_scan: 'C006', count_star: 'C010', count: 'C022', sum: 'C022', avg: 'C022', min: 'C022', max: 'C022',
+    round: 'ROUND', row_number: 'C028', rank: 'C028', dense_rank: 'C028', lag: 'C030', lead: 'C030',
+    '+': 'ARITHMETIC', '-': 'ARITHMETIC', '*': 'ARITHMETIC', '/': 'ARITHMETIC',
+  })[fn]);

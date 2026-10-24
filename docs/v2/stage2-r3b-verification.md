@@ -599,3 +599,190 @@ site/game/db/sql.js, server/config.js, server/index.js, the reviewed concept map
 pack declarations or lesson runner. Both node_modules symlinks remain untracked
 and are excluded from the commit. All three findings and the additional C016/
 C023 proof issues are addressed; nothing is deferred. No merge, PR or deployment.
+
+## Code review round 13: statement ingredients and exact proofs
+
+Builder: crew-codex-v2. Base: `742071d`, including the item 5 amendment.
+Review baseline: `a7a91fb`. This section supersedes the earlier descriptions of
+neutral arithmetic, NULL-only C016 detection, and the earlier broad proof rules.
+
+### Required concepts and teaching credit
+
+Possible requirements are collected independently for each statement, across all
+CTE bodies, subqueries, projections, conditions and optional/rejected fields.
+They do not depend on join lineage, CTE traversal order, or a successful bind.
+Unsupported syntax still fails its existing closed-world checks.
+
+| Concept | Ingredients anywhere in one statement |
+|---|---|
+| C016 | Any LEFT, RIGHT or FULL/OUTER join. A NULL test alone is insufficient. |
+| C083 | Any outer join plus any NULL-related operation. These include IS NULL, IS NOT NULL, either IS DISTINCT FROM variant, comparisons/membership/BETWEEN with a NULL operand, and COALESCE-family forms. An unmapped spelling still fails. |
+| C023 | Any join plus any grouping: group expressions, grouping sets/ALL, or HAVING. Aggregate-with-grouping queries are included. |
+| C029 | Any aggregate window plus any ordered window, including different windows or scopes. Used named/inherited windows are inspected after parser expansion; the existing keyword refusal for WINDOW remains. |
+| C034 | Any WITH definition plus any window, including a window outside the CTE. |
+| C085 | Any NULL-related operation; any comparison, IN/NOT IN list or BETWEEN with an operand DuckDB evaluates to numeric zero; any BETWEEN outside a window frame; any temporal literal or cast (DATE, TIME, TIMESTAMP, INTERVAL). |
+| C022 (group-count case) | Any COUNT(*) plus any grouping, including separate query parts. Ordinary aggregate function entries retain their own C022 mapping. |
+| C013 | Any join can potentially use a shared key. The requirement is conservative; it never grants key-teaching credit. |
+
+Only the following exact shapes earn combination teaching credit, after the
+scope check has resolved names successfully. No bound reference fill introduces
+a concept absent from the authored tree.
+
+| Concept | One accepted proof shape |
+|---|---|
+| C016 and C083 | The query's direct FROM is a LEFT JOIN, a positive ON conjunct equates resolved columns from opposite inputs, and a positive WHERE conjunct tests that same right key with IS NULL. A select alias is accepted only when the scope resolver traces it to that exact column. |
+| C023 | The query directly groups a FROM JOIN whose positive ON conjunct equates resolved columns from opposite inputs. A join in a separate query or preceding CTE remains only possible. |
+| C029 | A direct select-list SUM window with ORDER BY, an unbounded-preceding start and a current-row/current-peer end. Rolling AVG, rolling SUM, and ordering supplied only by another window remain possible. |
+| C022 (group-count case) | A query with GROUP BY directly projects COUNT(*). |
+| C034 | A CTE's own query directly projects a window expression. A window outside WITH remains possible. |
+| C085 | A direct select-list predicate or top-level WHERE conjunct is an ordinary comparison with an operand evaluated to numeric zero. NULL tests, IN, BETWEEN and temporal values alone remain possible. |
+
+AND is traversed only to obtain top-level conjuncts; NOT, OR, CASE, nested
+predicates and nested queries cannot supply the key predicate for that query.
+DuckDB folds `NOT (a = b)` and `NOT (a <> b)` into ordinary comparisons. Native
+keyword tokens therefore retain a conservative restriction: any statement with
+a NOT token cannot earn combination proof credit. Other statements in the same
+lesson can still demonstrate their own concepts. Empty statements, comments,
+quoted names and strings do not displace or forge that restriction.
+
+The duplicate-CTE check folds ASCII names just as DuckDB does, including quoted
+names. A second definition anywhere within one statement fails with
+`unmodelled scope duplicate CTE <name>`. Reusing a name in a separate statement
+is allowed. Detection still reports C023 in the review's refused nested-WITH case.
+
+### Zero-id audit
+
+All **398** map entries were inspected. There are **258** remaining zero-id
+entries: column references, constants, stars and structural descriptors (object
+containers/dispatch tags, scalar name/location/literal payloads, lists, absence
+markers, namespaces, default frame descriptors, and the INVALID no-comparison
+sentinel). No named function or specific operator/predicate remains neutral.
+The map retains 68 keywords and 8 phrases: **474** total entries.
+
+These **62** entries changed from zero ids; none were removed to evade a check:
+
+| Entries | Count | Id now recorded |
+|---|---:|---|
+| WINDOW.type: WINDOW_AGGREGATE | 1 | C025 |
+| WINDOW.type: WINDOW_ROW_NUMBER, WINDOW_RANK, WINDOW_RANK_DENSE | 3 | C028 |
+| WINDOW.type: WINDOW_LAG, WINDOW_LEAD; WINDOW.offset_expr:object; WINDOW.default_expr:object | 4 | C030 |
+| COMPARISON.type: COMPARE_EQUAL, COMPARE_NOTEQUAL, COMPARE_LESSTHAN, COMPARE_GREATERTHAN, COMPARE_LESSTHANOREQUALTO, COMPARE_GREATERTHANOREQUALTO | 6 | C007 (row-condition operators) |
+| COMPARISON.type: COMPARE_DISTINCT_FROM, COMPARE_NOT_DISTINCT_FROM | 2 | IS_DISTINCT_FROM |
+| CONJUNCTION.type: CONJUNCTION_AND, CONJUNCTION_OR; OPERATOR.type: OPERATOR_NOT, COMPARE_IN, COMPARE_NOT_IN, OPERATOR_IS_NULL, OPERATOR_IS_NOT_NULL | 7 | C007 |
+| CAST.type: OPERATOR_CAST | 1 | CAST |
+| SUBQUERY_EXPR.subquery_type: SCALAR, EXISTS, ANY | 3 | C032 |
+| SUBQUERY_EXPR.comparison_type: COMPARE_EQUAL | 1 | C007 |
+| function: unary +/-, binary +, -, *, / | 6 | ARITHMETIC |
+| bound-class: BOUND_CAST, BOUND_AGGREGATE, BOUND_WINDOW, BOUND_COMPARISON, BOUND_CONJUNCTION, BOUND_OPERATOR, BOUND_CASE, BOUND_BETWEEN | 8 | CAST, C022, C025, C007, C007, C007, CASE_WHEN, C085 respectively |
+| bound-function: seq_scan/0, count_star/0, count/1, sum/1, avg/1, min/1, max/1, round/1, round/2, row_number/0, rank/0, dense_rank/0, lag/1, lead/1, unary +/-, binary +, -, *, / | 20 | Their corresponding FROM/count/aggregate/ROUND/ranking/period-comparison/ARITHMETIC ids |
+
+The bound layer still only refuses; its id metadata supplies neither requirements
+nor teaching credit. Its generic BOUND_FUNCTION wrapper is structural; every
+actual named function/arity has an id. Three reasoned overrides were added:
+IS_DISTINCT_FROM (NULL-safe comparison), CAST (type conversion) and ARITHMETIC
+(scalar arithmetic). Each requires its own runnable refresher. Ordinary predicates
+use the existing row-condition concept C007; no unreviewed operation is admitted.
+
+### Content and fixture migrations
+
+- Floors 1 and 3 add **CAST**, because existing timestamp literals serialize as
+  casts. Both teach an explicit string-to-timestamp conversion in a two-line
+  runnable example. Floor 2 needs no new declaration. Existing M7 declarations
+  already cover the broader combination detections; no new combination refresher
+  or invented prior teaching was needed.
+- Floor 3's range lesson retains both its zero check and its temporal OR example,
+  now as two independent runnable statements. The positive `fare < 0` query earns
+  C085 credit; the OR example retains possible requirements.
+- Floor 2's reference renames its internal `answer` CTE to `enriched`. This makes
+  the guide's `WITH answer AS (___)` reference fill obey the one-definition rule.
+  The same internal rename was applied to the three corresponding floor 2
+  solution cases, keeping their expected failing rules unchanged. The SQL logic,
+  output names and results are unchanged.
+- The earlier standalone-NULL C016 positive controls now use an actual outer
+  join. The earlier scope pair retains its refused shadowed-name query and
+  gives its passing nested-CTE control a unique inner name. The separated-WITH/
+  window control now requires possible C034 and refuses
+  confirmed C034. These are direct migrations to amended item 5, not relaxed
+  refusal assertions.
+- The valid M3 AVG-frame fixture declares possible C029 (already taught at M3).
+  The M2 C029 fixture also declares/refreshes C034 using a separate actual window
+  CTE.
+- The R12 M2 control's C085 lesson retains its NULL example and adds a positive
+  zero comparison. The earlier valid CASE-only pack declares/teaches CAST because
+  DuckDB inserts a conversion for its implicit NULL ELSE. Its acceptance
+  expectation stays an empty error list.
+- The R10 context fixtures now require C023/C083 when their ingredients are in
+  separate query parts, C085 for a NULL-safe comparison, and C085 for temporal
+  values inside frames. The DATE-predicate-in-frame assertion is retained and
+  passes. Its pristine-givens CASE lesson declares C007/CAST and teaches CAST
+  explicitly; all workspace-isolation assertions remain unchanged.
+- All static assets were regenerated with `node tools/build-floor-packs.mjs`;
+  all **21** reproduce byte for byte.
+
+### Regression evidence and complete suites
+
+There are **74 new tests**. The six literal review reproductions (NOT orphan,
+OR orphan, reused CTE, NULL-safe comparison, computed-zero IN, literal-zero IN)
+are each exercised in all seven places: reference, lesson, outline, guide pre,
+inline code, pack-string backticks, checker-message backticks. Each of these
+**42** tests fails by assertion against the actual committed `a7a91fb` modules:
+
+```sh
+caffeinate -dims env R13_BASELINE=a7a91fb node --test \
+  --test-name-pattern='R13 reproduction' tests/db/stage2-r3b.test.mjs
+```
+
+Result: 0 passed, **42 failed**, 0 skipped/cancelled.
+Log: `/tmp/r13-baseline-final.log`. The remaining 32 tests cover ingredient
+arrangements, statement isolation, exact proofs, parser-folded negation, empty
+statements/comments, duplicate names, the operator/function audit, and mandatory
+local teaching for each new override. A frame-only INTERVAL regression, with
+temporal ordering supplied by a given column, also fails against a7a91fb and
+passes after; log `/tmp/r13-frame-baseline.log`. A grouped-count regression with
+COUNT(*) and grouping in different query parts also fails at a7a91fb and passes
+after; log `/tmp/r13-grouped-baseline.log`. Direct grouped-count credit and
+statement isolation have paired controls. The focused current-tree run also includes
+the floors and the retained M2 pack.
+
+The complete database run passes all **2,934** tests: **397 R3b** tests (323
+existing and 74 new), plus all **2,537** other database tests. Every required
+suite ran under `caffeinate -dims` and exited **0**.
+
+| Suite | Passed | Skipped | Failed |
+|---|---:|---:|---:|
+| Database (`cd tests/db && npm test`) | 2,934 | 0 | 0 |
+| Stub browser (`PORT=4883`, output `/tmp/pw-stub`) | 183 | 25 | 0 |
+| Real-engine browser (`PORT=4884 DB_SITE=../../site`, output `/tmp/pw-real`) | 203 | 5 | 0 |
+| Server (`node --test tests/server/*.test.js`) | 69 | 0 | 0 |
+
+Database duration: 999.6 seconds. Final logs: `/tmp/r13-db-verified.log`,
+`/tmp/r13-stub-verified.log`, `/tmp/r13-real-verified.log`,
+`/tmp/r13-server-verified.log`. Earlier failures were corrected and the complete
+suites rerun: the legacy standalone-NULL and separated-query expectations,
+implicit-CAST fixture declarations, the shadowed-name passing control, the
+C034 window-CTE proof fixture, the floor 2 solution copies, and temporal values
+inside frames. The grouped-count regression's first scalar-subquery form used
+unreviewed bound first/error functions; it was rewritten as valid CTEs rather
+than adding those functions to the allowlist. Its baseline then fails specifically
+for the missing C022 detection. No refusal assertion, expected failing rule,
+threshold, keyword or bound-function allowlist was relaxed.
+
+The new CAST passage was also viewed in Chromium at 375 px. Its heading, prose
+and both SQL lines are visible and the document width is exactly 375 px.
+Screenshot: `/tmp/r13-floor3-cast-375.png`. The browser suites retain their
+JavaScript-off guide checks, all Detail levels, mobile layout and WebKit touch
+checks.
+
+The final removal checks retain **227**, **232** and **224** necessary entries
+on floors 1, 2 and 3 (**683** total), including both the conservative grouped-count
+rule and its narrow proof. Structural coverage remains **33** object shapes and
+**35** array shapes. The R13-only focused run passes all **74** new tests;
+log `/tmp/r13-r13-green.log`. The additional frame/grouped-count controls pass
+all four cases in `/tmp/r13-additional-verified.log`.
+
+
+The reviewed diff contains no change to site/rerun, server/rerun*, data/rerun,
+tools/rerun, site/game/db/sql.js, server/config.js or server/index.js. Both
+node_modules symlinks remain untracked and are excluded. There is no deferred
+item. Delivery is one commit on v2/stage2 with the required public author email
+and Agent trailer, followed by a branch push. No merge, PR or deployment.

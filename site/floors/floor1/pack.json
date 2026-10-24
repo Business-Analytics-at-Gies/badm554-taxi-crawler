@@ -39,6 +39,11 @@
       "title": "Round a displayed amount",
       "text": "ROUND(value, 2) displays an amount to two decimal places. Round a total for presentation after calculating it; do not change the source amounts while choosing which trips to keep.",
       "sql": "WITH amounts(total) AS (VALUES (1.105), (2.50))\nSELECT round(total, 2) AS cents FROM amounts;"
+    },
+    {
+      "title": "Convert a value to a type",
+      "text": "CAST converts a value to the requested type. A timestamp literal also supplies a type for its written value. Compare values with matching types when checking dates and times.",
+      "sql": "SELECT CAST('2024-01-01' AS TIMESTAMP)\nAS started_at;"
     }
   ],
   "reviewLinks": [
@@ -278,7 +283,8 @@
     "C084",
     "SELECT_DISTINCT",
     "ROUND",
-    "C085"
+    "C085",
+    "CAST"
   ],
   "refreshes": {
     "SELECT_DISTINCT": "What DISTINCT compares",
@@ -290,7 +296,8 @@
     "C028": "Keep a whole row from each group",
     "C034": "Keep a whole row from each group",
     "C021": "A key, grain and repeated groups",
-    "C024": "A key, grain and repeated groups"
+    "C024": "A key, grain and repeated groups",
+    "CAST": "Convert a value to a type"
   },
   "hints": {
     "exists": [

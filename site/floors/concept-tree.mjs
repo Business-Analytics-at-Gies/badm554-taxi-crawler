@@ -1,5 +1,19 @@
 import { CONCEPT_MAP } from './concept-map.mjs';
 const nullTest = (n) => ['OPERATOR_IS_NULL', 'OPERATOR_IS_NOT_NULL'].includes(n?.type);
+const temporal = (n) => ['DATE', 'TIME', 'TIMESTAMP', 'INTERVAL'].includes(n?.cast_type?.id ?? n?.value?.type?.id);
+const hasNull = (node) => {
+  let found = false;
+  forObjects(node, n => { if (n.class === 'CONSTANT' && n.value?.is_null) found = true; });
+  return found;
+};
+const nullRelated = (n) => nullTest(n) ||
+  ['COMPARE_DISTINCT_FROM', 'COMPARE_NOT_DISTINCT_FROM', 'OPERATOR_COALESCE'].includes(n.type) ||
+  (['COMPARISON', 'BETWEEN'].includes(n.class) || ['COMPARE_IN', 'COMPARE_NOT_IN'].includes(n.type)) && hasNull(n) ||
+  ['coalesce', 'ifnull', 'nullif'].includes(n.function_name?.toLowerCase());
+const conjuncts = (n) => n?.type === 'CONJUNCTION_AND' ? n.children.flatMap(conjuncts) : n ? [n] : [];
+// A proof is a direct projection or a WHERE conjunct, never a descendant of
+// NOT, OR, CASE, another predicate, or a nested query.
+const predicateRoots = (query) => [...query.select_list, ...conjuncts(query.where_clause)];
 const forObjects = (node, fn) => {
   if (!node || typeof node !== 'object') return;
   if (!Array.isArray(node)) fn(node);
@@ -130,119 +144,63 @@ export function inspectTree(ast, map = CONCEPT_MAP, nameContext = {}) {
   for (const statement of ast.statements ?? [])
     definedNames(statement).inline.forEach((name) => inlineDefined.add(name));
   const rule = (name, path, proven = true) => apply(`rule:${name}`, path, name, proven);
-  const bindings = (node, env) => {
-    const next = new Map(env);
-    for (const e of node.cte_map?.map ?? [])
-      if (typeof e.key === 'string' && e.value?.query?.node)
-        next.set(e.key.toLowerCase(), e.value.query.node);
-    return next;
-  };
-  const inputJoins = (node, env, seen = new Set()) => {
-    if (!node || typeof node !== 'object' || seen.has(node))
-      return { join: false, left: false };
-    seen.add(node);
-    env = bindings(node, env);
-    if (
-      node.type === 'BASE_TABLE' &&
-      !node.schema_name &&
-      env.has(node.table_name?.toLowerCase())
-    )
-      return inputJoins(env.get(node.table_name.toLowerCase()), env, seen);
-    const result = {
-      join: node.type === 'JOIN',
-      left: node.type === 'JOIN' && node.join_type === 'LEFT',
+  // Ingredients are collected afresh per statement. No scope, traversal order,
+  // join lineage, negation or disjunction can hide a possible requirement.
+  for (const statement of ast.statements ?? []) {
+    const ingredients = { join: false, outer: false, grouping: false, nulls: false, countStar: false,
+      aggregateWindow: false, orderedWindow: false, window: false, cte: false };
+    const visit = (node, frame = false, path = '$') => {
+      if (!node || typeof node !== 'object') return;
+      if (node.class) {
+        const owner = node.class === 'SUBQUERY' ? 'SUBQUERY_EXPR' : node.class;
+        const key = `${owner}.type:${JSON.stringify(node.type)}`;
+        if (map.entries[key]) apply(key, path, node.type);
+      }
+      // Also report functions beneath rejected optional fields. Rejection must
+      // never hide a known requirement elsewhere in that authored subtree.
+      if (['FUNCTION', 'WINDOW'].includes(node.class))
+        apply(`function:${node.function_name?.toLowerCase()}/${node.children?.length}`,
+          path, node.function_name);
+      if (node.type === 'SELECT_NODE') {
+        rule('select', path);
+        if (node.from_table?.type !== 'EMPTY') rule('from', path);
+        ingredients.grouping ||= !!node.group_expressions?.length || !!node.having ||
+          !!node.group_sets?.length || node.aggregate_handling === 'FORCE_AGGREGATES';
+      }
+      ingredients.cte ||= !!node.cte_map?.map?.length;
+      ingredients.countStar ||= node.function_name?.toLowerCase() === 'count_star';
+      if (node.type === 'JOIN') {
+        ingredients.join = true;
+        ingredients.outer ||= ['LEFT', 'RIGHT', 'OUTER', 'FULL'].includes(node.join_type);
+        rule('join_key', path);
+      }
+      if (nullRelated(node)) {
+        ingredients.nulls = true;
+        rule('null_test', path);
+      }
+      if (temporal(node)) rule('date', path);
+      if (node.class === 'BETWEEN' && !frame) rule('between', path);
+      if (node.class === 'WINDOW') {
+        ingredients.window = true;
+        ingredients.aggregateWindow ||= node.type === 'WINDOW_AGGREGATE';
+        ingredients.orderedWindow ||= !!node.orders?.length || !!node.window_name;
+        rule('window', path);
+      }
+      for (const [key, child] of Object.entries(node)) {
+        if (!child || typeof child !== 'object') continue;
+        const childFrame = frame || node.class === 'WINDOW' && ['start_expr', 'end_expr'].includes(key);
+        if (Array.isArray(child)) child.forEach((v, i) => visit(v, childFrame, `${path}.${key}[${i}]`));
+        else visit(child, childFrame, `${path}.${key}`);
+      }
     };
-    for (const key of ['node', 'from_table', 'subquery', 'left', 'right']) {
-      const r = inputJoins(node[key], env, seen);
-      result.join ||= r.join;
-      result.left ||= r.left;
-    }
-    return result;
-  };
-  const visit = (
-    node,
-    inCTE = false,
-    scope = null,
-    frame = false,
-    env = new Map(),
-    path = '$',
-  ) => {
-    if (!node || typeof node !== 'object') return;
-    // Semantic reporting also walks rejected optional fields. A rejected field
-    // still fails structurally; a nested known concept must not disappear from
-    // the report just because its containing form is unsupported.
-    if (node.class) {
-      const owner = node.class === 'SUBQUERY' ? 'SUBQUERY_EXPR' : node.class;
-      const key = `${owner}.type:${JSON.stringify(node.type)}`;
-      if (map.entries[key]) apply(key, path, node.type);
-    }
-    if (['FUNCTION', 'WINDOW'].includes(node.class))
-      apply(
-        `function:${node.function_name?.toLowerCase()}/${node.children?.length}`,
-        path,
-        node.function_name,
-      );
-    env = bindings(node, env);
-    for (const e of node.cte_map?.map ?? [])
-      visit(e.value?.query, true, null, false, env, path + '.cte');
-    const select = node.type === 'SELECT_NODE';
-    if (select) {
-      scope = {
-        ...inputJoins(node.from_table, env),
-        group: !!node.group_expressions?.length,
-        nulls: [],
-      };
-      frame = false;
-      rule('select', path);
-      if (node.from_table?.type !== 'EMPTY') rule('from', path);
-    }
-    if (node.type === 'JOIN' && (node.condition || node.using_columns?.length))
-      rule('join_key', path);
-    if (nullTest(node)) {
-      rule('null_test', path);
-      rule('null_after_join', path);
-      if (scope) scope.nulls.push(node);
-    }
-    if (
-      node.class === 'CAST' &&
-      !frame &&
-      ['DATE', 'TIME', 'TIMESTAMP', 'INTERVAL'].includes(node.cast_type?.id)
-    )
-      rule('date', path);
-    if (node.class === 'WINDOW') {
-      rule('window', path);
-      if (inCTE) rule('window_cte', path);
-      if (node.function_name?.toLowerCase() === 'sum' && node.orders?.length) {
-        rule('running_sum', path);
-        if (
-          node.start === 'UNBOUNDED_PRECEDING' &&
-          ['CURRENT_ROW_RANGE', 'CURRENT_ROW_ROWS', 'CURRENT_ROW_GROUPS'].includes(node.end)
-        )
-          rule('running_sum_proof', path);
-      }
-    }
-    if (node.function_name?.toLowerCase() === 'count_star' && scope?.group)
-      rule('group_count', path);
-    for (const [key, child] of Object.entries(node)) {
-      if (key === 'cte_map' || !child || typeof child !== 'object') continue;
-      const childFrame =
-        (node.class === 'WINDOW' && ['start_expr', 'end_expr'].includes(key)) || frame;
-      const nextFrame = ['COMPARISON', 'BETWEEN'].includes(node.class) ? false : childFrame;
-      if (Array.isArray(child))
-        child.forEach((v, i) => visit(v, inCTE, scope, nextFrame, env, `${path}.${key}[${i}]`));
-      else visit(child, inCTE, scope, nextFrame, env, `${path}.${key}`);
-    }
-    if (select) {
-      if (scope.group && scope.join) rule('join_group', path, false);
-      if (scope.left && scope.nulls.length) {
-        rule('null_after_join', path);
-        rule('orphan', path);
-      }
-      // Confirmed input-sensitive proofs are added only after the scope check
-      // resolves actual relation/column identities on the first binding fill.
-    }
-  };
-  visit(ast);
+    visit(statement);
+    if (ingredients.outer) rule('null_after_join', '$');
+    if (ingredients.outer && ingredients.nulls) rule('orphan', '$');
+    if (ingredients.join && ingredients.grouping) rule('join_group_possible', '$');
+    if (ingredients.countStar && ingredients.grouping) rule('group_count_possible', '$');
+    if (ingredients.aggregateWindow && ingredients.orderedWindow) rule('running_sum', '$');
+    if (ingredients.window && ingredients.cte) rule('window_cte_possible', '$');
+  }
   return {
     errors,
     concepts: [...concepts].sort(),
@@ -256,7 +214,7 @@ export function inspectTree(ast, map = CONCEPT_MAP, nameContext = {}) {
 // Only deterministic scalar syntax is evaluated. Names, queries, aggregates,
 // windows and arbitrary functions never enter the constant evaluator.
 const constantCaches = new WeakMap();
-export async function detectComputedZeros(conn, ast, result, map = CONCEPT_MAP) {
+export async function detectComputedZeros(conn, ast, result, map = CONCEPT_MAP, negatedStatements = new Set()) {
   const scalarFunctions = new Set(['+', '-', '*', '/', 'round', 'date_part']);
   const castTypes = new Set([
     'NULL',
@@ -319,7 +277,7 @@ export async function detectComputedZeros(conn, ast, result, map = CONCEPT_MAP) 
     comparisons = [];
   const constants = [];
   forObjects(ast, (node) => {
-    if (node.class === 'COMPARISON') comparisons.push(node);
+    if (node.class === 'COMPARISON' || node.class === 'BETWEEN' || ['COMPARE_IN', 'COMPARE_NOT_IN'].includes(node.type)) comparisons.push(node);
     if (constantOnly(node)) constants.push(node);
   });
   for (const operand of constants) {
@@ -380,9 +338,26 @@ export async function detectComputedZeros(conn, ast, result, map = CONCEPT_MAP) 
     values.set(operand, value);
     if (value.error) result.errors.push(`Constant inspection failed: ${value.error}`);
   }
-  for (const node of comparisons)
-    for (const operand of [node.left, node.right])
-      if (values.get(operand)?.zero) addProof(result, map, 'zero', '$.comparison');
+  const zeroPredicates = new Set();
+  for (const node of comparisons) {
+    const operands = node.class === 'COMPARISON' ? [node.left, node.right] :
+      node.class === 'BETWEEN' ? [node.input, node.lower, node.upper] : node.children;
+    if (operands.some(operand => values.get(operand)?.zero)) {
+      addProof(result, map, 'zero_possible', '$.predicate');
+      if (node.class === 'COMPARISON' && !['COMPARE_DISTINCT_FROM', 'COMPARE_NOT_DISTINCT_FROM'].includes(node.type)) zeroPredicates.add(node);
+    }
+  }
+  // One exact C085 proof: a direct ordinary comparison with an evaluated
+  // numeric-zero operand. Scope success is required before credit.
+  for (const [index, statement] of (ast.statements ?? []).entries()) {
+    if (negatedStatements.has(index)) continue;
+    forObjects(statement, query => {
+    if (query.type !== 'SELECT_NODE') return;
+    for (const predicate of predicateRoots(query))
+      if (zeroPredicates.has(predicate))
+        addProof(result, map, 'zero', '$.predicate');
+    });
+  }
   result.errors = [...new Set(result.errors)];
   result.concepts = [...new Set(result.concepts)].sort();
   result.confirmed = [...new Set(result.confirmed)].sort();
@@ -402,7 +377,7 @@ function addProof(result, map, name, path) {
 // Relation objects and column positions come from inspectScope, not spellings.
 // A conjunctive equality must join opposite inputs, and the tested right key
 // must be that same column. OR, NOT and nested queries cannot establish a key.
-export function detectScopeProofs(facts, result, map = CONCEPT_MAP) {
+export function detectScopeProofs(facts, result, map = CONCEPT_MAP, negatedStatements = new Set()) {
   // Binding fills provide columns, not new teaching claims. Confirm only
   // concepts already detected in the authored (unfilled) tree.
   const detected = new Set(result.concepts);
@@ -418,9 +393,24 @@ export function detectScopeProofs(facts, result, map = CONCEPT_MAP) {
         ? node.children.flatMap(equalities)
         : [];
   for (const query of facts.queries) {
-    if (query.node.group_expressions.length && query.hasJoin) prove('join_group');
+    if (negatedStatements.has(query.statementIndex)) continue;
+    if (query.node.group_expressions.length && query.node.from_table.type === 'JOIN' &&
+        query.joins.some(join => join.node === query.node.from_table && equalities(join.node.condition).some(eq => {
+          const a = facts.references.get(eq.left), b = facts.references.get(eq.right);
+          return join.left.includes(a?.input) && join.right.includes(b?.input) ||
+            join.left.includes(b?.input) && join.right.includes(a?.input);
+        }))) prove('join_group');
+    for (const expression of query.node.select_list) {
+      if (query.node.group_expressions.length && expression.class === 'FUNCTION' &&
+          expression.function_name?.toLowerCase() === 'count_star') prove('group_count');
+      if (expression.class === 'WINDOW' && expression.function_name?.toLowerCase() === 'sum' &&
+          expression.orders?.length && expression.start === 'UNBOUNDED_PRECEDING' &&
+          ['CURRENT_ROW_RANGE', 'CURRENT_ROW_ROWS', 'CURRENT_ROW_GROUPS'].includes(expression.end))
+        prove('running_sum_proof');
+      if (query.inCTE && expression.class === 'WINDOW') prove('window_cte');
+    }
     for (const join of query.joins) {
-      if (join.node.join_type !== 'LEFT') continue;
+      if (join.node !== query.node.from_table || join.node.join_type !== 'LEFT') continue;
       for (const eq of equalities(join.node.condition)) {
         const a = facts.references.get(eq.left),
           b = facts.references.get(eq.right);
@@ -432,7 +422,7 @@ export function detectScopeProofs(facts, result, map = CONCEPT_MAP) {
               : null;
         if (
           right &&
-          query.nulls.some(
+          conjuncts(query.node.where_clause).some(
             (n) =>
               n.type === 'OPERATOR_IS_NULL' && same(facts.references.get(n.children[0]), right),
           )

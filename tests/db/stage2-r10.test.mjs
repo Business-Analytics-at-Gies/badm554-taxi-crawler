@@ -131,8 +131,8 @@ const contexts = [
   [
     'INTERVAL frame',
     "SELECT avg(1) OVER (ORDER BY n RANGE BETWEEN INTERVAL '1 day' PRECEDING AND CURRENT ROW) FROM t",
-    ['C027'],
-    ['C085'],
+    ['C027', 'C085'],
+    [],
   ],
   [
     'DDL date types',
@@ -227,8 +227,8 @@ const contexts = [
   [
     'unused JOIN CTE beside independent grouping',
     'WITH a AS (SELECT * FROM t JOIN u ON true) SELECT n FROM v GROUP BY n',
-    ['C014', 'C021'],
-    ['C023'],
+    ['C014', 'C021', 'C023'],
+    [],
   ],
   [
     'independent JOIN and grouping',
@@ -239,8 +239,8 @@ const contexts = [
   [
     'scalar NULL test beside LEFT join',
     'SELECT (SELECT n IS NULL FROM v) FROM t LEFT JOIN u ON true',
-    ['C015', 'C016'],
-    ['C083'],
+    ['C015', 'C016', 'C083'],
+    [],
   ],
   [
     'INNER beside LEFT join',
@@ -251,8 +251,8 @@ const contexts = [
   [
     'unrelated IS NOT and NULL',
     'SELECT n IS NOT DISTINCT FROM 1, NULL FROM t',
-    ['C005'],
-    ['C016', 'C085'],
+    ['C005', 'C085', 'IS_DISTINCT_FROM'],
+    ['C016'],
   ],
 ];
 test('R10 clause-context class distinguishes frames, expressions, predicates, function arguments and clauses', async () => {
@@ -363,11 +363,12 @@ test('R10 a lesson uses pristine given tables and the learner runner on a fresh 
     const pack = {
       ...base(),
       given: packs[0].given,
-      concepts: ['C005', 'C006', 'C010', 'C022', 'CASE_WHEN'],
+      concepts: ['C005', 'C006', 'C007', 'C010', 'C022', 'CASE_WHEN', 'CAST'],
       referenceSql: 'SELECT CASE WHEN true THEN 1 END',
-      refreshes: { CASE_WHEN: 'given' },
+      refreshes: { CASE_WHEN: 'given', CAST: 'Type conversion' },
       refresher: [
         { title: 'given', sql: 'SELECT CASE WHEN count(*) = 7345 THEN 1 END FROM trips_raw;' },
+        { title: 'Type conversion', sql: "SELECT CAST('1' AS INTEGER)" },
       ],
     };
     assert.deepEqual((await check(pack)).errors, []);

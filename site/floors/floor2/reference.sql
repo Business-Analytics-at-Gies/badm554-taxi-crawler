@@ -1,4 +1,4 @@
-WITH answer AS (
+WITH enriched AS (
 SELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,
        CASE WHEN pz.location_id IS NULL OR dz.location_id IS NULL THEN 'unmatched'
             WHEN t.pu_location_id = 264 OR t.do_location_id = 264 THEN 'unknown'
@@ -7,4 +7,4 @@ SELECT t.*, pz.zone AS pu_zone, dz.zone AS do_zone,
 FROM trips t
 LEFT JOIN zones pz ON pz.location_id = t.pu_location_id
 LEFT JOIN zones dz ON dz.location_id = t.do_location_id
-) SELECT * FROM answer;
+) SELECT * FROM enriched;

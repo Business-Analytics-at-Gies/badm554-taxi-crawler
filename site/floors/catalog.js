@@ -43,6 +43,11 @@ const packs = [
         "title": "Round a displayed amount",
         "text": "ROUND(value, 2) displays an amount to two decimal places. Round a total for presentation after calculating it; do not change the source amounts while choosing which trips to keep.",
         "sql": "WITH amounts(total) AS (VALUES (1.105), (2.50))\nSELECT round(total, 2) AS cents FROM amounts;"
+      },
+      {
+        "title": "Convert a value to a type",
+        "text": "CAST converts a value to the requested type. A timestamp literal also supplies a type for its written value. Compare values with matching types when checking dates and times.",
+        "sql": "SELECT CAST('2024-01-01' AS TIMESTAMP)\nAS started_at;"
       }
     ],
     "reviewLinks": [
@@ -282,7 +287,8 @@ const packs = [
       "C084",
       "SELECT_DISTINCT",
       "ROUND",
-      "C085"
+      "C085",
+      "CAST"
     ],
     "refreshes": {
       "SELECT_DISTINCT": "What DISTINCT compares",
@@ -294,7 +300,8 @@ const packs = [
       "C028": "Keep a whole row from each group",
       "C034": "Keep a whole row from each group",
       "C021": "A key, grain and repeated groups",
-      "C024": "A key, grain and repeated groups"
+      "C024": "A key, grain and repeated groups",
+      "CAST": "Convert a value to a type"
     },
     "hints": {
       "exists": [
@@ -630,7 +637,7 @@ const packs = [
       {
         "title": "Filter ranges and combine conditions",
         "text": "WHERE keeps rows whose condition is true. Compare values with <, >= and =; use AND when both conditions must hold and OR when either may hold. A timestamp range with an inclusive start and exclusive end includes the whole final day.",
-        "sql": "WITH rides(started_at, fare) AS (VALUES (TIMESTAMP '2024-03-01', -2))\nSELECT * FROM rides WHERE fare < 0\nOR (started_at >= TIMESTAMP '2024-03-01' AND started_at < TIMESTAMP '2024-04-01');"
+        "sql": "WITH rides(fare) AS (VALUES (-2), (10))\nSELECT * FROM rides WHERE fare < 0;\nWITH rides(started_at) AS (VALUES (TIMESTAMP '2024-03-01'))\nSELECT * FROM rides WHERE started_at < TIMESTAMP '2024-03-01'\nOR started_at >= TIMESTAMP '2024-04-01';"
       },
       {
         "title": "Choose the first reason",
@@ -656,6 +663,11 @@ const packs = [
         "title": "Count rows that meet a condition",
         "text": "FILTER (WHERE ...) applies a condition to one aggregate without removing rows from the whole query. COUNT(*) still gives the total; the filtered count gives only the rows matching its condition.",
         "sql": "WITH rides(fare) AS (VALUES (-2), (10))\nSELECT count(*) FILTER (WHERE fare < 0) AS negative,\ncount(*) AS total FROM rides;"
+      },
+      {
+        "title": "Convert a value to a type",
+        "text": "CAST converts a value to the requested type. A timestamp literal also supplies a type for its written value. Compare values with matching types when checking dates and times.",
+        "sql": "SELECT CAST('2024-01-01' AS TIMESTAMP)\nAS started_at;"
       }
     ],
     "reviewLinks": [
@@ -772,7 +784,8 @@ const packs = [
       "CASE_WHEN",
       "UNION_ALL",
       "AGGREGATE_FILTER",
-      "C008"
+      "C008",
+      "CAST"
     ],
     "refreshes": {
       "CASE_WHEN": "Choose the first reason",
@@ -782,7 +795,8 @@ const packs = [
       "C007": "Filter ranges and combine conditions",
       "C085": "Filter ranges and combine conditions",
       "C021": "Check counts by reason",
-      "C024": "Check counts by reason"
+      "C024": "Check counts by reason",
+      "CAST": "Convert a value to a type"
     },
     "hints": {
       "exists": [

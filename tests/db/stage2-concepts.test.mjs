@@ -42,8 +42,10 @@ test('R3 gate refuses every required bad fixture and accepts a demonstrated loca
     const result = await check(pack);
     assert.match(result.errors.join('\n'), want, name);
   }
-  const pack = { ...base(), concepts: ['C005', 'CASE_WHEN'], referenceSql: 'SELECT CASE WHEN true THEN 1 END',
-    refreshes: { CASE_WHEN: 'A conditional' }, refresher: [{ title: 'A conditional', sql: 'SELECT CASE WHEN true THEN 1 END' }] };
+  const pack = { ...base(), concepts: ['C005', 'CASE_WHEN', 'CAST'], referenceSql: 'SELECT CASE WHEN true THEN 1 END',
+    refreshes: { CASE_WHEN: 'A conditional', CAST: 'Type conversion' }, refresher: [
+      { title: 'A conditional', sql: 'SELECT CASE WHEN true THEN 1 END' },
+      { title: 'Type conversion', sql: "SELECT CAST('1' AS INTEGER)" }] };
   assert.deepEqual((await check(pack)).errors, []);
   for (const id of ['C053', 'C035', 'CASE_WHEN']) assert.ok(overrides[id]?.reason);
   assert.equal(Object.keys(graph).length, 90);
@@ -55,7 +57,7 @@ const controls = [
   ['C005', 'SELECT 1'], ['C006', 'SELECT * FROM t'],
   ['C007', 'SELECT * FROM t WHERE n<1'], ['C008', 'SELECT * FROM t ORDER BY n LIMIT 1'],
   ['C010', 'SELECT count(*) FROM t'], ['C014', 'SELECT * FROM t JOIN u ON true'],
-  ['C016', 'SELECT n IS NULL FROM t'], ['C022', 'SELECT sum(n) FROM t'],
+  ['C016', 'SELECT t.n FROM t LEFT JOIN u ON t.n=u.n WHERE u.n IS NULL'], ['C022', 'SELECT sum(n) FROM t'],
   ['C032', 'SELECT * FROM (SELECT 1) t'], ['C085', "SELECT TIMESTAMP '2024-01-01'"],
   ['CASE_WHEN', 'SELECT CASE /* note */ WHEN true THEN 1 END'],
   ['C035', 'SELECT * FROM t QUALIFY row_number() OVER () = 1'],
@@ -98,7 +100,9 @@ test('R3 positive controls find every required construct in every scanned place,
     assert.equal(result.method,'rejected');assert.match(result.errors.join('\n'),/Rewrite/);
   }
   assert.equal((await detection('SELECT row_number() OVER () FROM t')).method, 'parser');
-  assert.ok(!(await detection('WITH a AS (SELECT 1) SELECT row_number() OVER () FROM a')).concepts.includes('C034'));
+  const separatedWindow = await detection('WITH a AS (SELECT 1) SELECT row_number() OVER () FROM a');
+  assert.ok(separatedWindow.concepts.includes('C034'));
+  assert.ok(!separatedWindow.confirmed.includes('C034'));
   const quiet = await detection(`SELECT 'CASE WHEN QUALIFY CREATE TABLE WITH SELECT DISTINCT ROW_NUMBER() OVER ()' AS note /* QUALIFY */`);
   for (const id of ['C035', 'C053', 'CASE_WHEN', 'SELECT_DISTINCT', 'C025', 'C028', 'C033']) assert.ok(!quiet.concepts.includes(id), id);
   const fragment = await detection(`'CASE WHEN' /* outer /* QUALIFY */ CREATE TABLE */ SELECT ___`);
@@ -155,7 +159,7 @@ const inventory = [
   ['C013', 'SELECT * FROM t JOIN u USING (n)', 'SELECT * FROM t JOIN u ON'],
   ['C014', 'SELECT * FROM t INNER JOIN u ON true', 'SELECT * FROM t INNER JOIN'],
   ['C015', 'SELECT * FROM t LEFT JOIN u ON true', 'SELECT * FROM t LEFT JOIN'],
-  ['C016', 'SELECT 1 IS NULL', 'SELECT n IS NULL AND'],
+  ['C016', 'SELECT * FROM t LEFT JOIN u ON t.n=u.n WHERE u.n IS NULL', 'SELECT n IS NULL AND'],
   ['C017', 'SELECT * FROM t FULL OUTER JOIN u ON true', 'SELECT * FROM t RIGHT OUTER JOIN'],
   ['C020', 'SELECT coalesce(NULL, 1)', 'SELECT "coalesce"(NULL,'],
   ['C021', 'SELECT n FROM t GROUP BY n', 'SELECT n FROM t GROUP BY'],
