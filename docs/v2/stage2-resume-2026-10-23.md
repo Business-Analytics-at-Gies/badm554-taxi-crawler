@@ -223,57 +223,86 @@ many spellings, and Codex writes the packs. R3b inverts the default. A construct
 the gate knows which concept it is. R3's rules (`module`, `concepts`, `refreshes`, the override
 file, the fixture packs) stay as they are.
 
-**Change.**
+**Change.** Two closed-world layers. Each scanned source (reference, refresher examples, hint
+outlines, guide `<code>` and `<pre>`) goes through the token layer. Complete SQL also goes through
+the tree layer.
 
-1. **Parse tree only.** The gate reads every scanned source with DuckDB's parser
-   (`json_serialize_sql`). Delete the token fallback (`site/floors/sql-context.mjs` and the
-   unfinished-SQL path in `concept-gate.mjs`). A source that does not parse fails the gate and
-   shows the parse error.
-2. **Hint outlines.** Before parsing, replace each `___` with one placeholder column name. An
-   outline that still does not parse fails the gate with: "Rewrite the outline so that each blank
-   stands for one name or value." Claude checked this on 10-24 with DuckDB 1.5.5. All 15 current
-   outlines and all 16 current lessons parse this way.
-3. **One allowlist map.** One reviewed file maps each element of the parse tree to zero or more
-   concept ids. It covers node and expression classes and types, function names (in the form
-   after DuckDB's rewrites, for example `date_part` for `EXTRACT`), operators, and every
-   enum-valued field, by value. Examples: `aggregate_handling` (`GROUP BY ALL` is
-   `FORCE_AGGREGATES`), `setop_type` (`UNION_BY_NAME`), the set-operation `ALL` flag, CTE
-   recursion and materialization, window frame fields, `DISTINCT`, `FILTER`, ordered aggregates,
-   sample, and the query modifiers. Zero ids means known and neutral, for example a column
-   reference or a constant. The walker visits every object and every field. An element, a field,
-   or an enum value that the map does not list fails the gate: `unmapped construct <path>:
-   <value>`. The map starts with what floors 1 to 3 use. Every other construct stays unmapped
-   until someone adds it with a concept id and a test.
-4. **Combination concepts.** C016, C023, C029, C083, C085 and any other combination are derived
-   by rules over the same tree. Where a rule cannot decide, it over-detects: the author then
-   declares the concept or rewrites the SQL. A false failure is visible; a false pass is silent.
-   The gate judges a constant operand by the value DuckDB computes for it, not by its spelling,
-   so `+0`, `0::INT` and `-0.0` are all zero.
-5. **Lessons.** A refresher example is one or more SELECT-family statements (`SELECT`, `WITH`,
+1. **Token layer, for every source.** DuckDB's native tokenizer (`nativeTokens` in `sql.js`)
+   classifies each token; comments and strings are skipped. Every keyword token must be in a
+   keyword allowlist. Every identifier that is followed by `(` must be in a function allowlist.
+   Each entry maps to zero or more concept ids. An unlisted keyword or function fails the gate:
+   `unmapped keyword <word>` or `unmapped function <name>`. This layer catches what the parse
+   tree drops. The R3b spec review confirmed that `json_serialize_sql` in the pinned engine
+   loses an unused `WINDOW` clause, `LATERAL` and `MATERIALIZED`. Those keywords stay
+   unlisted, so they fail.
+2. **Tree layer, for complete SQL.** The gate reads the source with `json_serialize_sql`. One
+   reviewed map lists each tree element: node and expression classes and types, function names
+   in the form after DuckDB's rewrites (for example `date_part` for `EXTRACT`), operators, and
+   every enum-valued field, by value. Examples: `aggregate_handling` (`GROUP BY ALL` is
+   `FORCE_AGGREGATES`), `setop_type` (`UNION_BY_NAME`), the set-operation `ALL` flag, window frame
+   fields, `DISTINCT`, `FILTER`, ordered aggregates, sample and the query modifiers. Zero ids
+   means known and neutral, for example a column reference. The walker visits every object and
+   every field, at every depth. An unlisted element, field or enum value fails:
+   `unmapped construct <path>: <value>`. Delete the old detector and its token fallback
+   (`site/floors/sql-context.mjs` and the unfinished-SQL path in `concept-gate.mjs`).
+3. **Which sources must be complete SQL.** The reference, every refresher example, every hint
+   outline and every guide `<pre>` block must parse after blank filling. Blanks are written
+   `___`. Fill each blank with a placeholder name. If the source does not parse, also try
+   `SELECT NULL` for each blank and accept the first combination that parses. If none parses,
+   the source fails: "Rewrite it so that each blank stands for one name, value or query." Rewrite
+   the guides' comment blanks to this form and keep the comment as a label, for example
+   `PARTITION BY ___ /* your trip key */` and `WITH answer AS (___ /* your answer query */)`.
+   An inline `<code>` (not in `<pre>`) is complete SQL if it parses. Otherwise it must be one of:
+   a bare or qualified name; an expression that parses as `SELECT <code>`; or a phrase from a
+   short phrase list in the map (start with what the guides use: `SELECT DISTINCT`, `DISTINCT`,
+   `GROUP BY`). Any other inline code fails. Never skip a source because it does not parse.
+4. **One construct, one id.** Each map entry names the id of one construct. A graph id that
+   names more than one construct and is not taught at the pack's module (for example C036,
+   "EXTRACT date part and UNION ALL") is not used in the map. Each of its constructs gets its own
+   override id with a reason (`UNION_ALL` exists; add `EXTRACT`). Floor 3 then declares and
+   refreshes `UNION_ALL` instead of C036.
+5. **Possible and confirmed.** Each map entry and each combination rule is marked `confirmed` or
+   `possible`. Combination concepts (C016, C023, C029, C083, C085 and any other) come from rules
+   over the tree. Where a rule cannot decide, it reports `possible`. Both kinds make a concept
+   required, so the author must declare it. Only a `confirmed` detection in a refresher's own
+   example earns refresher credit. Token-layer detections are `possible`. Example: a lesson that
+   tests `t.n IS NULL` after `LEFT JOIN ... ON true` makes C083 possible, not confirmed, so it
+   cannot earn C083 credit. A constant operand is judged by the value DuckDB computes for it,
+   not by its spelling, so `+0`, `0::INT` and `-0.0` are all zero.
+6. **Lessons.** A refresher example is one or more SELECT-family statements (`SELECT`, `WITH`,
    `VALUES`, set operations). Each statement passes the same native statement and function checks
    as the Answer box: no catalog, file, setting or state-changing function. Any other statement
    family fails, including table statements. `runLesson` stays as built in `48e150b` (a fresh
    database, and the same runner as the Run button).
-6. **Leak test numbers.** Add every number in the vocabulary with a minus sign and with a plus
+7. **Leak test numbers.** Add every number in the vocabulary with a minus sign and with a plus
    sign, whatever the displayed spelling.
 
 **Acceptance.**
 
-- Floors 1 to 3 pass the gate. List any new declaration in the verification note, with the
-  reason why it is a true teaching claim.
+- Floors 1 to 3 pass the gate. List each new declaration, and each rewritten guide blank, in the
+  verification note. Say why each declaration is a true teaching claim.
 - Every input from code reviews r9, r10 and r11 (`docs/v2/stage2-review-r9.md` to `-r11.md`)
-  is a fixture with its expected result. All of them fail, except r10 finding 2 (the `AVG`
-  window frame), which passes.
+  and from the R3b spec review (`docs/v2/stage2-spec-review-r3b.md`) is a fixture with its
+  expected result. All of them fail, except r10 finding 2 (the `AVG` window frame), which passes.
 - Each of these fails as unmapped, or maps to the correct concept with a test: `GROUP BY ALL`,
-  `UNION ALL BY NAME`, `WITH RECURSIVE`, `ifnull`, `ISNULL`, `count(t.*)`, `PIVOT`,
-  `USING SAMPLE`, a lambda, a list comprehension, list and struct literals, `COLUMNS(*)`,
-  `* EXCLUDE` and `* REPLACE`, `ASOF JOIN`, `POSITIONAL JOIN`, `LATERAL`, string slicing,
-  `->>`.
-- The walker visits fields: a synthetic tree with an unknown field, and one with an unknown enum
-  value, both fail.
+  `UNION ALL BY NAME`, `WITH RECURSIVE`, an unused `WINDOW` clause, `LATERAL`, `MATERIALIZED`,
+  `ifnull`, `ISNULL`, `count(t.*)`, `PIVOT`, `USING SAMPLE`, a lambda, a list comprehension, list
+  and struct literals, `COLUMNS(*)`, `* EXCLUDE` and `* REPLACE`, `ASOF JOIN`,
+  `POSITIONAL JOIN`, string slicing, `->>`. Test each one in each kind of source: reference,
+  lesson, outline, guide `<pre>` and inline `<code>`.
+- `SELECT EXTRACT(year FROM DATE '2024-01-01')` in a pack that refreshes `UNION_ALL` fails as
+  undeclared `EXTRACT`.
+- A lesson whose only proof of a concept is `possible` earns no credit (the C083 example above).
+- Nested fields are read. For each object type and each array field that the map supports, a
+  test puts an unknown field and an unknown enum value beneath it, and both fail. For each
+  expression slot, a test puts `coalesce(...)` (C020, untaught) in it, and it is detected. The
+  slots include frame bounds, CTE bodies, subqueries, set-operation sides, join conditions, CASE
+  branches, function arguments, window partitions and orders, query modifiers, `FILTER`, and
+  `ORDER BY` inside an aggregate.
 - The map is used: remove any one map entry that floors 1 to 3 use, and the gate fails on that
-  floor.
-- An outline that does not parse with its blanks filled fails. All current outlines pass.
+  floor. Remove any one keyword or function allowlist entry that they use, and the gate fails.
+- A source that does not parse after blank filling fails, in each kind of source. All current
+  sources pass after the guide rewrite.
 - The r10 `COMMIT` lesson, the r11 `setseed` lesson and a `CREATE TABLE` lesson all fail. All
   current lessons pass and run.
 - The r11 `- 987654321` outline is a must-flag leak fixture. All earlier must-flag fixtures are
@@ -282,12 +311,12 @@ file, the fixture packs) stay as they are.
 **Review focus.**
 
 - DuckDB rewrites at parse time (`EXTRACT`, `COALESCE`, `ISNULL`, `::`, `IN`, `BETWEEN`). Key the
-  map on the rewritten form. Write each test with the spelled form.
-- Fields the walker can skip: query modifiers (`LIMIT`, `ORDER BY`, `DISTINCT ON`), the CTE map,
-  sample, `aggregate_handling`, set-operation flags, window frame bounds, `FILTER`, and
-  `ORDER BY` inside an aggregate.
-- The tree format can change with the engine version. The gate runs on the pinned engine. A field
-  the map has never seen must fail.
+  tree map on the rewritten form. Write each test with the spelled form.
+- What the tree drops. The token layer must cover it. Look for any other keyword whose meaning
+  leaves no field in the tree.
+- Fields the walker can skip, at any depth.
+- The tree format can change with the engine version. The gate runs on the pinned engine. A
+  field the map has never seen must fail.
 
 ## R4: 2.6 hint ladder
 
