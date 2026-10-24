@@ -58,6 +58,15 @@ before(async () => {
       );
     }
   }
+  if (process.env.R12_BASELINE) {
+    assert.equal(process.env.R12_BASELINE, 'f871853');
+    for (const path of ['concept-gate', 'concept-bound', 'concept-tree', 'concept-map', 'concept-scope', 'sql-blanks']) {
+      const body = execFileSync('git', ['-C', new URL('../../', import.meta.url).pathname,
+        'show', `f871853:site/floors/${path}.mjs`], {encoding: 'utf8'});
+      await h.page.route(`**/floors/${path}.mjs`, route =>
+        route.fulfill({contentType: 'text/javascript', body}));
+    }
+  }
   await h.page.evaluate(async () => {
     window.gate = await import('/floors/concept-gate.mjs');
     const d = await import('/vendor/duckdb/duckdb-browser.mjs');
@@ -1294,3 +1303,179 @@ for (const [name, sql, want, control] of scopePairs)
     assert.match((await detect(sql, options)).errors.join('\n'), want);
     assert.deepEqual((await detect(control, options)).errors, []);
   });
+
+// R12 fixtures use the reviewed M1 pack without declarations or teaching for C085.
+for (const zero of ['CAST(1 - 1 AS INTEGER)', 'CAST(CAST(0 AS INTEGER) AS INTEGER)'])
+  for (const place of [
+    'reference',
+    'lesson',
+    'outline',
+    'pre',
+    'inline',
+    'pack string',
+    'check message',
+  ])
+    test(`R12 computed zero ${zero} in ${place}`, async () => {
+      const sql = `SELECT 1 WHERE 1 = ${zero}`;
+      const p = { ...base(), module: 'M1', concepts: ['C005', 'C007'] };
+      if (place === 'reference') p.referenceSql = sql;
+      if (place === 'lesson') p.refresher = [{ title: 'nested zero', sql }];
+      if (place === 'outline') p.hints = { zero: [{ outline: sql }] };
+      if (place === 'pre') p.guide = `<pre>${sql}</pre>`;
+      if (place === 'inline') p.guide = `<code>${sql}</code>`;
+      if (place === 'pack string') p.task = `Compare with \`${sql}\`.`;
+      if (place === 'check message') p.checkMessages = [`Compare with \`${sql}\`.`];
+      const r = await check(p);
+      assert.match(r.errors.join('\n'), /undeclared C085/);
+      assert.ok(r.detected.some((source) => source.concepts.includes('C085')));
+    });
+const orphanSQL = (condition) => `WITH l(id) AS (VALUES (1)), r(id) AS (VALUES (2))
+  SELECT l.id FROM l LEFT JOIN r ON ${condition} WHERE r.id IS NULL`;
+test('R12 right-to-right join proves neither C083 nor C016; real left-to-right join proves both', async () => {
+  const bad = await detect(orphanSQL('r.id = r.id'));
+  assert.ok(bad.concepts.includes('C083'));
+  assert.ok(bad.concepts.includes('C016'));
+  assert.ok(!bad.confirmed.includes('C083'));
+  assert.ok(!bad.confirmed.includes('C016'));
+  const good = await detect(orphanSQL('l.id = r.id'));
+  assert.deepEqual(good.errors, []);
+  assert.ok(good.confirmed.includes('C083'));
+  assert.ok(good.confirmed.includes('C016'));
+  const alias = await detect(`WITH l(id) AS (VALUES (1)), r(id) AS (VALUES (2))
+    SELECT l.id, r.id AS absent_id FROM l LEFT JOIN r ON l.id = r.id WHERE absent_id IS NULL`);
+  assert.deepEqual(alias.errors, []);
+  assert.ok(alias.confirmed.includes('C083'));
+});
+test('R12 exact M2 misleading orphan refresher receives no credit and fails', async () => {
+  const sql = orphanSQL('r.id = r.id');
+  const p = {
+    ...base(),
+    module: 'M2',
+    concepts: ['C003', 'C005', 'C006', 'C007', 'C013', 'C015', 'C016', 'C033', 'C083', 'C085'],
+    referenceSql: orphanSQL('l.id = r.id'),
+    refreshes: { C033: 'steps', C085: 'nulls', C083: 'orphan' },
+    refresher: [
+      { title: 'steps', sql: 'WITH t(n) AS (VALUES (1)) SELECT n FROM t' },
+      { title: 'nulls', sql: 'SELECT NULL IS NULL' },
+      { title: 'orphan', sql },
+    ],
+  };
+  const bad = await check(p);
+  assert.match(bad.errors.join('\n'), /C083: refresher orphan does not demonstrate/);
+  p.refresher[2].sql = orphanSQL('l.id = r.id');
+  assert.deepEqual((await check(p)).errors, []);
+});
+for (const [name, badSQL, goodSQL] of [
+  [
+    'OR condition is not a key match',
+    orphanSQL('l.id = r.id OR true'),
+    orphanSQL('l.id = r.id AND true'),
+  ],
+  [
+    'nested query equality is not a join key',
+    orphanSQL('(SELECT l.id = r.id)'),
+    orphanSQL('r.id = l.id'),
+  ],
+  [
+    'same-side unqualified resolution',
+    `SELECT l.id FROM (VALUES (1)) l(id) LEFT JOIN (VALUES (2)) r(right_id) ON right_id = r.right_id WHERE r.right_id IS NULL`,
+    `SELECT l.id FROM (VALUES (1)) l(id) LEFT JOIN (VALUES (2)) r(right_id) ON id = right_id WHERE right_id IS NULL`,
+  ],
+  [
+    'inner join alias cannot prove outer orphan check',
+    `SELECT r.id FROM (SELECT r.id FROM (VALUES (1)) l(id) LEFT JOIN (VALUES (2)) r(id) ON l.id = r.id) r WHERE r.id IS NULL`,
+    orphanSQL('l.id = r.id'),
+  ],
+])
+  test(`R12 scoped orphan proof ${name}`, async () => {
+    const bad = await detect(badSQL);
+    assert.ok(!bad.confirmed.includes('C083'), JSON.stringify(bad));
+    const good = await detect(goodSQL);
+    assert.deepEqual(good.errors, []);
+    assert.ok(good.confirmed.includes('C083'));
+  });
+for (const id of [2, 3])
+  test(`R12 floor ${id} reconciliation filled with reference returns the advertised totals`, async () => {
+    const p = await packFloor(id);
+    const guide = process.env.R12_BASELINE
+      ? execFileSync(
+          'git',
+          [
+            '-C',
+            new URL('../../', import.meta.url).pathname,
+            'show',
+            `f871853:site/floors/floor${id}/guide.html`,
+          ],
+          { encoding: 'utf8' },
+        )
+      : p.guide;
+    const section = guide.match(
+      new RegExp(`<article[^>]+id="f${id}-reconcile"[\\s\\S]*?</article>`),
+    )?.[0];
+    assert.ok(section);
+    const block = section.match(/<pre><code>([\s\S]*?)<\/code><\/pre>/)?.[1];
+    assert.ok(block?.includes('___'));
+    const reference = p.referenceSql.trim().replace(/;$/, '');
+    const filled = block.replace('___', reference);
+    await h.call('init');
+    await h.call('loadFloor', id);
+    const result = await h.call('query', filled);
+    assert.equal(result.error, undefined);
+    if (id === 3) assert.deepEqual(result.rows, [[6955, 216, 7171]]);
+    else {
+      const expected = await h.call(
+        'query',
+        `WITH answer AS (${reference}) SELECT zone_flag, count(*) AS n FROM answer GROUP BY zone_flag ORDER BY zone_flag`,
+      );
+      assert.equal(expected.error, undefined);
+      const order = (rows) =>
+        [...rows].sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+      assert.deepEqual(order(result.rows), order(expected.rows));
+      assert.equal(
+        result.rows.reduce((n, row) => n + row[1], 0),
+        7171,
+      );
+    }
+  });
+for (const id of [2, 3])
+  test(`R12 floor ${id} whole-query blank first binds the real reference`, async () => {
+    const p = await packFloor(id);
+    const nameContext = (await check(p)).nameContext;
+    const r = await detect('WITH answer AS (___) SELECT * FROM answer', {
+      nameContext,
+      referenceSql: p.referenceSql,
+    });
+    assert.deepEqual(r.errors, []);
+    assert.ok(r.boundSql.includes(p.referenceSql.trim().replace(/;$/, '')), r.boundSql);
+  });
+
+test('R12 C023 proof follows the actual input through sequential CTE scopes', async () => {
+  const options = { nameContext: { schemas: { supplied: [{ name: 'n', type: 'INTEGER' }] } } };
+  const shadow = `WITH a AS (SELECT * FROM supplied),
+    supplied AS (SELECT l.n FROM (VALUES (1)) l(n) JOIN (VALUES (1)) r(n) ON l.n=r.n)
+    SELECT a.n, count(*) AS copies FROM a GROUP BY a.n
+    UNION ALL SELECT n, 1 FROM supplied`;
+  const r = await detect(shadow, options);
+  assert.deepEqual(r.errors, []);
+  assert.ok(!r.confirmed.includes('C023'));
+  const control = await detect(
+    'SELECT l.n, count(*) FROM (VALUES (1)) l(n) JOIN (VALUES (1)) r(n) ON l.n=r.n GROUP BY l.n',
+  );
+  assert.deepEqual(control.errors, []);
+  assert.ok(control.confirmed.includes('C023'));
+});
+test('R12 constant folding handles pure scalar subtrees and does not mistake inner zero for a zero result', async () => {
+  for (const expression of [
+    "CAST(CAST('0' AS VARCHAR) AS INTEGER)",
+    'CAST(round(0.2, 0) AS INTEGER)',
+    'CASE WHEN true THEN CAST(1 - 1 AS INTEGER) ELSE 2 END',
+  ]) {
+    const result = await detect(`SELECT 1 WHERE 1 = ${expression}`);
+    assert.ok(result.confirmed.includes('C085'), expression);
+  }
+  for (const expression of ['CAST(0 + 1 AS INTEGER)', 'CAST(CAST(1 AS INTEGER) AS INTEGER)']) {
+    const result = await detect(`SELECT 1 WHERE 1 = ${expression}`);
+    assert.deepEqual(result.errors, []);
+    assert.ok(!result.concepts.includes('C085'), expression);
+  }
+});

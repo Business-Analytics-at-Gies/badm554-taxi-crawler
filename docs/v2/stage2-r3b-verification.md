@@ -448,3 +448,154 @@ this item is deferred. No changes to site/rerun, server/rerun*, data/rerun,
 tools/rerun, site/game/db/sql.js, server/config.js or server/index.js. The map,
 runLesson and generated assets are unchanged. Both node_modules symlinks remain
 untracked and are excluded from the commit. No merge, PR or deployment.
+
+## Code review round 12 fixes (2026-10-24)
+
+Contract: `stage2-review-r12.md` and the R3b amendments in `1dc12ee`, with the
+run log at `71a3904`. This section supersedes the earlier instructions to add
+`answer(zone_flag)` / `answer(reason)` and to fill whole-query blanks with NULL.
+
+### Finishing criteria
+
+Reproduce all three findings against `f871853`; make every new regression fail
+there and pass here; check the other confirmed combination rules; execute the
+corrected reconciliation SQL against each floor's synthetic givens; keep every
+existing assertion; reproduce generated assets; run all four complete suites
+under `caffeinate -dims` with separate browser output directories; commit all
+fixes and this evidence once, push `v2/stage2`, and stop.
+
+### Constants: computed values, not immediate child shapes
+
+The gate now recognizes and evaluates every constant-only subtree made from
+reviewed deterministic scalar syntax: literals; nested casts; arithmetic;
+round/date_part; scalar operators, comparisons, conjunctions, BETWEEN and CASE.
+Names, subqueries, aggregates, windows and arbitrary functions never enter this
+evaluator. DuckDB executes the exact deserialized expression and reports its
+type. Numeric zero is tested inside DuckDB with `c = 0`, preserving integer and
+decimal precision. An inner zero does not make a nonzero outer operand a zero.
+Evaluation failures fail the source. Results are cached per dedicated parser
+connection by the normalized expression, not by its textual spelling.
+
+Both required forms, `CAST(1 - 1 AS INTEGER)` and
+`CAST(CAST(0 AS INTEGER) AS INTEGER)`, now detect C085 in all seven places:
+reference, lesson, outline, guide pre, inline code, pack-string backticks and
+checker-message backticks. Each fixture uses the review's M1 context declaring
+only C005/C007, with no refreshers, and asserts undeclared C085 plus detection.
+Additional controls cover nested string/numeric casts, ROUND inside a cast,
+constant CASE, and nonzero results containing an inner zero.
+
+### Scope-based confirmation and the combination-rule audit
+
+The scope check records the actual FROM-item identity and column position of
+each reference, including unqualified references and direct select aliases. It
+also records each query's own join edges and whether its actual inputs contain
+a join, carrying that fact through sequential CTEs, subqueries and set-operation
+outputs. Definitions in later or unrelated scopes cannot supply this evidence.
+
+C083 confirmation requires a necessary equality conjunct whose two resolved
+columns belong to opposite inputs of a LEFT JOIN, followed by an IS NULL test
+on that same resolved right-side key. Reversed operands and unqualified or
+select-aliased references work. Right-to-right equality, OR/NOT branches,
+equalities inside nested queries and a join hidden in another query cannot
+supply the proof. These refusals remain possible detections rather than earning
+teaching credit. The exact review M2 pack with `ON r.id = r.id` now fails
+`C083: refresher orphan does not demonstrate`; changing it to `l.id = r.id`
+passes. Both SQL forms are runnable; rejection is about proof, not syntax.
+
+| Confirmed combination | Finding and action |
+|---|---|
+| C016 | Shared the same faulty spelling-based `unmatched_null` proof with C083. It now uses the same resolved left/right key evidence. The right-to-right lesson is possible C016 and C083, confirming neither. |
+| C023 | Found an additional lexical-scope error. An earlier CTE read a given table, while a later CTE reused that table's name and contained a join. The later CTE was used in a separate UNION ALL branch, not the grouped branch. The old tree traversal falsely confirmed join-then-group in the earlier branch. Confirmation now follows the scope check's actual inputs; a direct real join/group control remains confirmed. The conservative initial detection remains possible. |
+| C029 | No comparable source-identity assumption found. Confirmation requires SUM with ORDER BY and an unbounded-prefix frame ending at the current row/peer group. Existing rolling-frame versus running-total refresher tests remain unchanged; rolling frames cannot earn C029 credit. Named-window spellings remain refused by the keyword layer. |
+| C085 | The zero proof had finding 1's incomplete constant recognition and is fixed above. Other confirmed rules inspect actual null tests, BETWEEN, or temporal casts, with window frame bounds excluded from temporal edge-case detection. They do not infer a relation's identity from another scope. Existing frame-context checks and new nonzero controls remain in force. |
+
+The bound fill supplies column information and can confirm a construct already
+detected in authored SQL; it never introduces a teaching claim from hidden
+reference text. In particular, inserting the floor 2 reference solely to bind a
+guide blank does not add an undeclared C023 claim to the authored guide source.
+The reviewed map, all concept declarations and all refresher declarations are
+unchanged. Missing proof-map entries still fail their removal tests.
+
+### Reconciliation examples and whole-query fills
+
+Removed the explicit column lists from the source floor 2 and 3 guide blocks.
+`node tools/build-floor-packs.mjs` regenerated the shared guide; generated files
+were not hand-edited. These changes preserve the reference's real row_id,
+zone_flag and reason meanings instead of renaming its first column.
+
+The parser identifies whole-query slots using unique markers in SELECT-shaped
+parse fills, rather than guessing from nearby text. Those temporary markers are
+removed from the pack's defined-name vocabulary. For such a slot, binding tries
+the floor's reference query first, then the existing NULL/column/query choices.
+Scalar slots retain their original fill order. Native tokens and the tree map
+validate the reference fill before planning it. The reference comes from the
+current pack, outside the cached given-table schema, so edited reference fixtures
+do not reuse a stale reference. Binding, scope and unused-CTE checks inspect the
+same first successful fill. The existing inline-name, keyword, map and bound
+refusal assertions are retained.
+
+The new tests extract each actual guide reconciliation block, replace its blank
+with the floor's reference query (without its trailing semicolon), run it, and
+check the results:
+
+| Floor | Result |
+|---|---|
+| 2 | ok 6,962; unknown 110; outside_nyc 74; unmatched 25. Exactly the same four groups as grouping the reference by zone_flag; total 7,171. |
+| 3 | clean 6,955; bad 216; total 7,171. |
+
+Both rendered passages were also inspected at 375 px with JavaScript disabled
+through the real-engine UI test server. Both are visible, wrap correctly and
+have a document width of 375 px. Screenshots: `/tmp/r12-floor2-375.png` and
+`/tmp/r12-floor3-375.png`. The first manual attempt used the database harness's
+minimal static server (which neither resolves directory indexes nor serves CSS
+with its MIME type); the corrected inspection used the normal UI test server.
+This was a manual harness issue, not a product timeout or a code change.
+
+### New tests and regression evidence
+
+There are **26 new tests**: 14 constant/source-place combinations; the shared
+C083/C016 proof test; the exact M2 pack; four scoped-join proof tests; two executed
+guide reconciliation tests; two first-reference-fill tests; the C023 CTE-scope
+regression; and the extra pure-scalar/nonzero constant test. Existing assertions
+are unchanged. Every test has an explicit bad input and expected result; valid
+controls are paired with their regression.
+
+```sh
+caffeinate -dims env R12_BASELINE=f871853 node --test \
+  --test-name-pattern='R12' tests/db/stage2-r3b.test.mjs
+```
+
+The baseline mode serves the actual committed f871853 gate, map, bound, tree,
+scope and blank modules through browser routing and reads that commit's guide
+sources for the reconciliation fixtures. All **26 tests fail by assertion**,
+with 0 passing, 0 skipped and 0 cancelled. Log: `/tmp/r12-baseline.log`.
+The current-tree focused check passes all **26**, plus floors 1-3, existing
+blank/name controls and the existing used-map removal check (**30 tests**, 0
+failures). Log: `/tmp/r12-pre-suite.log`. This preserves the difference between a
+correct result and sufficient evidence to grant teaching credit.
+
+The complete database run passes all **2,860 tests**: **323 R3b tests**
+(297 existing plus these 26) and all **2,537** other database tests. No existing
+assertion was changed or removed; the diff to the existing test file consists
+only of the baseline loader and the appended R12 tests.
+
+| Suite | Passed | Skipped | Failed |
+|---|---:|---:|---:|
+| Database (`cd tests/db && npm test`) | 2,860 | 0 | 0 |
+| Stub browser (`PORT=4883`, output `/tmp/pw-stub-r12`) | 183 | 25 | 0 |
+| Real-engine browser (`PORT=4884 DB_SITE=../../site`, output `/tmp/pw-real-r12`) | 203 | 5 | 0 |
+| Server (`node --test tests/server/*.test.js`) | 69 | 0 | 0 |
+
+Every suite ran under `caffeinate -dims` and exited 0. Database duration:
+941.4 seconds. Logs: `/tmp/r12-db.log`, `/tmp/r12-stub.log`,
+`/tmp/r12-real.log`, `/tmp/r12-server.log`. No suite test timed out, so there
+was no sleep-related workaround or code change. All **21 generated assets**
+reproduce byte for byte. Used-entry removal checks retain **224**, **231** and
+**222** necessary entries on floors 1, 2 and 3 (**677** total).
+
+The source guides and their generated shared guide are the only content assets
+changed. No change to site/rerun, server/rerun*, data/rerun, tools/rerun,
+site/game/db/sql.js, server/config.js, server/index.js, the reviewed concept map,
+pack declarations or lesson runner. Both node_modules symlinks remain untracked
+and are excluded from the commit. All three findings and the additional C016/
+C023 proof issues are addressed; nothing is deferred. No merge, PR or deployment.

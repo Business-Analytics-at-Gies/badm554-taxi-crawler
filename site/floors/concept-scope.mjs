@@ -55,7 +55,13 @@ export async function scopePreflight(conn, ast) {
   return [...new Set(errors)];
 }
 
-export async function inspectScope(ast, schemas = {}, outputNames) {
+export async function inspectScope(
+  ast,
+  schemas = {},
+  outputNames,
+  facts = { references: new Map(), queries: [] },
+) {
+  const queryHasJoin = new WeakMap();
   const errors = [],
     unresolved = (names) => errors.push(`unresolved name ${names.join('.')}`);
   const unmodelled = (construct) => errors.push(`unmodelled scope ${construct}`);
@@ -77,29 +83,45 @@ export async function inspectScope(ast, schemas = {}, outputNames) {
   };
   const count = (columns, name) => columns.filter((c) => fold(c) === fold(name)).length;
   const resolve = (names, inputs, aliases, preferAlias = false) => {
-    if (names.length === 1) {
-      const own = inputs.reduce((n, t) => n + count(t.columns, names[0]), 0);
-      const alias = count(aliases, names[0]);
-      if ((preferAlias && alias ? alias : own || alias) !== 1) unresolved(names);
-    } else if (names.length === 2) {
-      const matches = inputs.filter((t) => fold(t.name) === fold(names[0]));
-      if (matches.length !== 1 || count(matches[0].columns, names[1]) !== 1) unresolved(names);
-    } else unresolved(names);
+    const matches = inputs.flatMap((input) =>
+      input.columns.flatMap((column, index) =>
+        fold(column) === fold(names.at(-1)) &&
+        (names.length === 1 || (names.length === 2 && fold(input.name) === fold(names[0])))
+          ? [{ input, index }]
+          : [],
+      ),
+    );
+    const aliasCount = names.length === 1 ? count(aliases, names[0]) : 0;
+    if ((preferAlias && aliasCount) || (!matches.length && aliasCount)) {
+      if (aliasCount !== 1) unresolved(names);
+      return aliasCount === 1 ? aliases.bindings?.get(fold(names[0])) : null;
+    }
+    if (
+      matches.length !== 1 ||
+      (names.length === 2 &&
+        inputs.filter((input) => fold(input.name) === fold(names[0])).length !== 1)
+    ) {
+      unresolved(names);
+      return null;
+    }
+    return matches[0];
   };
-  const expression = async (node, inputs, aliases, env, preferAlias = false) => {
+  const expression = async (node, inputs, aliases, env, preferAlias = false, nulls = []) => {
     if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) {
-      for (const child of node) await expression(child, inputs, aliases, env, preferAlias);
+      for (const child of node)
+        await expression(child, inputs, aliases, env, preferAlias, nulls);
       return;
     }
     if (node.class === 'COLUMN_REF') {
-      resolve(node.column_names, inputs, aliases, preferAlias);
+      facts.references.set(node, resolve(node.column_names, inputs, aliases, preferAlias));
       return;
     }
+    if (['OPERATOR_IS_NULL', 'OPERATOR_IS_NOT_NULL'].includes(node.type)) nulls.push(node);
     if (node.class === 'SUBQUERY') {
       // A nested query receives CTE definitions, never an outer row or alias.
       await query(node.subquery.node, env);
-      await expression(node.child, inputs, aliases, env, preferAlias);
+      await expression(node.child, inputs, aliases, env, preferAlias, nulls);
       return;
     }
     if (node.class === 'STAR') {
@@ -129,20 +151,22 @@ export async function inspectScope(ast, schemas = {}, outputNames) {
     }
     for (const [field, child] of Object.entries(node))
       if (!['value', 'cast_type'].includes(field) && child && typeof child === 'object')
-        await expression(child, inputs, aliases, env, preferAlias);
+        await expression(child, inputs, aliases, env, preferAlias, nulls);
   };
-  const from = async (node, env) => {
+  const from = async (node, env, joins) => {
     if (!node) {
       unmodelled('missing FROM');
       return [];
     }
     let columns,
+      hasJoin = false,
       name = node.alias || node.table_name || 'unnamed_subquery';
     switch (node.type) {
       case 'EMPTY':
         return [];
       case 'BASE_TABLE': {
         const cte = !node.schema_name && !node.catalog_name && env.get(fold(node.table_name));
+        hasJoin = cte?.hasJoin ?? false;
         columns = cte
           ? cte.columns
           : Object.entries(schemas)
@@ -156,25 +180,30 @@ export async function inspectScope(ast, schemas = {}, outputNames) {
       }
       case 'SUBQUERY':
         columns = unique(await query(node.subquery.node, env));
+        hasJoin = queryHasJoin.get(node.subquery.node);
         break;
       case 'EXPRESSION_LIST':
         for (const row of node.values) await expression(row, [], [], env);
         columns = node.values[0]?.map((_, i) => `col${i}`) ?? [];
         break;
       case 'JOIN': {
-        const left = await from(node.left, env),
-          right = await from(node.right, env);
+        const left = await from(node.left, env, joins),
+          right = await from(node.right, env, joins);
+        joins.push({ node, left, right });
         const inputs = [...left, ...right];
         await expression(node.condition, inputs, [], env);
         if (node.alias) unmodelled('JOIN alias');
         if (node.using_columns?.length) unmodelled('JOIN USING');
+        inputs.forEach((input) => {
+          input.hasJoin = true;
+        });
         return inputs;
       }
       default:
         unmodelled(node.type);
         return [];
     }
-    return [{ name, columns: rename(columns, node.column_name_alias) }];
+    return [{ name, columns: rename(columns, node.column_name_alias), hasJoin }];
   };
   const modifiers = async (node, inputs, aliases, env) => {
     for (const modifier of node.modifiers ?? []) {
@@ -203,23 +232,35 @@ export async function inspectScope(ast, schemas = {}, outputNames) {
       env.set(fold(entry.key), {
         columns: rename(unique(columns), entry.value.aliases),
         entry,
+        hasJoin: queryHasJoin.get(entry.value.query.node),
       });
     }
     if (node.type === 'SET_OPERATION_NODE') {
       const left = await query(node.left, env);
       await query(node.right, env);
       await modifiers(node, [], left, env);
+      queryHasJoin.set(node, queryHasJoin.get(node.left) || queryHasJoin.get(node.right));
       return left;
     }
     if (node.type !== 'SELECT_NODE') {
       unmodelled(node.type);
       return [];
     }
-    const inputs = await from(node.from_table, env);
+    const joins = [],
+      nulls = [];
+    const inputs = await from(node.from_table, env, joins);
+    const hasJoin = inputs.some((input) => input.hasJoin);
+    queryHasJoin.set(node, hasJoin);
+    facts.queries.push({ node, joins, nulls, hasJoin });
     const aliases = node.select_list.filter((e) => e.alias).map((e) => e.alias);
-    for (const e of node.select_list) await expression(e, inputs, [], env);
+    for (const e of node.select_list) await expression(e, inputs, [], env, false, nulls);
+    aliases.bindings = new Map(
+      node.select_list
+        .filter((e) => e.alias && e.class === 'COLUMN_REF')
+        .map((e) => [fold(e.alias), facts.references.get(e)]),
+    );
     for (const clause of ['where_clause', 'group_expressions', 'having'])
-      await expression(node[clause], inputs, aliases, env);
+      await expression(node[clause], inputs, aliases, env, false, nulls);
     if (node.qualify) unmodelled('QUALIFY');
     await modifiers(node, inputs, aliases, env);
     const columns = node.select_list.flatMap((e) => {

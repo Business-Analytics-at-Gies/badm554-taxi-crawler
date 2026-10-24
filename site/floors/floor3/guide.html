@@ -97,7 +97,7 @@ SELECT * FROM checked;</code></pre>
       </div>
       <div class="lv" data-lv="3">
         <p class="lv-tag">Lv 3 · The real SQL</p>
-        <pre><code>WITH answer(reason) AS (___ /* your answer query */)
+        <pre><code>WITH answer AS (___ /* your answer query */)
 SELECT count(*) FILTER (WHERE reason IS NULL) AS clean,
        count(*) FILTER (WHERE reason IS NOT NULL) AS bad,
        count(*) AS total FROM answer;</code></pre>

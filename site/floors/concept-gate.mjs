@@ -4,7 +4,7 @@ import { CONCEPT_MAP } from './concept-map.mjs';
 import { checkBound, inspectBoundPlan } from './concept-bound.mjs';
 import { blankVariants } from './sql-blanks.mjs';
 import { scopePreflight } from './concept-scope.mjs';
-import { inspectTree, detectComputedZeros } from './concept-tree.mjs';
+import { inspectTree, detectComputedZeros, detectScopeProofs } from './concept-tree.mjs';
 export { CONCEPT_MAP, inspectTree, inspectBoundPlan };
 const literal = (sql) => `'${sql.replaceAll("'", "''")}'`;
 
@@ -40,7 +40,8 @@ export function parseGraph(csv) {
     throw new Error('Expected the three learning-graph columns');
   const graph = {};
   for (const fields of rows) {
-    if (fields.length !== 3 || graph[fields[0]]) throw new Error('Invalid or duplicate graph row');
+    if (fields.length !== 3 || graph[fields[0]])
+      throw new Error('Invalid or duplicate graph row');
     graph[fields[0]] = Object.fromEntries(header.map((key, i) => [key, fields[i]]));
   }
   return graph;
@@ -105,7 +106,8 @@ export function sqlSources(pack) {
     for (const [key, child] of Object.entries(value)) {
       if (['referenceSql', 'checkSource', 'generatedGuide'].includes(key)) continue;
       if ((key === 'sql' && path.startsWith('pack.refresher')) || key === 'outline') {
-        if (key === 'outline') out.push({ source: `${path}.${key}`, sql: child, kind: 'complete' });
+        if (key === 'outline')
+          out.push({ source: `${path}.${key}`, sql: child, kind: 'complete' });
       } else
         walk(
           child,
@@ -127,14 +129,21 @@ export function sqlSources(pack) {
   return out;
 }
 const rewriteMessage = 'Rewrite it so that each blank stands for one name, value or query.';
-async function filledSources(conn, sql) {
-  return [...(await blankVariants(conn, sql, (i) => [`__concept_blank_${i}`, 'SELECT NULL']))];
+async function filledSources(conn, sql, prefix) {
+  return [
+    ...(await blankVariants(conn, sql, (i) => [
+      `__concept_blank_${i}`,
+      `SELECT NULL AS ${prefix}${i}`,
+    ])),
+  ];
 }
 async function parse(conn, sql) {
   try {
     const statements = await nativeStatements(conn, sql);
     if (!statements.length) return null;
-    const table = await conn.query(`SELECT system.main.json_serialize_sql(${literal(sql)}) AS ast`);
+    const table = await conn.query(
+      `SELECT system.main.json_serialize_sql(${literal(sql)}) AS ast`,
+    );
     const ast = JSON.parse(table.toArray()[0].ast);
     if (ast.error && ast.error_type !== 'not implemented') return null;
     return { ast, sql };
@@ -145,7 +154,12 @@ async function parse(conn, sql) {
 export async function detectSQL(
   conn,
   sql,
-  { kind = 'complete', map = CONCEPT_MAP, nameContext = {} } = {},
+  {
+    kind = 'complete',
+    map = CONCEPT_MAP,
+    nameContext = {},
+    referenceSql = nameContext.referenceSql,
+  } = {},
 ) {
   const errors = [],
     used = [],
@@ -173,8 +187,11 @@ export async function detectSQL(
     };
   }
   // Removing a used phrase must not let a command/keyword become a bare name.
-  const name = /^(?:[a-z_][a-z_0-9$]*|"(?:[^"]|"")+")(?:\.(?:[a-z_][a-z_0-9$]*|"(?:[^"]|"")+"))*$/i;
-  const candidates = await filledSources(conn, sql);
+  const name =
+    /^(?:[a-z_][a-z_0-9$]*|"(?:[^"]|"")+")(?:\.(?:[a-z_][a-z_0-9$]*|"(?:[^"]|"")+"))*$/i;
+  let queryBlankPrefix = '__concept_query_blank_';
+  while (sql.includes(queryBlankPrefix)) queryBlankPrefix += '_';
+  const candidates = await filledSources(conn, sql, queryBlankPrefix);
   let selected = null,
     sourceKind = 'complete';
   for (const candidate of candidates) {
@@ -233,6 +250,21 @@ export async function detectSQL(
     inspectTree(selected.ast, map, nameContext),
     map,
   );
+  // Parser markers classify query slots; they are not authored definitions.
+  tree.definedNames = tree.definedNames.filter(
+    (name) => !name.startsWith(queryBlankPrefix.toLowerCase()),
+  );
+  const queryBlanks = [];
+  const findQueryBlanks = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'SELECT_NODE' && node.select_list?.length === 1) {
+      const alias = node.select_list[0].alias;
+      if (alias?.startsWith(queryBlankPrefix))
+        queryBlanks.push(Number(alias.slice(queryBlankPrefix.length)));
+    }
+    Object.values(node).forEach(findQueryBlanks);
+  };
+  findQueryBlanks(selected.ast);
   const scopeErrors = await scopePreflight(conn, selected.ast);
   const bound =
     errors.length || tree.errors.length
@@ -241,8 +273,11 @@ export async function detectSQL(
           expression: sourceKind === 'expression',
           nameContext,
           ast: selected.ast,
+          queryBlanks,
+          referenceSql,
           map,
         });
+  if (bound.scopeFacts) detectScopeProofs(bound.scopeFacts, tree, map);
   return {
     ...tree,
     boundSql: bound.boundSql,
@@ -276,16 +311,20 @@ export async function sourceNameContext(conn, pack) {
       const typeQuery =
         'SELECT ' +
         result.columns
-          .map((name) => `typeof((SELECT ${qi(name)} FROM ${qi(table)} LIMIT 1)) AS ${qi(name)}`)
+          .map(
+            (name) => `typeof((SELECT ${qi(name)} FROM ${qi(table)} LIMIT 1)) AS ${qi(name)}`,
+          )
           .join(', ');
       const types = await runLesson(pack, typeQuery);
       if (types.error || types.rows.length !== 1)
-        throw new Error(`Cannot inspect given types for ${table}: ${types.error ?? 'no types'}`);
+        throw new Error(
+          `Cannot inspect given types for ${table}: ${types.error ?? 'no types'}`,
+        );
       schemas[table] = result.columns.map((name, i) => ({ name, type: types.rows[0][i] }));
     }
     cache.set(key, { columns: [...columns], tables, schemas, defined: [] });
   }
-  return structuredClone(cache.get(key));
+  return { ...structuredClone(cache.get(key)), referenceSql: pack.referenceSql };
 }
 export async function checkConcepts(conn, pack, graph, overrides, { map = CONCEPT_MAP } = {}) {
   const errors = [],

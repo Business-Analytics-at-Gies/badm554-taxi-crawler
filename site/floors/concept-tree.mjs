@@ -48,7 +48,7 @@ export function inspectTree(ast, map = CONCEPT_MAP, nameContext = {}) {
     errors.push(
       `unmapped construct ${path}: ${typeof value === 'string' ? value : JSON.stringify(value)}`,
     );
-  const apply = (key, path, value) => {
+  const apply = (key, path, value, proven = true) => {
     const e = map.entries[key];
     if (!e) {
       fail(path, value);
@@ -57,11 +57,12 @@ export function inspectTree(ast, map = CONCEPT_MAP, nameContext = {}) {
     used.add(key);
     for (const id of e.ids) {
       concepts.add(id);
-      if (e.confidence === 'confirmed') confirmed.add(id);
+      if (proven && e.confidence === 'confirmed') confirmed.add(id);
     }
     return e;
   };
-  const ownerOf = (n) => (n.class ? (n.class === 'SUBQUERY' ? 'SUBQUERY_EXPR' : n.class) : n.type);
+  const ownerOf = (n) =>
+    n.class ? (n.class === 'SUBQUERY' ? 'SUBQUERY_EXPR' : n.class) : n.type;
   const walk = (value, expected, path) => {
     if (expected === 'string' || expected === 'number') {
       if (typeof value !== expected) fail(path, value);
@@ -128,7 +129,7 @@ export function inspectTree(ast, map = CONCEPT_MAP, nameContext = {}) {
   const inlineDefined = new Set();
   for (const statement of ast.statements ?? [])
     definedNames(statement).inline.forEach((name) => inlineDefined.add(name));
-  const rule = (name, path) => apply(`rule:${name}`, path, name);
+  const rule = (name, path, proven = true) => apply(`rule:${name}`, path, name, proven);
   const bindings = (node, env) => {
     const next = new Map(env);
     for (const e of node.cte_map?.map ?? [])
@@ -137,10 +138,15 @@ export function inspectTree(ast, map = CONCEPT_MAP, nameContext = {}) {
     return next;
   };
   const inputJoins = (node, env, seen = new Set()) => {
-    if (!node || typeof node !== 'object' || seen.has(node)) return { join: false, left: false };
+    if (!node || typeof node !== 'object' || seen.has(node))
+      return { join: false, left: false };
     seen.add(node);
     env = bindings(node, env);
-    if (node.type === 'BASE_TABLE' && !node.schema_name && env.has(node.table_name?.toLowerCase()))
+    if (
+      node.type === 'BASE_TABLE' &&
+      !node.schema_name &&
+      env.has(node.table_name?.toLowerCase())
+    )
       return inputJoins(env.get(node.table_name.toLowerCase()), env, seen);
     const result = {
       join: node.type === 'JOIN',
@@ -153,7 +159,14 @@ export function inspectTree(ast, map = CONCEPT_MAP, nameContext = {}) {
     }
     return result;
   };
-  const visit = (node, inCTE = false, scope = null, frame = false, env = new Map(), path = '$') => {
+  const visit = (
+    node,
+    inCTE = false,
+    scope = null,
+    frame = false,
+    env = new Map(),
+    path = '$',
+  ) => {
     if (!node || typeof node !== 'object') return;
     // Semantic reporting also walks rejected optional fields. A rejected field
     // still fails structurally; a nested known concept must not disappear from
@@ -220,43 +233,13 @@ export function inspectTree(ast, map = CONCEPT_MAP, nameContext = {}) {
       else visit(child, inCTE, scope, nextFrame, env, `${path}.${key}`);
     }
     if (select) {
-      if (scope.group && scope.join) rule('join_group', path);
+      if (scope.group && scope.join) rule('join_group', path, false);
       if (scope.left && scope.nulls.length) {
         rule('null_after_join', path);
         rule('orphan', path);
       }
-      // Prove only the standard anti-join: the null-tested right key is equated to
-      // a left key. ON true and left-input NULLs can require C083, never teach it.
-      const joins = [];
-      forObjects(node.from_table, (n) => {
-        if (n.type === 'JOIN' && n.join_type === 'LEFT') joins.push(n);
-      });
-      for (const j of joins) {
-        const right = j.right?.alias || j.right?.table_name;
-        const equalKeys = [];
-        forObjects(j.condition, (n) => {
-          if (
-            n.type === 'COMPARE_EQUAL' &&
-            n.left?.class === 'COLUMN_REF' &&
-            n.right?.class === 'COLUMN_REF'
-          )
-            equalKeys.push(n.left.column_names, n.right.column_names);
-        });
-        if (
-          scope.nulls.some(
-            (n) =>
-              n.type === 'OPERATOR_IS_NULL' &&
-              n.children?.[0]?.column_names?.length === 2 &&
-              n.children[0].column_names[0] === right &&
-              equalKeys.some(
-                (k) => JSON.stringify(k) === JSON.stringify(n.children[0].column_names),
-              ),
-          )
-        ) {
-          rule('orphan_proof', path);
-          rule('unmatched_null', path);
-        }
-      }
+      // Confirmed input-sensitive proofs are added only after the scope check
+      // resolves actual relation/column identities on the first binding fill.
     }
   };
   visit(ast);
@@ -270,91 +253,198 @@ export function inspectTree(ast, map = CONCEPT_MAP, nameContext = {}) {
     definedNames: [...inlineDefined],
   };
 }
-// A pure syntactic constant predicate establishes foldability; the engine, not
-// spelling or JavaScript arithmetic, determines the value. Never evaluate names,
-// subqueries or arbitrary functions while inspecting authored content.
+// Only deterministic scalar syntax is evaluated. Names, queries, aggregates,
+// windows and arbitrary functions never enter the constant evaluator.
+const constantCaches = new WeakMap();
 export async function detectComputedZeros(conn, ast, result, map = CONCEPT_MAP) {
-  const numeric = new Set([
-    'TINYINT',
-    'SMALLINT',
+  const scalarFunctions = new Set(['+', '-', '*', '/', 'round', 'date_part']);
+  const castTypes = new Set([
+    'NULL',
+    'BOOLEAN',
     'INTEGER',
     'BIGINT',
     'HUGEINT',
-    'FLOAT',
     'DOUBLE',
+    'FLOAT',
     'DECIMAL',
+    'VARCHAR',
+    'DATE',
+    'TIME',
+    'TIMESTAMP',
+    'INTERVAL',
   ]);
-  const literal = (n) =>
-    (n?.class === 'CONSTANT' && numeric.has(n.value?.type?.id)) ||
-    (n?.class === 'CAST' && numeric.has(n.cast_type?.id) && n.child?.class === 'CONSTANT') ||
-    (n?.class === 'FUNCTION' &&
-      ['+', '-', '*', '/'].includes(n.function_name) &&
-      n.children.every(literal));
-  const comparisons = [];
-  forObjects(ast, (n) => {
-    if (n.class === 'COMPARISON') comparisons.push(n);
+  const constantOnly = (node) => {
+    if (!node) return false;
+    switch (node.class) {
+      case 'CONSTANT':
+        return true;
+      case 'CAST':
+        return castTypes.has(node.cast_type?.id) && constantOnly(node.child);
+      case 'FUNCTION':
+        return (
+          scalarFunctions.has(node.function_name) &&
+          !!map.entries[`function:${node.function_name}/${node.children.length}`] &&
+          node.children.every(constantOnly)
+        );
+      case 'OPERATOR':
+        return (
+          [
+            'OPERATOR_NOT',
+            'OPERATOR_COALESCE',
+            'COMPARE_IN',
+            'COMPARE_NOT_IN',
+            'OPERATOR_IS_NULL',
+            'OPERATOR_IS_NOT_NULL',
+          ].includes(node.type) && node.children.every(constantOnly)
+        );
+      case 'CONJUNCTION':
+        return node.children.every(constantOnly);
+      case 'COMPARISON':
+        return constantOnly(node.left) && constantOnly(node.right);
+      case 'BETWEEN':
+        return [node.input, node.lower, node.upper].every(constantOnly);
+      case 'CASE':
+        return (
+          node.case_checks.every(
+            (c) => constantOnly(c.when_expr) && constantOnly(c.then_expr),
+          ) && constantOnly(node.else_expr)
+        );
+      default:
+        return false;
+    }
+  };
+  let cache = constantCaches.get(conn);
+  if (!cache) constantCaches.set(conn, (cache = new Map()));
+  const values = new Map(),
+    comparisons = [];
+  const constants = [];
+  forObjects(ast, (node) => {
+    if (node.class === 'COMPARISON') comparisons.push(node);
+    if (constantOnly(node)) constants.push(node);
   });
-  for (const n of comparisons)
-    for (const operand of [n.left, n.right]) {
-      if (!literal(operand)) continue;
-      const select = {
-        error: false,
-        statements: [
-          {
-            node: {
-              type: 'SELECT_NODE',
-              modifiers: [],
-              cte_map: { map: [] },
-              select_list: [operand],
-              from_table: {
-                type: 'EMPTY',
-                alias: '',
-                sample: null,
-                query_location: 0,
-              },
-              where_clause: null,
-              group_expressions: [],
-              group_sets: [],
-              aggregate_handling: 'STANDARD_HANDLING',
-              having: null,
-              sample: null,
-              qualify: null,
-            },
-            named_param_map: [],
+  for (const operand of constants) {
+    const select = {
+      error: false,
+      statements: [
+        {
+          node: {
+            type: 'SELECT_NODE',
+            modifiers: [],
+            cte_map: { map: [] },
+            select_list: [structuredClone(operand)],
+            from_table: { type: 'EMPTY', alias: '', sample: null, query_location: 0 },
+            where_clause: null,
+            group_expressions: [],
+            group_sets: [],
+            aggregate_handling: 'STANDARD_HANDLING',
+            having: null,
+            sample: null,
+            qualify: null,
           },
-        ],
-      };
-      forObjects(select, (n) => {
-        if ('query_location' in n) n.query_location = 0;
-      });
-      const data = JSON.stringify(select).replaceAll("'", "''");
+          named_param_map: [],
+        },
+      ],
+    };
+    forObjects(select, (node) => {
+      if ('query_location' in node) node.query_location = 0;
+    });
+    const key = JSON.stringify(select);
+    if (!cache.has(key)) {
+      const literal = (sql) => "'" + sql.replaceAll("'", "''") + "'";
       try {
-        // json_deserialize_sql restores the exact parsed expression including casts.
         const sql = (
-          await conn.query(`SELECT system.main.json_deserialize_sql('${data}') AS sql`)
-        ).toArray()[0].sql;
-        const value = (
+          await conn.query(`SELECT system.main.json_deserialize_sql(${literal(key)}) AS sql`)
+        )
+          .toArray()[0]
+          .sql.replace(/;\s*$/, '');
+        const type = (
           await conn.query(
-            `SELECT CAST(c AS DOUBLE) AS v FROM (${sql.replace(/;\s*$/, '')}) folded(c)`,
+            `SELECT typeof(c) AS t, c AS evaluated_value FROM (${sql}) folded(c)`,
           )
-        ).toArray()[0];
-        const v = value.v;
-        if (v !== null && ['number', 'bigint'].includes(typeof v) && Number(v) === 0) {
-          const e = map.entries['rule:zero'];
-          if (!e) result.errors.push('unmapped construct $.comparison: zero');
-          else {
-            result.used.push('rule:zero');
-            for (const id of e.ids) {
-              result.concepts.push(id);
-              if (e.confidence === 'confirmed') result.confirmed.push(id);
-            }
-          }
-        }
-      } catch (e) {
-        result.errors.push(`Constant inspection failed: ${e.message}`);
+        ).toArray()[0].t;
+        const numeric =
+          /^(?:U?(?:TINYINT|SMALLINT|INTEGER|BIGINT|HUGEINT)|FLOAT|DOUBLE|DECIMAL(?:\(.*\))?)$/.test(
+            type,
+          );
+        // Compare inside DuckDB, retaining decimal/integer precision and NULL.
+        const zero =
+          numeric &&
+          (await conn.query(`SELECT c = 0 AS z FROM (${sql}) folded(c)`)).toArray()[0].z ===
+            true;
+        cache.set(key, { zero });
+      } catch (error) {
+        cache.set(key, { error: error.message });
       }
     }
+    const value = cache.get(key);
+    values.set(operand, value);
+    if (value.error) result.errors.push(`Constant inspection failed: ${value.error}`);
+  }
+  for (const node of comparisons)
+    for (const operand of [node.left, node.right])
+      if (values.get(operand)?.zero) addProof(result, map, 'zero', '$.comparison');
+  result.errors = [...new Set(result.errors)];
   result.concepts = [...new Set(result.concepts)].sort();
   result.confirmed = [...new Set(result.confirmed)].sort();
+  result.used = [...new Set(result.used)];
+  return result;
+}
+function addProof(result, map, name, path) {
+  const key = `rule:${name}`,
+    entry = map.entries[key];
+  if (!entry) result.errors.push(`unmapped construct ${path}: ${name}`);
+  else {
+    result.used.push(key);
+    result.concepts.push(...entry.ids);
+    if (entry.confidence === 'confirmed') result.confirmed.push(...entry.ids);
+  }
+}
+// Relation objects and column positions come from inspectScope, not spellings.
+// A conjunctive equality must join opposite inputs, and the tested right key
+// must be that same column. OR, NOT and nested queries cannot establish a key.
+export function detectScopeProofs(facts, result, map = CONCEPT_MAP) {
+  // Binding fills provide columns, not new teaching claims. Confirm only
+  // concepts already detected in the authored (unfilled) tree.
+  const detected = new Set(result.concepts);
+  const prove = (name) => {
+    const entry = map.entries[`rule:${name}`] ?? CONCEPT_MAP.entries[`rule:${name}`];
+    if (entry.ids.every((id) => detected.has(id))) addProof(result, map, name, '$.scope');
+  };
+  const same = (a, b) => a && b && a.input === b.input && a.index === b.index;
+  const equalities = (node) =>
+    node?.type === 'COMPARE_EQUAL'
+      ? [node]
+      : node?.type === 'CONJUNCTION_AND'
+        ? node.children.flatMap(equalities)
+        : [];
+  for (const query of facts.queries) {
+    if (query.node.group_expressions.length && query.hasJoin) prove('join_group');
+    for (const join of query.joins) {
+      if (join.node.join_type !== 'LEFT') continue;
+      for (const eq of equalities(join.node.condition)) {
+        const a = facts.references.get(eq.left),
+          b = facts.references.get(eq.right);
+        const right =
+          join.left.includes(a?.input) && join.right.includes(b?.input)
+            ? b
+            : join.left.includes(b?.input) && join.right.includes(a?.input)
+              ? a
+              : null;
+        if (
+          right &&
+          query.nulls.some(
+            (n) =>
+              n.type === 'OPERATOR_IS_NULL' && same(facts.references.get(n.children[0]), right),
+          )
+        ) {
+          prove('orphan_proof');
+          prove('unmatched_null');
+        }
+      }
+    }
+  }
+  result.concepts = [...new Set(result.concepts)].sort();
+  result.confirmed = [...new Set(result.confirmed)].sort();
+  result.used = [...new Set(result.used)];
   return result;
 }
