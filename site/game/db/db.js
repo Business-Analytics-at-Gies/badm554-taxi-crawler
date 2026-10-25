@@ -3,13 +3,13 @@
 // Contract: docs/interfaces.md part 3. No function throws for SQL errors; they return { error }.
 import { FLOOR_IDS, validFloor, floorError } from '../../floors/catalog.js';
 import * as duckdb from '../../vendor/duckdb/duckdb-browser.mjs';
-import { cleanError, nativeReadPolicy, nativeStatements } from './sql.js';
+import { cleanError, nativeReadPolicy, nativeStatements, foldIdentifier } from './sql.js';
 import { lessonStatements } from './lesson-policy.mjs';
 import { answerPolicy } from './answer-policy.js';
-import { errorTableNames } from './error-help.js';
+import { errorTableNames, needsColumnHelp } from './error-help.js';
 import {
   BASE, FLOORS, HIDDEN_SCHEMAS, PLANT_ID_START, PLANT_KINDS, TUTOR,
-  checkFloor, floorSetupSql, learner, plantSelectSql, qs, referenceBuildSql,
+  checkFloor, floorSetupSql, learner, plantSelectSql, qi, qs, referenceBuildSql,
 } from './floors.js';
 
 export const LIMITS = Object.freeze({
@@ -588,13 +588,48 @@ async function inspectTable(name, { rows = 0, source = 'scratch' } = {}, n = cur
 // Binding errors keep their original message. Help reads metadata only, on the same
 // workspace snapshot or the Answer worker's pristine given tables, never by running SQL.
 async function addColumnHelp(result, sql, source, n = current) {
-  if (!/Referenced column .*not found|does not have a column named|column .*does not exist|Table with name .*does not exist/i.test(result.error ?? '')) return result;
+  if (!needsColumnHelp(result.error)) return result;
   try {
-    const parser = source === 'answer' ? (await answerCopy(n)).parser : eng.parser;
-    const schema = source === 'answer' ? 'main' : learner(n);
+    const copy = source === 'answer' ? await answerCopy(n) : null;
+    const parser = copy?.parser ?? eng.parser;
     result.errorHelp = [];
-    for (const table of await errorTableNames(parser, sql, schema)) {
-      result.errorHelp.push({ table, ...await inspectTable(table, { source }, n) });
+    for (const reference of await errorTableNames(parser, sql)) {
+      const parts = reference.parts.map(foldIdentifier);
+      if (source === 'answer') {
+        if (parts.length !== 1 || !Object.keys(FLOORS[n].given).some(name => foldIdentifier(name) === parts[0])) continue;
+      } else if (parts.slice(0, -1).some(part => [BASE, TUTOR, 'answers', 'system', ...FLOOR_IDS.map(id => `_ref${id}`),
+        ...FLOOR_IDS.filter(id => id !== n).map(learner)].includes(part))) continue;
+      const read = async conn => {
+        try {
+          // Bind a trusted, same-name rename plan, but NEVER execute it. This asks
+          // DuckDB's catalog resolver for its actual catalog/schema, including temp
+          // and search paths. DESCRIBE would force a view rebind and can run a
+          // nextval() table-function argument a second time merely to get columns.
+          const bindingSql = `ALTER TABLE ${reference.parts.map(qi).join('.')} RENAME TO ${qi(reference.parts.at(-1))}`;
+          const [serialized] = await connectionRows(conn, `SELECT system.main.json_serialize_plan(${qs(bindingSql)}, optimize := false) AS binding`);
+          const plan = JSON.parse(serialized.binding);
+          const bound = plan.plans?.[0]?.info;
+          if (plan.error || plan.plans?.length !== 1 || plan.plans[0].type !== 'LOGICAL_ALTER'
+              || bound?.alter_table_type !== 'RENAME_TABLE' || !['catalog', 'schema', 'name'].every(key => typeof bound[key] === 'string')) {
+            throw new Error('Table binding was unavailable.');
+          }
+          const hidden = [BASE, TUTOR, 'answers', 'system', ...FLOOR_IDS.map(id => `_ref${id}`),
+            ...FLOOR_IDS.filter(id => id !== n).map(learner)];
+          if (hidden.includes(foldIdentifier(bound.catalog)) || hidden.includes(foldIdentifier(bound.schema))) return null;
+          if (copy && (bound.catalog !== 'memory' || bound.schema !== 'main')) return null;
+          // Read stored metadata, not the view definition or generated expressions.
+          // translate folds ASCII only, matching DuckDB identifier comparison.
+          const description = await connectionRows(conn, `SELECT column_name, data_type FROM system.main.duckdb_columns()
+            WHERE database_name = ${qs(bound.catalog)} AND schema_name = ${qs(bound.schema)}
+              AND system.main.translate(table_name, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') = ${qs(foldIdentifier(bound.name))}
+            ORDER BY column_index`);
+          return { ok: true, table: reference.table, columns: description.map(column => ({ name: column.column_name, type: column.data_type })), rows: [] };
+        } catch {
+          return { ok: false, table: reference.table, error: `Table ${reference.table} does not exist or its columns could not be read in ${source === 'answer' ? 'the given tables' : 'Scratch'}.` };
+        }
+      };
+      const entry = copy ? await read(copy.lc) : await learnerRead(conn => read(conn));
+      if (entry) result.errorHelp.push(entry);
     }
   } catch { /* Explanatory help must never replace the original failure. */ }
   return result;
