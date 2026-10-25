@@ -12,6 +12,13 @@ Run answer displays the result; Check floor grades it against pristine given tab
 without using or changing Scratch tables. Floor 3 returns every trip once with a reason
 column (NULL for clean trips). See [the R1 contract](docs/v2/stage2-resume-2026-10-23.md).
 
+Column errors keep the engine's explanation and add the relevant table columns:
+Scratch uses your workspace; Answer uses the original given tables. Query history
+below Result labels Scratch and Answer runs, including failures and cancellations.
+Load restores the full query to its original box without running it; Undo load
+restores that box's previous text. Each floor keeps its last 20 runs until Restart
+floor or a page reload. See [the R5 verification](docs/v2/stage2-r5-verification.md).
+
 Failed rules have a local three-step hint ladder: what is wrong, an idea with a
 SQL refresher link, then an inspection outline with blanks. Repeated failures
 advance each rule separately, even with the tutor closed. Passing a rule resets

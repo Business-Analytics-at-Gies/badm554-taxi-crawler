@@ -6,6 +6,7 @@ import * as duckdb from '../../vendor/duckdb/duckdb-browser.mjs';
 import { cleanError, nativeReadPolicy, nativeStatements } from './sql.js';
 import { lessonStatements } from './lesson-policy.mjs';
 import { answerPolicy } from './answer-policy.js';
+import { errorTableNames } from './error-help.js';
 import {
   BASE, FLOORS, HIDDEN_SCHEMAS, PLANT_ID_START, PLANT_KINDS, TUTOR,
   checkFloor, floorSetupSql, learner, plantSelectSql, qs, referenceBuildSql,
@@ -37,6 +38,7 @@ let plantSeq = 0;
 let tables = [];
 let lastCheck = null;
 let running = null; // learner query control; tutor work never owns this slot
+const learnerRuns = new Set(); // includes queued runs and Answer-worker startup
 let tutorRunning = null;
 let queue = Promise.resolve();
 let tutorQueue = Promise.resolve(), tutorEpoch = 0, activeTutor = null;
@@ -53,6 +55,12 @@ function serial(fn) {
   const p = queue.then(fn);
   queue = p.then(() => {}, () => {});
   return p;
+}
+
+function learnerRun(fn) {
+  const request = { cancelled: false };
+  learnerRuns.add(request);
+  return serial(() => fn(request)).finally(() => learnerRuns.delete(request));
 }
 
 // The tutor waits for earlier learner setup, but learners never wait on tutor SQL.
@@ -487,14 +495,15 @@ export async function runLesson(pack, sql) {
 
 /** The learner's console. Statements run in order; the last one's result comes back. */
 export function query(sql, { timeoutMs = LIMITS.timeoutMs } = {}) {
-  return serial(async () => {
+  return learnerRun(async request => {
     try { await ensure(); } catch (e) { return empty({ ms: 0, error: msg(e) }); }
     if (!current) return empty({ ms: 0, error: 'No floor is loaded yet.' });
     const n = current;
     let stmts = [], parseError;
     try { stmts = await nativeStatements(eng.parser, sql); } catch(e) { parseError = msg(e); }
     if (!stmts.length && !parseError) return empty({ ms: 0, error: 'Nothing to run.' });
-    const r = parseError ? { columns: [], rows: [], rowCount: 0, truncated: false, executed: 0, ms: 0, error: parseError }
+    const r = request.cancelled ? empty({ ms: 0, executed: 0, error: 'Query stopped.' })
+      : parseError ? { columns: [], rows: [], rowCount: 0, truncated: false, executed: 0, ms: 0, error: parseError }
       : await execStatements(eng.lc, stmts, { maxRows: LIMITS.learnerRows, timeoutMs });
     // Record every successfully executed native statement. Replaying reads as well
     // also preserves effects such as SELECT nextval(), without guessing from SQL text.
@@ -511,9 +520,10 @@ export function query(sql, { timeoutMs = LIMITS.timeoutMs } = {}) {
     const result = { columns: r.columns, rows: r.rows, rowCount: r.rowCount, truncated: r.truncated, ms: r.ms };
     if (error) result.error = error;
     if (r.executed > 0 || r.hung || r.fatal) await refreshTables();
+    await addColumnHelp(result, stmts[r.executed] ?? sql, 'scratch', n);
     const entry = { sql: String(sql).slice(0, LIMITS.querySqlChars), rowCount: error ? null : r.rowCount, error: error ?? null };
     floors[n].lastQueries = [...floors[n].lastQueries, entry].slice(-LIMITS.lastQueries);
-    floors[n].history = [...floors[n].history, { ...entry, sql: String(sql), ms: r.ms, at: new Date().toISOString() }].slice(-LIMITS.history);
+    floors[n].history = [...floors[n].history, { ...entry, source: 'scratch', sql: String(sql), ms: r.ms, at: new Date().toISOString() }].slice(-LIMITS.history);
     emit('query', { floor: n, ...entry, ms: r.ms });
     return result;
   });
@@ -525,45 +535,69 @@ export async function history(n = current) {
 }
 
 /** Read only an active-floor table's columns and up to ten rows, without recording a run. */
-export function inspect(name, { rows = 0 } = {}) {
-  return serial(async () => {
-    const refused = () => ({ ok: false, error: 'Choose an existing table on the current floor using its bare name.' });
-    if (!current) return { ok: false, error: 'No floor is loaded yet.' };
-    if (typeof name !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return refused();
-    try {
-      await ensure();
-      return await learnerRead(async (conn, { learnerTransactionOpen }) => {
-        const schema = learner(current);
-        // The immutable system catalog cannot be replaced by a learner macro or view. All
-        // metadata and rows use the learner's same snapshot, including uncommitted DDL.
-        const matches = await connectionRows(conn, `SELECT table_name FROM system.main.duckdb_tables()
-          WHERE database_name = 'memory' AND schema_name = ${qs(schema)}
-            AND system.main.lower(table_name) = ${qs(name.toLowerCase())} AND NOT internal`);
-        if (!matches.length) return refused();
-        const table = matches[0].table_name;
-        const target = `memory.${schema}."${table.replace(/"/g, '""')}"`;
-        const description = await connectionRows(conn, `SELECT column_name, data_type FROM system.main.duckdb_columns()
-          WHERE database_name = 'memory' AND schema_name = ${qs(schema)} AND table_name = ${qs(table)} ORDER BY column_index`);
-        const count = typeof rows === 'number' && Number.isFinite(rows) ? Math.min(LIMITS.inspectRows, Math.max(0, Math.floor(rows))) : 0;
-        const result = { ok: true, table, columns: description.map((c) => ({ name: c.column_name, type: c.data_type })), rows: [] };
-        if (count) {
-          // Even a physical table can evaluate generated expressions on SELECT. A failure
-          // would abort the learner's open transaction; a success can still advance sequences.
-          if (learnerTransactionOpen) return {
-            ...result,
-            previewSkipped: 'Preview skipped while your transaction is open. Commit or roll back to preview rows.',
-          };
-          const r = await execStatements(conn, [`SELECT * FROM ${target} LIMIT ${count}`], { maxRows: count, timeoutMs: LIMITS.timeoutMs });
-          if (r.hung || r.fatal) await restartEngine('inspection stopped');
-          if (r.error) return { ok: false, error: 'The table preview could not be read.' };
-          result.rows = r.rows;
-        }
-        return result;
-      });
-    } catch {
-      return { ok: false, error: 'The table could not be inspected.' };
+export function inspect(name, options = {}) {
+  return serial(() => inspectTable(name, options));
+}
+
+// Also used from within an already serialized learner run; never queues behind itself.
+async function inspectTable(name, { rows = 0, source = 'scratch' } = {}, n = current) {
+  const refused = () => ({ ok: false, error: 'Choose an existing table on the current floor using its bare name.' });
+  if (!current) return { ok: false, error: 'No floor is loaded yet.' };
+  if (typeof name !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return refused();
+  if (!['scratch', 'answer'].includes(source)) return refused();
+  try {
+    await ensure();
+    const read = async (conn, schema, { learnerTransactionOpen = false } = {}) => {
+      // The immutable system catalog cannot be replaced by a learner macro or view. All
+      // metadata and rows use the learner's same snapshot, including uncommitted DDL.
+      const matches = await connectionRows(conn, `SELECT table_name FROM system.main.duckdb_tables()
+        WHERE database_name = 'memory' AND schema_name = ${qs(schema)}
+          AND system.main.lower(table_name) = ${qs(name.toLowerCase())} AND NOT internal`);
+      if (!matches.length) return { ok: false, table: name, error: `Table ${name} does not exist in ${source === 'answer' ? 'the given tables' : 'Scratch'}.` };
+      const table = matches[0].table_name;
+      const target = `memory.${schema}."${table.replace(/"/g, '""')}"`;
+      const description = await connectionRows(conn, `SELECT column_name, data_type FROM system.main.duckdb_columns()
+        WHERE database_name = 'memory' AND schema_name = ${qs(schema)} AND table_name = ${qs(table)} ORDER BY column_index`);
+      const count = typeof rows === 'number' && Number.isFinite(rows) ? Math.min(LIMITS.inspectRows, Math.max(0, Math.floor(rows))) : 0;
+      const result = { ok: true, table, columns: description.map((c) => ({ name: c.column_name, type: c.data_type })), rows: [] };
+      if (count) {
+        // Even a physical table can evaluate generated expressions on SELECT. A failure
+        // would abort the learner's open transaction; a success can still advance sequences.
+        if (learnerTransactionOpen) return {
+          ...result,
+          previewSkipped: 'Preview skipped while your transaction is open. Commit or roll back to preview rows.',
+        };
+        const r = await execStatements(conn, [`SELECT * FROM ${target} LIMIT ${count}`], { maxRows: count, timeoutMs: LIMITS.timeoutMs });
+        if (r.hung || r.fatal) await restartEngine('inspection stopped');
+        if (r.error) return { ok: false, error: 'The table preview could not be read.' };
+        result.rows = r.rows;
+      }
+      return result;
+    };
+    if (source === 'answer') {
+      if (!Object.keys(FLOORS[n].given).some(table => table.toLowerCase() === name.toLowerCase())) return refused();
+      const copy = await answerCopy(n);
+      return await read(copy.sys, 'main');
     }
-  });
+    return await learnerRead((conn, transaction) => read(conn, learner(n), transaction));
+  } catch {
+    return { ok: false, error: 'The table could not be inspected.' };
+  }
+}
+
+// Binding errors keep their original message. Help reads metadata only, on the same
+// workspace snapshot or the Answer worker's pristine given tables, never by running SQL.
+async function addColumnHelp(result, sql, source, n = current) {
+  if (!/Referenced column .*not found|does not have a column named|column .*does not exist|Table with name .*does not exist/i.test(result.error ?? '')) return result;
+  try {
+    const parser = source === 'answer' ? (await answerCopy(n)).parser : eng.parser;
+    const schema = source === 'answer' ? 'main' : learner(n);
+    result.errorHelp = [];
+    for (const table of await errorTableNames(parser, sql, schema)) {
+      result.errorHelp.push({ table, ...await inspectTable(table, { source }, n) });
+    }
+  } catch { /* Explanatory help must never replace the original failure. */ }
+  return result;
 }
 
 async function tutorExec(sql, maxRows, wrap, epoch) {
@@ -708,16 +742,23 @@ export function undoExperiments() {
   });
 }
 
-// Execute and materialize only in a SELECT-only worker. Its given tables are pristine;
-// neither learner SQL nor tutor SQL ever executes in the separate trusted checker worker.
-async function answerResult(n, sql, timeoutMs = LIMITS.timeoutMs) {
+// Reuse a SELECT-only worker containing this floor's pristine given tables.
+async function answerCopy(n) {
   let copy = answerCopies.get(n);
   if (!copy || copy.broken) {
     copy?.close();
     copy = await startEngine(null, () => {}, n);
     answerCopies.set(n, copy);
   }
+  return copy;
+}
+
+// Learner SQL never executes in the separate trusted checker worker.
+async function answerResult(n, sql, timeoutMs = LIMITS.timeoutMs, request = null) {
+  const copy = await answerCopy(n);
+  if (request?.cancelled) return empty({ error: 'Query stopped.' });
   const policy = await answerPolicy(copy.parser, sql, Object.keys(FLOORS[n].given));
+  if (request?.cancelled) return empty({ error: 'Query stopped.' });
   if (policy.error) return policy;
   try {
     const made = await execStatements(copy.lc, [`CREATE TABLE answers.result AS ${policy.sql}`], { maxRows: 0, timeoutMs });
@@ -733,17 +774,18 @@ async function answerResult(n, sql, timeoutMs = LIMITS.timeoutMs) {
 
 /** Run the Answer box, recording an ordinary run but leaving Scratch untouched. */
 export function queryAnswer(sql, { timeoutMs = LIMITS.timeoutMs } = {}) {
-  return serial(async () => {
+  return learnerRun(async request => {
     if (!current) return empty({ ms: 0, error: 'No floor is loaded yet.' });
     const n = current, start = performance.now();
     let out;
     try {
-      const result = await answerResult(n, sql, timeoutMs);
+      const result = await answerResult(n, sql, timeoutMs, request);
       if (result.refused) return empty({ ms: 0, ...result });
       if (result.error) out = empty({ error: result.error });
       else out = await readAll({ schema: result.table.schema, async *[Symbol.asyncIterator]() { yield* result.table.batches; } }, LIMITS.learnerRows, {});
     } catch (error) { out = empty({ error: msg(error) }); }
     out.ms = Math.round(performance.now() - start);
+    await addColumnHelp(out, sql, 'answer', n);
     const entry = { source: 'answer', sql: String(sql).slice(0, LIMITS.querySqlChars), rowCount: out.error ? null : out.rowCount, error: out.error ?? null };
     floors[n].lastQueries = [...floors[n].lastQueries, entry].slice(-LIMITS.lastQueries);
     floors[n].history = [...floors[n].history, { ...entry, sql: String(sql), ms: out.ms, at: new Date().toISOString() }].slice(-LIMITS.history);
@@ -760,7 +802,7 @@ export function check(n, sql = '') {
       await ensure();
       if (!floors[n]) return { pass: false, rules: [], error: `Floor ${n} is not loaded yet.` };
       const answer = await answerResult(n, sql);
-      if (answer.error) return { pass: false, rules: [], ...answer };
+      if (answer.error) return { pass: false, rules: [], ...await addColumnHelp(answer, sql, 'answer', n) };
       interruptTutor();
       if (!answerTruth || answerTruth.broken) {
         answerTruth?.close();
@@ -779,7 +821,10 @@ export function check(n, sql = '') {
 
 /** Stop the learner's or tutor's running query. */
 export async function cancel() {
-  const control = running ?? tutorRunning;
+  if (running) { running.stop('cancel'); return { ok: true }; }
+  const request = learnerRuns.values().next().value;
+  if (request) { request.cancelled = true; return { ok: true }; }
+  const control = tutorRunning;
   if (!control) { if (activeTutor) { interruptTutor(); return {ok:true}; } return {ok:false}; }
   control.stop('cancel');
   return { ok: true };

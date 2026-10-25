@@ -23,6 +23,8 @@ let lastCheck = null;
 let running = false;
 let codes = readCodes();
 const answerRows = {};
+const historyUndo = new Map(); // one reversible Load per floor, remembering its source box
+let historyVersion = 0;
 const hintLadder = createHintLadder({ getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) });
 let previewTable = null;
 let previewVersion = 0;
@@ -91,7 +93,60 @@ function setEngine(state, text) {
   $('engine-status').textContent = text;
   $('engine-status').classList.toggle('bad', state === 'error');
   for (const id of ['run-btn', 'run-answer-btn', 'check-btn', 'restart-btn', 'undo-btn']) $(id).disabled = state !== 'ready' || (running && id !== 'cancel-btn');
+  updateHistoryButtons();
 }
+
+function updateHistoryButtons() {
+  const disabled = running || engine !== 'ready';
+  for (const button of $('history-list').querySelectorAll('button')) button.disabled = disabled;
+  $('history-undo').disabled = disabled || !historyUndo.has(floor);
+}
+
+async function renderHistory() {
+  const n = floor, version = ++historyVersion;
+  const entries = db?.history ? await db.history(n) : [];
+  if (version !== historyVersion || n !== floor) return;
+  const list = $('history-list');
+  list.replaceChildren();
+  $('history-empty').hidden = entries.length > 0;
+  for (const entry of entries) {
+    const source = entry.source === 'answer' ? 'answer' : 'scratch';
+    const li = document.createElement('li');
+    const label = document.createElement('span');
+    label.className = 'history-source'; label.textContent = source;
+    const sql = document.createElement('pre');
+    sql.className = 'history-sql'; sql.textContent = entry.sql;
+    const outcome = document.createElement('p');
+    outcome.className = 'history-outcome';
+    outcome.textContent = entry.error ? `Error: ${friendlyError(entry.error)}` : `${fmt(entry.rowCount)} row${entry.rowCount === 1 ? '' : 's'} · ${fmt(entry.ms)} ms`;
+    const load = document.createElement('button');
+    load.type = 'button'; load.className = 'btn btn-quiet'; load.textContent = 'Load';
+    load.addEventListener('click', () => {
+      if (running || engine !== 'ready' || n !== floor) return;
+      const box = $(source === 'answer' ? 'answer-input' : 'sql-input');
+      historyUndo.set(n, { source, text: box.value });
+      box.value = entry.sql;
+      if (source === 'answer') saveAnswer();
+      $('history-status').textContent = `Loaded into ${source === 'answer' ? 'Answer' : 'Scratch'}. Nothing ran. Undo load restores its previous text.`;
+      updateHistoryButtons();
+      box.focus();
+    });
+    li.append(label, sql, outcome, load); list.append(li);
+  }
+  updateHistoryButtons();
+}
+
+$('history-undo').addEventListener('click', () => {
+  const previous = historyUndo.get(floor);
+  if (!previous || running || engine !== 'ready') return;
+  const box = $(previous.source === 'answer' ? 'answer-input' : 'sql-input');
+  box.value = previous.text;
+  if (previous.source === 'answer') saveAnswer();
+  historyUndo.delete(floor);
+  $('history-status').textContent = `Restored the previous ${previous.source === 'answer' ? 'Answer' : 'Scratch'} text. Nothing ran.`;
+  updateHistoryButtons();
+  box.focus();
+});
 
 async function refreshTables() {
   if (!db || engine !== 'ready') return;
@@ -203,6 +258,7 @@ function renderResult(r) {
   const status = $('result-status');
   const table = $('result-table');
   table.replaceChildren();
+  renderErrorHelp($('error-help'), r.errorHelp);
   if (r.error) {
     status.textContent = `Error: ${friendlyError(r.error)}`;
     status.classList.add('bad');
@@ -211,6 +267,24 @@ function renderResult(r) {
   status.classList.remove('bad');
   status.textContent = `${fmt(r.rowCount)} row${r.rowCount === 1 ? '' : 's'}${r.truncated ? `, showing the first ${fmt(r.rows.length)}` : ''} · ${fmt(r.ms ?? 0)} ms`;
   renderTable(table, r.columns, r.rows);
+}
+
+function renderErrorHelp(container, tables = []) {
+  container.replaceChildren();
+  for (const table of tables) {
+    const title = document.createElement('h4');
+    title.textContent = `Column help: ${table.table}`;
+    container.append(title);
+    if (!table.ok) {
+      const message = document.createElement('p'); message.textContent = table.error; container.append(message);
+      continue;
+    }
+    const list = document.createElement('ul'); list.className = 'columns-list';
+    for (const column of table.columns) {
+      const li = document.createElement('li'); li.textContent = `${column.name} · ${column.type}`; list.append(li);
+    }
+    container.append(list);
+  }
 }
 
 function renderTable(table, columns, rows) {
@@ -250,12 +324,11 @@ async function lightResult(r) {
 async function runSql(source = 'scratch') {
   const answer = source === 'answer';
   const text = $(answer ? 'answer-input' : 'sql-input').value;
-  const sql = answer ? text : text.trim();
-  if ((!sql && !answer) || running || engine !== 'ready') return;
+  const sql = text;
+  if ((!sql.trim() && !answer) || running || engine !== 'ready') return;
   const runFloor = floor;
   running = true;
-  $('run-btn').disabled = true;
-  $('run-answer-btn').disabled = true;
+  setEngine(engine, $('engine-status').textContent);
   $('cancel-btn').hidden = false;
   if (!answer) {
     $('result-status').classList.remove('bad');
@@ -287,6 +360,8 @@ async function checkFloor() {
     if (r.error && !(r.rules || []).length) {
       lastCheck = { floor: n, pass: false, rules: [], error: friendlyError(r.error) };
       out.textContent = `The check could not run: ${friendlyError(r.error)}`;
+      const help = document.createElement('div'); help.className = 'error-help';
+      renderErrorHelp(help, r.errorHelp); out.append(help);
       return;
     }
     lastCheck = { floor: n, pass: !!r.pass, rules: r.rules || [] };
@@ -383,7 +458,11 @@ async function setFloor(n) {
   showSavedCodes(n);
   $('check-result').replaceChildren();
   $('result-table').replaceChildren();
+  $('error-help').replaceChildren();
   $('result-status').textContent = '';
+  $('history-list').replaceChildren();
+  $('history-status').textContent = '';
+  historyVersion++;
   lastCheck = null;
   if (!db || engine === 'error') return;
   setEngine('loading', `Loading floor ${n}…`);
@@ -392,6 +471,7 @@ async function setFloor(n) {
   map.setFloor(n, d.error ? [] : d.rows);
   setEngine('ready', `Floor ${n} is ready.`);
   await refreshTables();
+  await renderHistory();
   emit({ type: 'floor', floor: n });
 }
 
@@ -420,6 +500,7 @@ $('undo-btn').addEventListener('click', async () => { await db.undoExperiments()
 $('restart-btn').addEventListener('click', async () => {
   if (!confirm(`Restart floor ${floor}? Your tables on this floor will be removed.`)) return;
   await db.restartFloor(floor);
+  historyUndo.delete(floor);
   hintLadder.reset(floor);
   delete answerRows[floor];
   await setFloor(floor);
@@ -463,6 +544,7 @@ const ready = (async () => {
     (db.addEventListener || (() => {}))('db', e => {
       if (e.detail?.type === 'worker-restarted') { $('result-status').textContent = 'The SQL engine restarted and reloaded the floor.'; refreshTables(); }
       if (['query', 'plant', 'restart'].includes(e.detail?.type)) refreshTables();
+      if (['query', 'restart'].includes(e.detail?.type)) renderHistory();
     });
     engine = 'ready';
     await setFloor(floor);

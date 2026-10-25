@@ -151,6 +151,22 @@
         "Check floor advances only the rules that fail: rung 1 explains the problem, rung 2 links an idea to the SQL refresher, and rung 3 gives an inspection query outline with blanks. Complete it in Scratch to investigate; it is not a finished answer. Ladders survive reload and floor switches. A pass or Restart floor resets the relevant ladders, even with the tutor closed.",
         "Each rule has a separate Check floor counter in this browser, capped at rung 3: problem, idea with refresher link, then an inspection outline with blanks. A parser error or refused answer does not advance it. Passing a rule resets that counter; a full pass or Restart floor resets this floor. Other floors keep their counters. The tutor does not control these hints."
       ]
+    },
+    {
+      "id": "error-help",
+      "levels": [
+        "If a column name fails during your clean-trip and quarantine checks, Result keeps the original error and adds Column help below it. Use the listed columns and types to check the spelling. Scratch shows your current workspace tables; Answer shows the original given tables, even if Scratch changed or dropped them.",
+        "Column help appears below a column error in Result. For a join or a query in steps, it lists the underlying tables named in the failing statement. Scratch lists workspace columns, or says that the table does not exist. Answer always lists original given-table columns. Fix the name in the box that produced the error, then run it again.",
+        "Column help quietly reads table columns and types without adding another run or changing either box. Scratch uses current workspace metadata; Answer uses pristine given-table metadata. The original engine error stays visible. If a later statement in a Scratch run fails, help describes that statement’s tables. A failed Check floor shows Answer column help in the check feedback and leaves Result alone."
+      ]
+    },
+    {
+      "id": "query-history",
+      "levels": [
+        "Query history is below Result. Use it to revisit your clean-trip and quarantine checks: entries are labelled scratch or answer, including failed and cancelled runs. Load puts the full query back into its original box without running it. Undo load restores that box’s exact previous text. Switching floors keeps each list; Restart floor clears only that floor’s list.",
+        "Query history below Result keeps the last 20 runs on each floor for this page session, including failures and cancellations. Each scratch or answer label tells you which box Load will fill. Load never runs SQL or changes Result; Undo load restores the exact text that was in that box. Switching away and back keeps the list. Restart floor clears that floor’s list; reloading the page clears all lists.",
+        "Use Query history below Result to compare earlier attempts. It keeps full SQL, including queries longer than 1,000 characters, for the last 20 runs per floor. Entries are labelled scratch or answer and include errors and cancellations. Load fills the original box without running anything; Undo load restores that box’s exact previous text. Floor switches preserve each list. Restart floor clears only that floor’s list and pending Undo; a page reload clears every list."
+      ]
     }
   ],
   "module": "M7",

@@ -58,8 +58,17 @@
     <div id="result" class="result" tabindex="-1">
       <h3 id="result-h">Result</h3>
       <p id="result-status" class="result-status" role="status"></p>
+      <div id="error-help" class="error-help" aria-live="polite"></div>
       <div class="table-wrap" id="result-wrap" tabindex="0" role="region" aria-labelledby="result-h"><table id="result-table"></table></div>
     </div>
+    <details id="query-history" class="query-history" open>
+      <summary>Query history · this floor</summary>
+      <p class="help">Last 20 runs, labelled scratch or answer. Load puts the full query back in its original box without running it. Undo load restores that box’s previous text. Floor switches keep the list; Restart floor or reloading this page clears it.</p>
+      <p id="history-empty" class="help">No runs on this floor yet.</p>
+      <ol id="history-list"></ol>
+      <button type="button" id="history-undo" class="btn btn-quiet" disabled>Undo load</button>
+      <p id="history-status" class="help" role="status"></p>
+    </details>
   </section>
 
   <section id="table-preview" class="g-preview" aria-labelledby="preview-title" tabindex="-1" hidden>
