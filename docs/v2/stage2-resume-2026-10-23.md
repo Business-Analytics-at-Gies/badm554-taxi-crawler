@@ -618,11 +618,18 @@ As the plan specifies, with these R1 changes:
      and `DELETE FROM name ...`: the target table only. Every other statement gets no list by
      design (for example `CREATE INDEX`, `COMMENT ON`, constraints, `ALTER`, `PIVOT` and
      `UNPIVOT` statements, `MERGE`, `COPY`). A missing list for a statement outside this list is
-     not a defect.
+     not a defect. Each header in (b) and (c) must match its pattern token for token (added after
+     code review 20): `name` is one name or a dotted qualified name, and the token after it must
+     be one the pattern allows (for `UPDATE`: `SET`, or one alias and then `SET`; for `DELETE`:
+     the end, `WHERE`, `USING`, `RETURNING`, or one alias and then one of those; for (b): `(`,
+     `AS`, or the start of the query). Any other token, for example `ONLY` in `UPDATE ONLY t`,
+     means no list.
   3. **Bounded work.** The help makes a fixed, small number of engine calls per failing
      statement, whatever its length: no parse attempt per token or per candidate region.
   4. **Error forms.** Recognition matches the whole diagnostic, including quoted names that hold
-     line breaks. The verification note lists every unknown or missing column form found so far
+     line breaks. Accepted residual (code review 20): a quoted name that holds one of DuckDB's own
+     section markers at the start of a line (`LINE n:`, `Candidate bindings:`, `Did you mean`)
+     may get no list. It must never get a wrong one. The verification note lists every unknown or missing column form found so far
      and how it was found, each with its outcome: a list, or no list by design (no source table,
      as in `SELECT VendorID;`, or a statement outside rule 2). It claims no completeness beyond
      that method.
