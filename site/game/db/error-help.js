@@ -88,22 +88,34 @@ export async function errorTableNames(conn, sql) {
   // Closed R5 scope: one tokenization and at most two more serializations.
   // Never try progressively smaller regions: losing a WITH scope could turn a
   // CTE into an unrelated physical table. An unrecognized wrapper gets no list.
-  const tokens = (await nativeTokens(conn, sql)).filter(token => token.type !== 5);
+  const tokens = await nativeTokens(conn, sql);
   if (tokens.at(-1)?.text === ';') tokens.pop();
   const word = i => tokens[i]?.type === 4 ? foldIdentifier(tokens[i].text) : '';
   // Native token spans can include trailing comments. Read only the spelling of
   // an already native-classified keyword when locating a possible query footer.
   const queryWord = i => tokens[i]?.type === 4
     ? foldIdentifier(tokens[i].text.match(/^[A-Za-z_][A-Za-z_0-9]*/)?.[0] ?? '') : '';
+  const queryParen = i => tokens[i]?.type === 3 ? tokens[i].text.match(/^[()]/)?.[0] : '';
   const bytes = new TextEncoder().encode(sql), decoder = new TextDecoder();
   const text = (start, end = tokens.length) => decoder.decode(bytes.slice(tokens[start]?.start ?? bytes.length, tokens[end]?.start ?? bytes.length));
+  // Native spans run up to the next token and can hold skipped comments. A
+  // header accepts only a complete native word/name/punctuation plus whitespace,
+  // never a name reconstructed from the intervening SQL text. Leading comments
+  // are outside the closed header too. Quoted comment-like text is still a name.
+  if (!/^\s*$/.test(decoder.decode(bytes.slice(0, tokens[0]?.start ?? bytes.length)))) return [];
+  const nameToken = index => {
+    const token = tokens[index];
+    if (![0, 4].includes(token?.type)) return null;
+    const value = token.text;
+    return (/^"(?:[^"]|"")*"$/.test(value) || /^[^\s'"/\-]+$/.test(value)) ? value : null;
+  };
   let i = 0;
   const take = keyword => word(i) === keyword ? (++i, true) : false;
   const identifier = () => {
     const parts = [];
     do {
-      if (![0, 4].includes(tokens[i]?.type)) return null;
-      const value = tokens[i++].text;
+      const value = nameToken(i++);
+      if (value === null) return null;
       parts.push(value.startsWith('"') ? value.slice(1, -1).replaceAll('""', '"') : value);
       if (tokens[i]?.text !== '.') break;
       // Never consume a dot without the following name component. DuckDB
@@ -117,7 +129,7 @@ export async function errorTableNames(conn, sql) {
     if (tokens[i]?.text !== '(') return true;
     i++;
     do {
-      if (![0, 4].includes(tokens[i]?.type)) return false;
+      if (nameToken(i) === null) return false;
       i++;
       if (tokens[i]?.text !== ',') break;
       i++;
@@ -140,13 +152,16 @@ export async function errorTableNames(conn, sql) {
     // target column list. If it is not a list, serialize it intact as the query.
     const start = i;
     if (!columns()) i = start;
-    // Record only the last top-level RETURNING as a possible trailing clause.
-    // A keyword-spelled query alias must never cut a successfully parsed query.
+    // The first top-level RETURNING not directly after AS is the only retry
+    // boundary. Explicit aliases named returning are part of the query, even
+    // when the actual clause later labels one of its columns the same way.
     let depth = 0;
     for (let j = i; j < tokens.length; j++) {
-      if (tokens[j].text === '(') depth++;
-      else if (tokens[j].text === ')') depth--;
-      else if (!depth && queryWord(j) === 'returning') end = j;
+      if (queryParen(j) === '(') depth++;
+      else if (queryParen(j) === ')') depth--;
+      else if (!depth && queryWord(j) === 'returning' && queryWord(j - 1) !== 'as') {
+        end = j; break;
+      }
     }
   } else if (word(i) === 'update' || word(i) === 'delete') {
     const update = take('update');
@@ -160,14 +175,15 @@ export async function errorTableNames(conn, sql) {
     if (!boundary()) {
       // The closed pattern permits one bare alias, then its clause boundary.
       // AS alias and every other extra header token are outside that pattern.
-      if (![0, 4].includes(tokens[i]?.type)) return [];
+      if (nameToken(i) === null) return [];
       i++;
       if (!boundary()) return [];
     }
     // Preserve the native spelling when checking the name slot. Quoting every
     // token would turn a modifier such as ONLY into an unrelated physical name.
     // The SELECT parser must itself identify this as one actual table reference.
-    return await parse(`SELECT * FROM ${text(start, nameEnd)}`) ? [...names.values()] : [];
+    const name = tokens.slice(start, nameEnd).map(token => token.text).join('');
+    return await parse(`SELECT * FROM ${name}`) ? [...names.values()] : [];
   } else return [];
   if (i >= tokens.length) return [];
   // The complete query part has priority. Only its failed serialization permits

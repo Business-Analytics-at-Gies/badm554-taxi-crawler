@@ -6,7 +6,7 @@ Last Updated: 2026-10-25
 Builder: crew-codex-v2. Branch: `v2/stage2`; starting commit: `8a310f3`.
 Scope: approved plan 2.4 and 2.5, adapted to Scratch and Answer by R5.
 
-The original R5 results below describe `bcd85b9`. The round-18 through round-21 follow-ups at the end record subsequent review
+The original R5 results below describe `bcd85b9`. The round-18 through round-22 follow-ups at the end record subsequent review
 fixes and their latest verification.
 
 ## Finishing criteria
@@ -841,3 +841,146 @@ author email and `Agent: crew-codex-v2` trailer. No round-21 work is deferred. T
 previously accepted section-marker residual remains unchanged. Delivery is the
 authorized `v2/stage2` push only, with no merge, PR, deployment, Canvas write or
 message to another person.
+
+## Code review round 22: closed headers and the first real RETURNING
+
+Starting branch head: `e5aed2d`, which records review r22 of `44f5219` and the
+amended R5 rule 2. Finishing criteria: no list for a header containing a comment
+or single-quoted name; correct lists for both rounds' explicit `returning`
+aliases with one retry; changed-behavior tests fail on `44f5219`; all four full
+suites pass one at a time under `caffeinate -dims`; only the authorized files
+change; one commit and a normal push of `v2/stage2`.
+
+Production changes are confined to `site/game/db/error-help.js`. DuckDB's native
+tokens still supply the header words and names. Their spans can include skipped
+comments: the header now requires a complete word, bare or double-quoted name,
+or expected punctuation, with only whitespace between tokens. It also refuses a
+leading header comment. This check covers qualified name components, optional
+column names and aliases. UPDATE/DELETE's native SELECT probe is assembled only
+from the validated identifier and dot tokens, rather than the SQL text between
+their offsets. A quoted identifier containing the literal characters
+`/* note */` remains a supported identifier, not a comment.
+
+The INSERT retry now cuts at the **first top-level RETURNING not directly after
+AS**, after trying the complete query first. Native parenthesis tokens keep
+their nesting meaning even when a query comment follows them. The fixed budget
+does not change: at most one tokenization and three serializations (outer
+statement, complete query, one retry). Scratch's unchanged snapshot and metadata
+work brings the maximum to **10 help engine calls**. The retained round-21 tests
+remeasure Answer SELECT at 3, ordinary Scratch SELECT at 7 and query wrappers
+without a retry at 9. UPDATE/DELETE's call path retains the earlier documented
+nine-call budget; its engine operations are unchanged.
+
+### Review inputs and regression evidence
+
+The new database file is `tests/db/stage2-r22.test.mjs`; it runs the real pinned
+DuckDB both through Scratch and through discovery with a dedicated connection.
+`R22_BASE_REF=44f5219` serves that commit's exact `error-help.js` through a browser
+route, leaving the other current files intact. Those other production files
+match `44f5219` (the intervening commit contains documentation only).
+
+| Input or class | Method | Required outcome |
+|---|---|---|
+| Finding 1: `INSERT INTO destination /* note */ (memo) SELECT VendorID FROM trips_raw`, with both `destination(memo)` and `"destination /* note */"(unrelated)` present | Exact review setup, Scratch | No list; never disclose `unrelated` |
+| `CREATE /* note */ TABLE notes AS SELECT VendorID FROM trips_raw` | Discovery and Scratch, plus browser | No list under amended rule 2 |
+| CREATE TABLE AS, CREATE VIEW AS, INSERT INTO, UPDATE, DELETE FROM with comments before/after the name, between qualified components, between keywords, or before the statement; includes line comments and quoted name tokens followed by comments | Separate test per header form, discovery and Scratch | No list under amended rule 2 |
+| Finding 2: `INSERT INTO trips_raw(vendor_id) SELECT VendorID FROM trips_raw RETURNING vendor_id AS returning` | Scratch, discovery call counts, browser | Exactly `trips_raw`; one retry |
+| Round-21 input with `SELECT VendorID AS returning`, followed by a real RETURNING | Scratch, discovery call counts, browser | Exactly `trips_raw`; one retry |
+| Parenthesized source expression with a comment after `)` and a real RETURNING | Scratch | Exactly `trips_raw`; retain native nesting |
+| Finding 3: `INSERT INTO 'trips_raw'(vendor_id) SELECT VendorID FROM trips_raw`, and single-quoted names for each other header form | Discovery and Scratch; exact INSERT also in browser | No list **by design**, amended rule 2 |
+| Whitespace separators, double-quoted names, and a double-quoted name containing comment-like text | Scratch | Exactly the referenced tables and their columns |
+| Implicit alias spelled `returning`, without AS | Discovery | No list: accepted residual; the sampled spelling is also rejected by the pinned parser |
+
+Accepted residual from rule 2: **an implicit alias spelled `returning` may receive
+no list**, never a wrong list. The previously accepted diagnostic section-marker
+residual is unchanged. The diagnostic recognizer itself is unchanged.
+
+No existing assertion was changed. The search of existing error-help fixtures
+found no assertion expecting a list for a comment in a header or a single-quoted
+header name, so the prompt's conditional assertion migration was unnecessary.
+Comments in SELECT query bodies remain supported, including the existing
+`quoted keywords and comments` fixture in `tests/db/r18-column-cases.mjs`.
+
+The call-count test forwards every operation to the real engine. For both review
+INSERTs it checks 96-, 8,096- and 10,103-character inputs (short, 500 extra explicit
+aliases, and a long trailing comment): exactly **4 discovery calls**, including
+one tokenization and exactly one retry. It also measures the complete Scratch
+help path for both short inputs: exactly **10 engine calls**, including that
+tokenization. No engine call is made per header token, source table or retry
+candidate.
+
+```sh
+# Repository root, before the full suites:
+caffeinate -dims env R22_BASE_REF=44f5219 node --test tests/db/stage2-r22.test.mjs
+caffeinate -dims node --test tests/db/stage2-r22.test.mjs
+# tests/ui, using the original implementation to prove both browser tests fail:
+caffeinate -dims env PORT=4892 DB_SITE=../../site R22_BASE_REF=44f5219 npx playwright test stage2-r22.spec.js --output /tmp/pw-b22-red
+```
+
+The final original-commit check has **9 assertion failures** for changed
+behavior and **3 passing controls** (single-quoted names, supported quoted names
+and whitespace, accepted implicit-alias residual). Each of the five header-form
+tests fails first on its after-name comment case; its other positions include
+controls already rejected by the original code. The exact finding-1 reproduction,
+finding 2, native-parenthesis case and bounded-retry test also fail. Both new
+browser tests fail with assertions at desktop and 375 px (**4 failed**), showing
+the unrelated list or the missing correct list respectively. These are
+deliberate regression checks, not final-suite failures.
+
+The final focused database run passes **12**, with zero skipped or failed; the
+focused browser run passes **4**, with zero skipped or failed. All four focused
+browser screenshots were inspected: the native error stays visible, the correct
+list is readable when present, and both widths have no horizontal overflow.
+The exact round-21 review input without a RETURNING clause is also retained in
+the unchanged `R21 INSERT preserves the review source alias named returning`
+test: its complete query succeeds without using the optional retry. The new
+round-22 test adds a real RETURNING to that source-alias case and verifies one
+retry, alongside the exact round-22 finding-2 input.
+
+An intermediate combined focused run had **106 passed, 1 failed**:
+`R22 native parentheses with trailing query comments still locate top-level
+RETURNING`. This was the additional regression found during implementation,
+before the final parenthesis fix; the standalone failing check confirmed it.
+Reading native punctuation before its trailing query comment fixed the case.
+The subsequent 12-test focused run above includes that fix; the full suites
+below are the final verification of all older and new tests together.
+
+### Round-22 final full-suite verification
+
+The four full suites run one at a time in the required order, all under
+`caffeinate -dims`. The database suite completed with exit 0: **3,219 passed,
+0 skipped, 0 failed, 0 cancelled** (16.8 minutes). Its 12 added round-22 tests
+pass along with every existing assertion unchanged.
+
+```sh
+# tests/db:
+caffeinate -dims npm test
+# tests/ui, one at a time after the database suite:
+caffeinate -dims env PORT=4885 npx playwright test --output /tmp/pw-b22-stub
+caffeinate -dims env PORT=4886 DB_SITE=../../site npx playwright test --output /tmp/pw-b22-real
+# Repository root, after both browser suites:
+caffeinate -dims node --test tests/server/*.test.js
+```
+
+| Final suite | Passed | Skipped | Failed | Status |
+|---|---:|---:|---:|---|
+| Database | 3,219 | 0 | 0 | Exit 0 |
+| Stub browser, port 4885, `/tmp/pw-b22-stub` | 185 | 49 | 0 | Exit 0 |
+| Real-engine browser, port 4886, `/tmp/pw-b22-real` | 229 | 5 | 0 | Exit 0 |
+| Server | 69 | 0 | 0 | Exit 0 |
+
+The stub run took 2.5 minutes and the real-engine run 8.6 minutes. The four extra
+stub skips are the two new engine-dependent browser scenarios at desktop and
+375 px; all four pass in the real-engine run. The other skips are the existing
+screen/engine exclusions. All four final suites have zero failures; none was
+interrupted. No physical-device check was performed.
+
+`git diff --check` passes. The named protected files, all concept modules and
+Rerun paths match starting head `e5aed2d`; `site/game/db/db.js` is unchanged too.
+No existing assertion changed. `tests/ui/node_modules` remains excluded. The
+one commit uses `v2 stage 2: code review round 22 fixes`, the runbook's public
+author email and `Agent: crew-codex-v2` trailer, followed by the authorized
+normal push of `v2/stage2`. No round-22 work is deferred. The accepted implicit
+`returning` alias and diagnostic section-marker residuals are recorded above.
+No merge, PR, deployment, Canvas write or message to another person is part of
+this delivery.
