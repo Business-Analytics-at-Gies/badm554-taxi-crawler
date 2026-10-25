@@ -22,8 +22,8 @@ Crawler is planned in `docs/v2/plan-as-approved.md`.
 
 - [ ] The Rerun is live until Mon 10-26, 11:59 PM CDT. No change to `site/rerun/`, `server/rerun*`,
       `data/rerun/` or `tools/rerun/` before then.
-- [ ] v2 stage 2 resumes under Vishal's 10-23 decisions (`docs/decisions/2026-10-23-v2-grading-and-gates.md`):
-      grade the answer query, learning-graph gate, `CASE WHEN` refresher, hint ladder 2.6.
+- [ ] v2 stage 2 (R0 to R5, under `docs/decisions/2026-10-23-v2-grading-and-gates.md`) is built and
+      reviewed (r23 SHIP, 10-25), held on `v2/stage2`. Merge after Mon 10-26, green on all suites.
 - [ ] #32: real-iPhone tap test on a non-live URL.
 - [ ] Merge `v2/stage1` after 10-26, only after the 1.2 and 1.3 rework is green on all three suites.
 
