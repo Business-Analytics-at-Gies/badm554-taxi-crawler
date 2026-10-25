@@ -6,7 +6,7 @@ Last Updated: 2026-10-24
 Builder: crew-codex-v2. Branch: `v2/stage2`; starting commit: `8a310f3`.
 Scope: approved plan 2.4 and 2.5, adapted to Scratch and Answer by R5.
 
-The original R5 results below describe `bcd85b9`. The round-18 and round-19 follow-ups at the
+The original R5 results below describe `bcd85b9`. The round-18, round-19 and round-20 follow-ups at the
 end record subsequent review fixes and their latest verification.
 
 ## Finishing criteria
@@ -545,3 +545,152 @@ The commit title is `v2 stage 2: code review round 19 fixes`, with the public
 runbook author email and `Agent: crew-codex-v2` trailer. No round-19 requirement
 is deferred. Delivery is limited to the authorized `v2/stage2` push; no merge,
 PR, deploy, Canvas write or message to another person is performed.
+
+## Code review round 20: exact header patterns and accepted residual
+
+Review: [stage2-review-r20.md](stage2-review-r20.md), runtime `6a5972f`.
+Starting branch commit: `e1dd2ba`, which adds the review and amends R5 rules 2
+and 4. The current header requirements below supersede round 19's broader
+name/alias handling. Finishing criteria are: reject every unrecognized header
+token, retain supported lists, pin the accepted residual without changing its
+recognizer, pass the four full suites in order, and deliver one branch commit.
+
+### Finding 1: fix the header reader as a class
+
+Only `site/game/db/error-help.js` changes at runtime. The reader now:
+
+- Requires native serialization to identify a valid unsupported root before
+  attempting wrapper discovery. A syntax error never becomes an accepted query
+  by losing part of its header.
+- Retains every component and separator of a name, with at most DuckDB's three
+  parts. A final dot or fourth component cannot be discarded.
+- Checks CREATE TABLE and CREATE VIEW against the exact optional OR REPLACE,
+  TEMP, IF NOT EXISTS, name, column-list and AS sequence. TEMPORARY is outside
+  the literal TEMP pattern added by the amended rule 2.
+- Checks INSERT INTO's name and optional column list, followed by a complete
+  serializable source query. Parenthesized queries remain supported.
+- Requires SET after UPDATE's name, optionally after one bare alias. Requires
+  the end, WHERE, USING or RETURNING after DELETE FROM's name, optionally after
+  one bare alias. AS plus an alias is outside that one-token alias pattern.
+- Preserves the native name spelling for the target's SELECT-tree check.
+  It no longer adds quotes that turn the keyword ONLY into the physical table
+  `"ONLY"`. Quoted keyword names and unreserved native names such as `data`
+  remain usable when they are actual targets.
+
+Source discovery still makes at most two serialization calls and one native
+tokenization. There is no parse attempt per token or candidate region. No
+learner statement is executed by help. Existing snapshot, metadata, source
+certainty and hidden-table restrictions are unchanged.
+
+### Regression method and evidence
+
+`tests/db/stage2-r20.test.mjs` adds nine tests. Seven test changed behavior and
+all seven fail with assertion failures on `6a5972f`, then pass with the fix:
+
+| Test | Method / old behavior |
+|---|---|
+| `R20 UPDATE ONLY never describes the physical table named ONLY` | Exact review SQL in Scratch after creating `"ONLY"(unrelated INTEGER)`; old help listed ONLY |
+| `R20 DELETE FROM ONLY never describes the physical table named ONLY` | Exact review SQL in Scratch with the same setup; old help listed ONLY |
+| `R20 CREATE TABLE AS rejects an unexpected token after the name` | Native header-reader boundary test: `CREATE TABLE memory.floor1.notes. AS SELECT VendorID FROM trips_raw`; old reader dropped the final dot and returned trips_raw |
+| `R20 CREATE VIEW AS rejects an unexpected token after the name` | Same trailing-dot boundary for CREATE VIEW; old reader returned trips_raw |
+| `R20 INSERT INTO rejects an unexpected token after the name` | `INSERT INTO memory.floor1.trips_raw. SELECT VendorID FROM trips_raw`; old reader returned both target and source references |
+| `R20 UPDATE rejects an unexpected token after the name` | `UPDATE trips_raw extra surplus SET vendor_id=VendorID`; old reader ignored both extra tokens and returned trips_raw |
+| `R20 DELETE FROM rejects an unexpected token after the name` | `DELETE FROM trips_raw extra surplus WHERE VendorID=1`; old reader ignored both extra tokens and returned trips_raw |
+
+The five boundary tests call the real header reader with a real pinned native
+parser, without executing the malformed statements. The console's independent
+syntax check would already refuse these malformed statements; the tests pin
+that the help reader itself must also reject them, instead of reconstructing
+a valid source/target list from them. Additional cases in the same tests check
+bare reserved keywords in name slots, TEMPORARY, an extra CREATE-header word,
+INSERT BY NAME and INSERT AS alias, and UPDATE/DELETE AS alias. None gets a list under the amended literal patterns.
+
+The eighth test runs supported CREATE TABLE, CREATE VIEW, INSERT, UPDATE and
+DELETE forms through Scratch, including native qualified names, column lists,
+CTEs, parenthesized queries, one bare alias, RETURNING, the actual quoted
+`"ONLY"` target and the unreserved keyword-name `data`. It also checks DELETE's
+end-of-header forms directly. This positive control passes on both runtimes.
+
+The ninth test pins the accepted finding-2 residual below. It passes on both
+runtimes. The final old-runtime result is **2 passed, 0 skipped, 7 failed**;
+all nine pass with the fix. Only the runtime's error-help module is served
+from Git objects when `R20_BASE_REF=6a5972f` is set; no checkout is changed.
+
+The combined focused run passed all **90** cases: 59 round-18, 4 round-19,
+9 round-20 and all 18 original R5 cases. No existing test file or assertion
+was changed, so there are no changed existing assertions to itemize this round.
+
+The new browser scenario fails against `6a5972f` at both desktop and 375 px and
+passes with the fix at both widths. It checks the exact ONLY modifier inputs,
+the valid quoted `"ONLY"` target, and both boxes' safe residual outcome.
+
+```sh
+# Repository root: seven expected failures on the old runtime, then all green.
+caffeinate -dims env R20_BASE_REF=6a5972f node --test tests/db/stage2-r20.test.mjs
+caffeinate -dims node --test tests/db/stage2-r18.test.mjs tests/db/stage2-r19.test.mjs tests/db/stage2-r20.test.mjs tests/db/stage2-r5.test.mjs
+# tests/ui:
+caffeinate -dims env PORT=4891 DB_SITE=../../site R20_BASE_REF=6a5972f npx playwright test stage2-r20.spec.js --output /tmp/pw-r20-red
+caffeinate -dims env PORT=4891 DB_SITE=../../site npx playwright test stage2-r20.spec.js --output /tmp/pw-r20-focused
+```
+
+### Finding 2: accepted section-marker residual, no code change
+
+Under amended rule 4, a quoted multiline name containing a native section
+marker at the start of a line may receive no column list. The exact review
+input is `SELECT "Vendor` followed by a line break and
+`LINE 1:ID" FROM trips_raw;`. The same test also covers names containing a line
+break followed by `Candidate bindings:` or `Did you mean`. It runs all three
+inputs in both Scratch and Answer, retains their native errors, and accepts
+only no help or one successful trips_raw entry with the exact pristine columns.
+Any other table or column list fails the test. Currently all six runs receive
+no list, which is the accepted residual. `needsColumnHelp` is unchanged.
+
+This is a known, accepted absence of convenience help, not a claim that quoted
+section markers are recognized. The earlier diagnostic inventory's methods and
+outcomes remain the observed fixtures, with this explicit rule-4 exception.
+
+Both focused browser screenshots (desktop and 375 px) were visually inspected.
+The original error is visible, the unrelated ONLY columns are absent, and the
+page fits at 375 px. A source comparison also confirms that the complete
+`needsColumnHelp` recognizer is byte-for-byte identical to `6a5972f`.
+
+### Round-20 final full-suite verification
+
+The full suites run one at a time in the requested order under
+`caffeinate -dims`. The database suite passed **3,202**, skipped **0** and failed
+**0**, with no cancelled tests (17.3 minutes, exit 0). The final new-test version
+was then checked against `6a5972f` again: **2 passed, 0 skipped, 7 failed**, with
+all seven expected assertion failures in the changed-behavior cases.
+
+| Final suite | Passed | Skipped | Failed | Status |
+|---|---:|---:|---:|---|
+| Database | 3,202 | 0 | 0 | Exit 0 |
+| Stub browser, port 4885, `/tmp/pw-b20-stub` | 185 | 43 | 0 | Exit 0 |
+| Real-engine browser, port 4886, `/tmp/pw-b20-real` | 223 | 5 | 0 | Exit 0 |
+| Server | 69 | 0 | 0 | Exit 0 |
+
+The stub run took 2.5 minutes and the real-engine run 8.6 minutes. The two
+additional stub skips are the new round-20 engine-dependent scenario at desktop
+and 375 px; both pass with the real engine. The other skips are the existing
+screen/engine exclusions. No full suite failed or was interrupted this round.
+
+```sh
+# tests/db:
+caffeinate -dims npm test
+# tests/ui, one at a time after the database suite finishes:
+caffeinate -dims env PORT=4885 npx playwright test --output /tmp/pw-b20-stub
+caffeinate -dims env PORT=4886 DB_SITE=../../site npx playwright test --output /tmp/pw-b20-real
+# Repository root, after both browser suites finish:
+caffeinate -dims node --test tests/server/*.test.js
+```
+
+`git diff --check` passes. Every named protected file and Rerun path matches
+starting commit `e1dd2ba`; `site/game/db/db.js` is also unchanged. No existing
+assertion changed. `tests/ui/node_modules` is excluded from the commit. No
+physical-device test was performed.
+
+The one commit uses `v2 stage 2: code review round 20 fixes`, the runbook's public
+author email and the `Agent: crew-codex-v2` trailer. Finding 2's accepted residual
+remains as documented and tested; no other round-20 work is deferred. Delivery
+is limited to the authorized `v2/stage2` push, with no merge, PR, deployment,
+Canvas write or message to another person.

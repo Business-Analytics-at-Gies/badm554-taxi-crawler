@@ -66,16 +66,24 @@ export async function errorTableNames(conn, sql) {
       else visit(value, childScope);
     }
   };
+  let unsupportedRoot = false;
   const parse = async text => {
     const quoted = `'${text.replaceAll("'", "''")}'`;
     const result = await conn.query(`SELECT system.main.json_serialize_sql(${quoted}) AS parsed`);
     const ast = JSON.parse(result.toArray()[0].parsed);
-    if (ast.error || ast.statements?.length !== 1) return false;
+    if (ast.error) {
+      unsupportedRoot = ast.error_type === 'not implemented';
+      return false;
+    }
+    if (ast.statements?.length !== 1) return false;
     visit(ast);
     return true;
   };
   sql = String(sql);
   if (await parse(sql)) return [...names.values()];
+  // Only a natively valid, unsupported root can enter wrapper discovery.
+  // Syntax errors must not become a valid query by dropping header tokens.
+  if (!unsupportedRoot) return [];
 
   // Closed R5 scope: one tokenization and at most one more serialization.
   // Never try progressively smaller regions: losing a WITH scope could turn a
@@ -94,8 +102,11 @@ export async function errorTableNames(conn, sql) {
       const value = tokens[i++].text;
       parts.push(value.startsWith('"') ? value.slice(1, -1).replaceAll('""', '"') : value);
       if (tokens[i]?.text !== '.') break;
+      // Never consume a dot without the following name component. DuckDB
+      // table names have at most catalog.schema.name, each kept intact.
+      if (parts.length === 3) return null;
       i++;
-    } while (parts.length < 3);
+    } while (true);
     return parts;
   };
   const columns = () => {
@@ -112,7 +123,7 @@ export async function errorTableNames(conn, sql) {
   let target = null, end = tokens.length;
   if (take('create')) {
     if (take('or') && !take('replace')) return [];
-    take('temp') || take('temporary');
+    take('temp');
     if (!take('table') && !take('view')) return [];
     if (take('if') && !(take('not') && take('exists'))) return [];
     if (!identifier() || !columns() || !take('as')) return [];
@@ -133,13 +144,26 @@ export async function errorTableNames(conn, sql) {
       else if (tokens[j].text === ')') depth--;
       else if (!depth && word(j) === 'returning') { end = j; break; }
     }
-  } else if (take('update') || (take('delete') && take('from'))) {
+  } else if (word(i) === 'update' || word(i) === 'delete') {
+    const update = take('update');
+    if (!update && !(take('delete') && take('from'))) return [];
+    const start = i;
     target = identifier();
     if (!target) return [];
-    // Rule 2(c) deliberately describes only the existing target, even when
-    // UPDATE/DELETE have FROM, USING or subqueries elsewhere in the statement.
-    const quoted = target.map(part => `"${part.replaceAll('"', '""')}"`).join('.');
-    return await parse(`SELECT * FROM ${quoted}`) ? [...names.values()] : [];
+    const nameEnd = i;
+    const boundary = () => update ? word(i) === 'set'
+      : i === tokens.length || ['where', 'using', 'returning'].includes(word(i));
+    if (!boundary()) {
+      // The closed pattern permits one bare alias, then its clause boundary.
+      // AS alias and every other extra header token are outside that pattern.
+      if (![0, 4].includes(tokens[i]?.type)) return [];
+      i++;
+      if (!boundary()) return [];
+    }
+    // Preserve the native spelling when checking the name slot. Quoting every
+    // token would turn a modifier such as ONLY into an unrelated physical name.
+    // The SELECT parser must itself identify this as one actual table reference.
+    return await parse(`SELECT * FROM ${text(start, nameEnd)}`) ? [...names.values()] : [];
   } else return [];
   if (i >= end || !await parse(text(i, end))) return [];
   if (target) add(target);
