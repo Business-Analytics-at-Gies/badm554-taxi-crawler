@@ -85,12 +85,16 @@ export async function errorTableNames(conn, sql) {
   // Syntax errors must not become a valid query by dropping header tokens.
   if (!unsupportedRoot) return [];
 
-  // Closed R5 scope: one tokenization and at most one more serialization.
+  // Closed R5 scope: one tokenization and at most two more serializations.
   // Never try progressively smaller regions: losing a WITH scope could turn a
   // CTE into an unrelated physical table. An unrecognized wrapper gets no list.
   const tokens = (await nativeTokens(conn, sql)).filter(token => token.type !== 5);
   if (tokens.at(-1)?.text === ';') tokens.pop();
   const word = i => tokens[i]?.type === 4 ? foldIdentifier(tokens[i].text) : '';
+  // Native token spans can include trailing comments. Read only the spelling of
+  // an already native-classified keyword when locating a possible query footer.
+  const queryWord = i => tokens[i]?.type === 4
+    ? foldIdentifier(tokens[i].text.match(/^[A-Za-z_][A-Za-z_0-9]*/)?.[0] ?? '') : '';
   const bytes = new TextEncoder().encode(sql), decoder = new TextDecoder();
   const text = (start, end = tokens.length) => decoder.decode(bytes.slice(tokens[start]?.start ?? bytes.length, tokens[end]?.start ?? bytes.length));
   let i = 0;
@@ -127,22 +131,22 @@ export async function errorTableNames(conn, sql) {
     if (!take('table') && !take('view')) return [];
     if (take('if') && !(take('not') && take('exists'))) return [];
     if (!identifier() || !columns() || !take('as')) return [];
-    // DuckDB admits WITH [NO] DATA after a CREATE query, outside its SELECT tree.
-    if (word(end - 3) === 'with' && word(end - 2) === 'no' && word(end - 1) === 'data') end -= 3;
-    else if (word(end - 2) === 'with' && word(end - 1) === 'data') end -= 2;
+    // Record a possible trailing clause, without shortening the query yet.
+    if (queryWord(end - 3) === 'with' && queryWord(end - 2) === 'no' && queryWord(end - 1) === 'data') end -= 3;
+    else if (queryWord(end - 2) === 'with' && queryWord(end - 1) === 'data') end -= 2;
   } else if (take('insert')) {
     if (!take('into') || !(target = identifier())) return [];
     // A parenthesized source query occupies the same position as the optional
     // target column list. If it is not a list, serialize it intact as the query.
     const start = i;
     if (!columns()) i = start;
-    // RETURNING belongs to INSERT, not its source query. Only a top-level token
-    // can end that query; strings, comments and nested queries cannot do so.
+    // Record only the last top-level RETURNING as a possible trailing clause.
+    // A keyword-spelled query alias must never cut a successfully parsed query.
     let depth = 0;
-    for (let j = i; j < end; j++) {
+    for (let j = i; j < tokens.length; j++) {
       if (tokens[j].text === '(') depth++;
       else if (tokens[j].text === ')') depth--;
-      else if (!depth && word(j) === 'returning') { end = j; break; }
+      else if (!depth && queryWord(j) === 'returning') end = j;
     }
   } else if (word(i) === 'update' || word(i) === 'delete') {
     const update = take('update');
@@ -165,7 +169,12 @@ export async function errorTableNames(conn, sql) {
     // The SELECT parser must itself identify this as one actual table reference.
     return await parse(`SELECT * FROM ${text(start, nameEnd)}`) ? [...names.values()] : [];
   } else return [];
-  if (i >= end || !await parse(text(i, end))) return [];
+  if (i >= tokens.length) return [];
+  // The complete query part has priority. Only its failed serialization permits
+  // one retry without the possible trailing clause; never try other regions.
+  if (!await parse(text(i))) {
+    if (end === tokens.length || i >= end || !await parse(text(i, end))) return [];
+  }
   if (target) add(target);
   return [...names.values()];
 }

@@ -1,13 +1,13 @@
 # Stage 2 R5: error help and query history
 
 Created: 2026-10-24
-Last Updated: 2026-10-24
+Last Updated: 2026-10-25
 
 Builder: crew-codex-v2. Branch: `v2/stage2`; starting commit: `8a310f3`.
 Scope: approved plan 2.4 and 2.5, adapted to Scratch and Answer by R5.
 
-The original R5 results below describe `bcd85b9`. The round-18, round-19 and round-20 follow-ups at the
-end record subsequent review fixes and their latest verification.
+The original R5 results below describe `bcd85b9`. The round-18 through round-21 follow-ups at the end record subsequent review
+fixes and their latest verification.
 
 ## Finishing criteria
 
@@ -694,3 +694,150 @@ author email and the `Agent: crew-codex-v2` trailer. Finding 2's accepted residu
 remains as documented and tested; no other round-20 work is deferred. Delivery
 is limited to the authorized `v2/stage2` push, with no merge, PR, deployment,
 Canvas write or message to another person.
+
+## Code review round 21: serialize the whole query part first
+
+Review: [stage2-review-r21.md](stage2-review-r21.md), runtime `c79f151`.
+Starting branch commit: `b91c601` (the review note only).
+Finishing criteria: retain the complete query before considering a footer,
+limit fallback to one retry, verify the fixed call counts, keep all existing
+assertions and protected files unchanged, pass the four suites in order, and
+push one commit.
+
+Only `site/game/db/error-help.js` changes at runtime. After the unchanged closed
+header check, CREATE and INSERT now serialize the **entire** query part first.
+If it succeeds, no keyword token inside that query shortens it. Only when it
+fails does the reader try once without a possible trailing clause: the last
+top-level RETURNING for INSERT, or a final WITH DATA / WITH NO DATA for CREATE.
+There are no attempts at other candidate regions. Header validation, CTE scope,
+actual-table resolution, quiet metadata and the diagnostic recognizer remain
+unchanged.
+
+Native token spans can include trailing comments in their text. The query-footer
+matcher reads the spelling of an already native-classified keyword, excluding
+that trailing trivia. It does not scan comments for new keywords or change the
+protected `sql.js` utility. A focused long-input fixture exposed this case for
+WITH DATA followed by a comment; it passes after the local footer fix.
+
+### Regression coverage and old-runtime results
+
+`tests/db/stage2-r21.test.mjs` adds five tests:
+
+| Test | Coverage / old-runtime outcome |
+|---|---|
+| `R21 INSERT preserves the review source alias named returning` | Exact review input; fails on c79f151, passes with the fix |
+| `R21 quoted returning alias remains a supported control` | Exact quoted-alias control; passes on both runtimes |
+| `R21 INSERT keeps a returning alias before the real RETURNING clause and lists both tables` | destination(memo) and trips_raw both listed with their actual columns; fails on c79f151 |
+| `R21 CREATE query keyword aliases stay intact with and without final data clauses` | Unquoted returning, with and data aliases; no footer, WITH DATA and WITH NO DATA; passes on both runtimes as a control |
+| `R21 full-query-first discovery has a fixed call bound for short and long query parts` | Correct source/target lists, one retry at most, fixed counts for short SQL, long trailing comments and 500 extra returning aliases (about 2,000 extra native SQL tokens); fails on c79f151 |
+
+All three tests of changed behavior fail with assertion failures on `c79f151`
+and pass with the fix. The two controls pass on both versions. The old-runtime
+result is **2 passed, 0 skipped, 3 failed**. The focused fixed run is **5 passed,
+0 skipped, 0 failed**. The tests serve only the old error-help module from Git
+objects when `R21_BASE_REF=c79f151` is set; no checkout changes are used.
+
+The new browser scenario also fails against `c79f151` at desktop and 375 px and
+passes with the fix at both widths. It checks the review input, quoted control,
+real RETURNING clause with both tables listed, and all three CREATE variations.
+Original errors remain visible, and a following CREATE error clears the previous
+INSERT target's help. No existing test file or assertion is changed.
+
+### Confirmed bounded engine work
+
+These are help calls, excluding the original run, Answer's execution-policy
+checks and first-time engine setup. The native discovery test forwards every
+operation to the real pinned engine and counts both serialization and native
+tokenization. A separate production-connection query spy confirms Scratch's
+snapshot/metadata overhead and Answer's final help calls.
+
+| Statement / path | Discovery calls | Scratch help calls | Answer help calls |
+|---|---:|---:|---:|
+| SELECT family | 1 | 7 | 3 |
+| INSERT whose whole source query serializes, including returning as an alias | 3 | 9 | Refused |
+| INSERT with a real trailing RETURNING clause requiring the one retry | 4 | 10 | Refused |
+| CREATE whose whole source query serializes, including keyword-spelled aliases | 3 | 9 | Refused |
+| CREATE with WITH DATA requiring the one retry | 4 | 10 | Refused |
+| CREATE with WITH NO DATA requiring the one retry | 4 | 10 | Refused |
+
+The short, comment-padded and token-expanded inputs have identical discovery
+counts in every row. SELECT still uses one serialization. Wrappers use one
+native tokenization and at most **three serializations total** (outer statement,
+whole query, optional shortened query). Scratch adds the unchanged two metadata
+queries and, when needed, four snapshot calls: two transaction-id reads, BEGIN
+and ROLLBACK. Answer SELECT adds only its two metadata queries. Thus the new
+maximum is **10 help engine calls**, exactly one more than round 20's maximum
+of 9; it is independent of statement length and source-table count. An already
+open Scratch transaction needs fewer snapshot calls. UPDATE/DELETE's unchanged
+target-only path still has the round-20 maximum of 9.
+
+This section supersedes the earlier two-serialization / nine-call maximum for
+query-containing wrappers. It does not add an engine call to ordinary SELECT
+help or to wrappers whose complete query part already serializes.
+
+```sh
+# Repository root:
+caffeinate -dims env R21_BASE_REF=c79f151 node --test tests/db/stage2-r21.test.mjs
+caffeinate -dims node --test tests/db/stage2-r21.test.mjs
+caffeinate -dims node --test --test-concurrency=1 --test-timeout=120000 tests/db/stage2-r18.test.mjs tests/db/stage2-r19.test.mjs tests/db/stage2-r20.test.mjs tests/db/stage2-r21.test.mjs tests/db/stage2-r5.test.mjs
+# tests/ui:
+caffeinate -dims env PORT=4891 DB_SITE=../../site R21_BASE_REF=c79f151 npx playwright test stage2-r21.spec.js --output /tmp/pw-r21-red
+caffeinate -dims env PORT=4891 DB_SITE=../../site npx playwright test stage2-r21.spec.js --output /tmp/pw-r21-focused
+```
+
+The first combined focused run stalled before its first reported case and was
+stopped deliberately. Its unchanged first round-18 case passed in a fresh
+process in 1.1 seconds. No production or existing-test change was made for that
+stall. The replacement focused command above uses sequential execution and a
+timeout for diagnosis; the final four full suites use the requested commands.
+
+The replacement combined focused run passed **95**, skipped **0** and failed
+**0**, including all 18 original R5 cases and every round-18 through round-21
+case. The final test version was checked against `c79f151` again: the same three
+changed-behavior tests fail with assertions and the same two controls pass.
+
+The focused desktop and 375 px screenshots were visually inspected. The error
+and both table lists remain readable, with no horizontal overflow at 375 px.
+A source comparison confirms that diagnostic recognition is unchanged from
+`c79f151`, including the previously accepted section-marker residual.
+
+### Round-21 final full-suite verification
+
+The four full suites run one at a time, in the requested order, under
+`caffeinate -dims`. The database suite passed **3,207**, skipped **0** and failed
+**0**, with no cancelled tests (16.8 minutes, exit 0). It includes all five
+round-21 tests and every existing assertion unchanged.
+
+| Final suite | Passed | Skipped | Failed | Status |
+|---|---:|---:|---:|---|
+| Database | 3,207 | 0 | 0 | Exit 0 |
+| Stub browser, port 4885, `/tmp/pw-b21-stub` | 185 | 45 | 0 | Exit 0 |
+| Real-engine browser, port 4886, `/tmp/pw-b21-real` | 225 | 5 | 0 | Exit 0 |
+| Server | 69 | 0 | 0 | Exit 0 |
+
+The stub run took 2.5 minutes and the real-engine run 8.5 minutes. The two
+additional stub skips are the new round-21 engine-dependent scenario at desktop
+and 375 px; both pass with the real engine. The other skips are the existing
+screen/engine exclusions. All four final full suites have zero failures; none
+was interrupted this round.
+
+```sh
+# tests/db:
+caffeinate -dims npm test
+# tests/ui, one at a time after the database suite finishes:
+caffeinate -dims env PORT=4885 npx playwright test --output /tmp/pw-b21-stub
+caffeinate -dims env PORT=4886 DB_SITE=../../site npx playwright test --output /tmp/pw-b21-real
+# Repository root, after both browser suites finish:
+caffeinate -dims node --test tests/server/*.test.js
+```
+
+`git diff --check` passes. Every named protected file and Rerun path matches
+starting commit `b91c601`; `site/game/db/db.js` is also unchanged. No existing
+assertion changed. `tests/ui/node_modules` is excluded from the commit. No
+physical-device test was performed.
+
+The one commit uses `v2 stage 2: code review round 21 fixes`, the runbook's public
+author email and `Agent: crew-codex-v2` trailer. No round-21 work is deferred. The
+previously accepted section-marker residual remains unchanged. Delivery is the
+authorized `v2/stage2` push only, with no merge, PR, deployment, Canvas write or
+message to another person.
