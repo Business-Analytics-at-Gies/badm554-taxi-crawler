@@ -623,7 +623,12 @@ As the plan specifies, with these R1 changes:
      be one the pattern allows (for `UPDATE`: `SET`, or one alias and then `SET`; for `DELETE`:
      the end, `WHERE`, `USING`, `RETURNING`, or one alias and then one of those; for (b): `(`,
      `AS`, or the start of the query). Any other token, for example `ONLY` in `UPDATE ONLY t`,
-     means no list.
+     means no list. Only whitespace may separate header tokens, and a name is bare or
+     double-quoted (added after code review 22): a comment or a single-quoted name anywhere in
+     the header means no list. The help finds both from DuckDB's own tokens, and looks up a name
+     from its identifier tokens only. For `INSERT ... RETURNING`, the one retry of rule 3 cuts at
+     the first top-level `RETURNING` that does not directly follow `AS`. Accepted residual: an
+     alias spelled `returning` without `AS` may get no list, never a wrong one.
   3. **Bounded work.** The help makes a fixed, small number of engine calls per failing
      statement, whatever its length: no parse attempt per token or per candidate region.
   4. **Error forms.** Recognition matches the whole diagnostic, including quoted names that hold
