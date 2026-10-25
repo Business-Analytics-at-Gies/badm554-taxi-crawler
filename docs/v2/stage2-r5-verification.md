@@ -6,8 +6,8 @@ Last Updated: 2026-10-24
 Builder: crew-codex-v2. Branch: `v2/stage2`; starting commit: `8a310f3`.
 Scope: approved plan 2.4 and 2.5, adapted to Scratch and Answer by R5.
 
-The original R5 results below describe `bcd85b9`. The round-18 follow-up at the
-end records the subsequent review fixes and their latest verification.
+The original R5 results below describe `bcd85b9`. The round-18 and round-19 follow-ups at the
+end record subsequent review fixes and their latest verification.
 
 ## Finishing criteria
 
@@ -335,3 +335,213 @@ person; delivery is the authorized branch push only.
 
 `git diff --check` passes. The one fix commit uses the required public author
 email and `Agent: crew-codex-v2` trailer. No round-18 requirement is deferred.
+
+## Code review round 19: closed error-help scope
+
+Review: [stage2-review-r19.md](stage2-review-r19.md), runtime `87aa609`.
+Contract: the four **Scope of error help** rules added to R5 in `2812765`.
+The current behavior and inventory in this section supersede round 18's broader
+wrapper discovery and its list outcomes. No claim of exhaustive engine-message
+coverage is made: the method below covers the literal fixtures and observed
+forms found so far in the pinned DuckDB 1.5.4 build.
+
+### Finishing criteria and implementation
+
+- Rule 1: keep CTE scope intact and suppress column lists when serialization,
+  access or resolution is uncertain. The review's PIVOT CTE and PIVOT CTAS both
+  show no list. In particular, the CTE `zones` never becomes the physical `zones`.
+  An unresolved join source suppresses all lists; a missing-table explanation
+  is still allowed, without columns, as required by the earlier dropped-table test.
+- Rule 2: replace the candidate-region scanner with the closed statement list.
+  Native SELECT trees are inspected directly. Native tokens locate only the
+  supported CREATE TABLE/VIEW AS and INSERT query parts. UPDATE and DELETE name
+  only their targets. Other roots, including outer WITH followed by a write,
+  are outside the closed list and receive no list. No learner SQL is run to
+  discover sources or inspect columns.
+- Rule 3: source discovery uses at most two serialization calls and one native
+  tokenization, without retries per token or region. Resolution and stored
+  column metadata each use one batch, independent of source count. Scratch
+  enters the existing quiet snapshot once (two transaction-id reads and, if
+  needed, BEGIN and ROLLBACK). The maximum help cost is therefore **9 engine
+  calls**, including tokenization and snapshot handling; SELECT roots use at
+  most 7. This excludes the original run and any first-time engine setup.
+- Rule 4: match diagnostics across line breaks, including quoted identifiers,
+  and recognize the observed CHECK message. Original errors remain intact.
+  Both boxes retain their existing execution policy; unsupported writes are
+  refused in Answer, so their native errors are reproduced in Scratch only.
+
+Runtime changes are limited to `site/game/db/error-help.js` and the batched
+metadata lookup in `site/game/db/db.js`. The protected parser, server files,
+concept files and Rerun paths are unchanged.
+
+### Rule tests and old-runtime failures
+
+`tests/db/stage2-r19.test.mjs` contains four tests, one per rule:
+
+| Test | Behavior checked |
+|---|---|
+| `R19 rule 1: an unserializable CTE never falls back to a physical namesake` | Exact review PIVOT CTE and CTAS; uncertain join has no partial list |
+| `R19 rule 2: only the closed statement list gets help` | Exact CREATE INDEX, COMMENT ON COLUMN and CHECK inputs; excluded roots; supported CREATE, INSERT, UPDATE and DELETE; Answer refusals preserve state |
+| `R19 rule 3: help uses bounded engine calls even with many distinct sources` | Real connection calls for 2 and 17 distinct sources; longer unserializable CTEs cannot cause extra parse attempts |
+| `R19 rule 4: whole diagnostics recognize multiline names; observed forms keep their scoped outcomes` | Every query diagnostic fixture in both boxes, write diagnostics in Scratch with Answer refusal, CHECK and missing FROM, including exact `SELECT VendorID;` |
+
+All four tests fail with assertion failures against `87aa609` and pass on the
+fixed runtime. Tests serve only that commit's two runtime modules from Git
+objects using `R19_BASE_REF=87aa609`, without changing checkouts. The old call
+counts were 13 and 103 for 2 and 17 sources. The fixed count is independent of
+source count. The round-19 browser scenario also fails against `87aa609` at
+both desktop and 375 px and passes with the fixes. It checks multiline names
+against a temporary Scratch table and pristine Answer tables, then confirms
+that the PIVOT CTE and COMMENT input show no columns.
+
+The combined focused run passed all **81** database cases (59 round-18,
+4 round-19 and 18 original R5); the new browser scenario passed both widths.
+
+```sh
+# Repository root:
+caffeinate -dims env R19_BASE_REF=87aa609 node --test tests/db/stage2-r19.test.mjs
+caffeinate -dims node --test tests/db/stage2-r18.test.mjs tests/db/stage2-r19.test.mjs tests/db/stage2-r5.test.mjs
+# tests/ui:
+caffeinate -dims env PORT=4891 DB_SITE=../../site R19_BASE_REF=87aa609 npx playwright test stage2-r19.spec.js --output /tmp/pw-r19-red
+caffeinate -dims env PORT=4891 DB_SITE=../../site npx playwright test stage2-r19.spec.js --output /tmp/pw-r19-focused
+```
+
+### Existing assertions changed under rule 2 only
+
+The only existing test edits are in `tests/db/stage2-r18.test.mjs`. Error-text,
+Answer-refusal, state/history, CTE exclusion and failed-CREATE exclusion
+assertions are retained. Supported SELECT, CREATE and INSERT assertions are
+unchanged. Each changed metadata expectation is named below; the prefixes are
+the literal existing generated test-name prefixes.
+
+| Existing test name after `R18 write-only column error ` | Changed assertion and rule |
+|---|---|
+| `alter target column: Scratch help and unchanged Answer refusal` | Columns -> empty help; rule 2 excludes ALTER |
+| `ANALYZE column: Scratch help and unchanged Answer refusal` | Columns -> empty help; rule 2 excludes ANALYZE |
+| `VACUUM column: Scratch help and unchanged Answer refusal` | Columns -> empty help; rule 2 excludes VACUUM |
+| `foreign key local column: Scratch help and unchanged Answer refusal` | Columns -> empty help; rule 2 excludes constraints |
+| `generated column dependency: Scratch help and unchanged Answer refusal` | Columns -> empty help; rule 2 excludes constraints |
+| `foreign key parent column: Scratch help and unchanged Answer refusal` | Columns -> empty help; rule 2 excludes constraints |
+| `nested sub-field: Scratch help and unchanged Answer refusal` | Columns -> empty help; rule 2 excludes ALTER |
+| `drop missing field: Scratch help and unchanged Answer refusal` | Columns -> empty help; rule 2 excludes ALTER |
+| `drop missing field column: Scratch help and unchanged Answer refusal` | Columns -> empty help; rule 2 excludes ALTER |
+| `rename missing field: Scratch help and unchanged Answer refusal` | Columns -> empty help; rule 2 excludes ALTER |
+| `rename missing field column: Scratch help and unchanged Answer refusal` | Columns -> empty help; rule 2 excludes ALTER |
+
+| Existing test name after `R18 source tables in ` | Changed assertions and rule |
+|---|---|
+| `CTE INSERT SELECT` | Source-column and table-set expectations -> empty help; rule 2 excludes WITH-write roots |
+| `recursive CTE INSERT` | Source-column and table-set expectations -> empty help; rule 2 excludes WITH-write roots |
+| `CTE UPDATE with a subquery` | Source-column and table-set expectations -> empty help; rule 2 excludes WITH-write roots |
+| `MERGE subquery` | Source-column and table-set expectations -> empty help; rule 2 excludes MERGE |
+| `EXPLAIN query` | Source-column and table-set expectations -> empty help; rule 2 excludes EXPLAIN |
+| `PREPARE query` | Source-column and table-set expectations -> empty help; rule 2 excludes PREPARE |
+| `UPDATE subquery and FROM` | Source columns -> target `destination`'s `memo`; table set -> `destination` only; rule 2(c) excludes other sources |
+| `DELETE subquery and USING` | Source columns -> target `destination`'s `memo`; table set -> `destination` only; rule 2(c) excludes other sources |
+
+No other existing assertion was changed. The original plan row 2.4 cases and
+all original R5 tests remain unchanged.
+
+### Observed diagnostic inventory: method and outcome per form
+
+Method **Q** means run the named literal fixture from
+`tests/db/r18-column-cases.mjs`'s `QUERY_COLUMN_ERRORS` against real DuckDB, then
+run its multiline-name variant in round-19 rule 4 in **both** boxes. Method
+**W** means run the named `WRITE_COLUMN_ERRORS` fixture and its multiline-name
+variant in Scratch; test the same SQL's refusal in Answer. Method **R19** means
+the literal review reproduction in the rule-2/rule-4 tests; CHECK and missing
+FROM also have multiline variants in rule 4. These are observed examples, not a scan of every possible engine path.
+Names in message forms below stand for their complete values, including line
+breaks. The Q join fixtures list both inputs. Outcomes below apply to the
+named fixtures; every list still requires rule 1 certainty and a rule 2 root.
+
+| Observed diagnostic form | Method / fixture | Scratch outcome | Answer outcome |
+|---|---|---|---|
+| `Referenced column NAME not found in FROM clause` | Q: referenced column | List | List |
+| `Referenced column NAME not found in FROM clause and can't find in alias map` | Q: QUALIFY alias map | List | List |
+| `Column NAME in EXCLUDE list not found in FROM clause` | Q: EXCLUDE list, qualified EXCLUDE entry | List | List |
+| `Column NAME in EXCLUDE list not found in ALIAS` | Q: qualified EXCLUDE list | List | List |
+| `Column NAME in REPLACE list not found in FROM clause` | Q: REPLACE list | List | List |
+| `Column NAME in REPLACE list not found in ALIAS` | Q: qualified REPLACE list | List | List |
+| `Table TABLE does not have a column named NAME` | Q: table.column, alias.column; R19: CREATE INDEX | SELECT: list; INDEX: no list, rule 2 | SELECT: list; INDEX: refused, no list |
+| `Values list ALIAS does not have a column named NAME` | Q: VALUES alias list, CTE alias list | List | List |
+| `Column NAME does not exist on left side of join` | Q: USING left column | Lists for both inputs | Lists for both inputs |
+| `Column NAME does not exist on right side of join` | Q: USING right column | Lists for both inputs | Lists for both inputs |
+| `Column NAME was selected but was not found in the FROM clause` | Q: selected column list | List | List |
+| `No matching columns found that match regex PATTERN` | Q: column regex | List | List |
+| `Column NAME referenced in UNPIVOT but no matching entry was found in the table` | Q: UNPIVOT column (SELECT root) | List | List |
+| `Could not find key NAME in struct` | Q: struct key | List | List |
+| `Could not find key NAME in union` | Q: union key | List | List |
+| `table TABLE has N columns available but M columns specified` | Q: alias list column count | List | List |
+| `Referenced table ALIAS not found` | Q: missing table qualifier | List for actual input | List for actual input |
+| `Star expression EXPRESSION resulted in an empty set of columns` | Q: empty column selection | List | List |
+| `Table TABLE does not have a column with name NAME` | W: insert target column, alter target column; R19: COMMENT ON COLUMN | INSERT: list; ALTER, COMMENT: no list, rule 2 | Refused; no list |
+| `Referenced update column NAME not found in table` | W: update target column | Target list only, rule 2(c) | Refused; no list |
+| `Column with name NAME does not exist` | W: ANALYZE column, VACUUM column | No list, rule 2 | Refused; no list |
+| `column NAME named in key does not exist` | W: foreign key local column | No list, rule 2 | Refused; no list |
+| `Column NAME referenced by generated column does not exist` | W: generated column dependency | No list, rule 2 | Refused; no list |
+| `Failed to create foreign key: referenced table TABLE does not have a column named NAME` | W: foreign key parent column | No list, rule 2 | Refused; no list |
+| `Sub-field NAME does not exist in column COLUMN` | W: nested sub-field | No list, rule 2 | Refused; no list |
+| `Cannot drop field NAME - it does not exist` | W: drop missing field | No list, rule 2 | Refused; no list |
+| `Cannot drop field from column COLUMN - it does not exist` | W: drop missing field column | No list, rule 2 | Refused; no list |
+| `Cannot rename field NAME - it does not exist` | W: rename missing field | No list, rule 2 | Refused; no list |
+| `Cannot rename field from column COLUMN - it does not exist` | W: rename missing field column | No list, rule 2 | Refused; no list |
+| `Table does not contain column NAME referenced in check constraint!` | R19: CHECK constraint | Recognized; no list, rule 2 | Refused; no list |
+| `Referenced column NAME was not found because the FROM clause is missing` | R19: missing FROM, including `SELECT VendorID;` | Recognized; no list, no source table | Recognized; no list, no source table |
+
+The retained missing-table form, `Table with name NAME does not exist`, is a
+separate R5 convenience: the original dropped-`trips_raw` test reproduces it
+and expects an explanation without columns in Scratch. Answer reads its own
+pristine table and still lists its columns. Runtime and conversion errors,
+echoed SQL and malformed JSON retain round 18's negative classification tests.
+
+During the supported-form check, the new rule-2 test exposed a distinction
+between INSERT's optional target column list and a parenthesized source query.
+`INSERT INTO destination (SELECT VendorID FROM trips_raw)` initially got no
+list. The helper now leaves that parenthesized query intact for its one native
+serialization; the regression passes. The first full database run was stopped
+deliberately after 131 passing top-level cases so the final four-suite run uses
+the corrected runtime throughout. That partial run is not counted as a final
+suite result. The four rule tests were rerun and passed after the correction.
+
+The 375 px round-19 screenshot was visually inspected: the multiline native
+error, pristine Answer columns and history fit the page. Both new real-engine
+browser cases passed. No physical-device test was performed.
+
+### Round-19 final full-suite results
+
+The four full suites are run one at a time, in the requested order, under
+`caffeinate -dims`. The final database run passed **3,193**, skipped **0** and
+failed **0**, with no cancelled tests (18.3 minutes, exit 0). After it finished,
+the final version of all four new database tests was checked against `87aa609`
+again: **0 passed, 0 skipped, 4 failed**, all expected assertion failures.
+
+| Final suite | Passed | Skipped | Failed | Status |
+|---|---:|---:|---:|---|
+| Database | 3,193 | 0 | 0 | Exit 0 |
+| Stub browser, port 4885, `/tmp/pw-b19-stub` | 185 | 41 | 0 | Exit 0 |
+| Real-engine browser, port 4886, `/tmp/pw-b19-real` | 221 | 5 | 0 | Exit 0 |
+| Server | 69 | 0 | 0 | Exit 0 |
+
+The stub run took 3.0 minutes and the real-engine run 10.1 minutes. The two
+additional stub skips are the new engine-dependent round-19 scenario at desktop
+and 375 px; both pass with the real engine. The other skips are the existing
+screen/engine exclusions. The final runs have no failed or cancelled tests.
+
+```sh
+# tests/db:
+caffeinate -dims npm test
+# tests/ui, after the preceding suite finishes:
+caffeinate -dims env PORT=4885 npx playwright test --output /tmp/pw-b19-stub
+caffeinate -dims env PORT=4886 DB_SITE=../../site npx playwright test --output /tmp/pw-b19-real
+# Repository root, after both browser suites finish:
+caffeinate -dims node --test tests/server/*.test.js
+```
+
+`git diff --check` passes. Every named protected file and Rerun path matches
+starting commit `2812765`. The only existing test-file edits are the rule-2
+assertions itemized above. `tests/ui/node_modules` is excluded from the commit.
+The commit title is `v2 stage 2: code review round 19 fixes`, with the public
+runbook author email and `Agent: crew-codex-v2` trailer. No round-19 requirement
+is deferred. Delivery is limited to the authorized `v2/stage2` push; no merge,
+PR, deploy, Canvas write or message to another person is performed.

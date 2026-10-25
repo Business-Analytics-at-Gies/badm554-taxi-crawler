@@ -2,7 +2,7 @@
 // Statement boundaries/tokens and every accepted query tree come from pinned DuckDB.
 import { foldIdentifier, nativeTokens } from './sql.js';
 
-// Observed 1.5.4 Binder/Catalog forms (fixtures: tests/db/r18-column-cases.mjs).
+// Observed 1.5.4 Binder/Catalog forms (fixtures: tests/db/r18-column-cases.mjs and stage2-r19.test.mjs).
 // Match only the diagnostic, never a word appearing in the echoed SQL or candidates.
 export function needsColumnHelp(error) {
   let message = String(error ?? '').trim(), kind;
@@ -17,22 +17,25 @@ export function needsColumnHelp(error) {
     kind = match[1]; message = message.slice(match[0].length);
   }
   if (!['Binder', 'Catalog'].includes(kind) || typeof message !== 'string') return false;
-  const diagnostic = message.split(/\n(?:Candidate|Did you mean|LINE \d+:)/)[0];
+  // Keep line breaks within quoted names. The patterns span the complete native
+  // diagnostic; echoed SQL and candidate lists are not classification inputs.
+  const diagnostic = message.split(/\n(?:Candidate bindings:|Candidate tables:|Did you mean |LINE \d+:)/)[0];
   return [
-    /^Referenced (?:update )?column .*not found/i,
-    /^(?:Failed to create foreign key: referenced )?(?:Table|Values list) .*does not have a column (?:named|with name)/i,
-    /^Column .*in (?:EXCLUDE|REPLACE) list not found/i,
-    /^Column .*does not exist/i,
-    /^Column .*was selected but was not found/i,
-    /^No matching columns found that match regex/i,
-    /^Column .*referenced in UNPIVOT but no matching entry was found/i,
-    /^Could not find key .*in (?:struct|union)/i,
-    /^Referenced table .*not found/i,
-    /^table .*has \d+ columns available but \d+ columns specified/i,
+    /^Referenced (?:update )?column .*not found/is,
+    /^(?:Failed to create foreign key: referenced )?(?:Table|Values list) .*does not have a column (?:named|with name)/is,
+    /^Column .*in (?:EXCLUDE|REPLACE) list not found/is,
+    /^Column .*does not exist/is,
+    /^Column .*was selected but was not found/is,
+    /^No matching columns found that match regex/is,
+    /^Column .*referenced in UNPIVOT but no matching entry was found/is,
+    /^Could not find key .*in (?:struct|union)/is,
+    /^Referenced table .*not found/is,
+    /^table .*has \d+ columns available but \d+ columns specified/is,
     /^Star expression .*resulted in an empty set of columns/is,
-    /^Sub-field .*does not exist in column/i,
-    /^Cannot (?:drop|rename) field .*it does not exist/i,
-    /^Table with name .*does not exist/i,
+    /^Sub-field .*does not exist in column/is,
+    /^Cannot (?:drop|rename) field .*it does not exist/is,
+    /^Table does not contain column .*referenced in check constraint/is,
+    /^Table with name .*does not exist/is,
   ].some(pattern => pattern.test(diagnostic));
 }
 
@@ -67,79 +70,78 @@ export async function errorTableNames(conn, sql) {
     const quoted = `'${text.replaceAll("'", "''")}'`;
     const result = await conn.query(`SELECT system.main.json_serialize_sql(${quoted}) AS parsed`);
     const ast = JSON.parse(result.toArray()[0].parsed);
-    if (ast.error) return false;
+    if (ast.error || ast.statements?.length !== 1) return false;
     visit(ast);
     return true;
   };
-  if (await parse(String(sql))) return [...names.values()];
+  sql = String(sql);
+  if (await parse(sql)) return [...names.values()];
 
-  // The JSON serializer only admits SELECT-family roots. Find maximal native-
-  // parsed query regions inside any wrapper, rather than an allowlist of DDL.
-  // Parenthesis depth only bounds candidates; DuckDB decides whether each is SQL.
+  // Closed R5 scope: one tokenization and at most one more serialization.
+  // Never try progressively smaller regions: losing a WITH scope could turn a
+  // CTE into an unrelated physical table. An unrecognized wrapper gets no list.
   const tokens = (await nativeTokens(conn, sql)).filter(token => token.type !== 5);
-  const bytes = new TextEncoder().encode(sql), decoder = new TextDecoder();
-  const text = (start, end) => decoder.decode(bytes.slice(tokens[start]?.start ?? bytes.length, tokens[end]?.start ?? bytes.length));
+  if (tokens.at(-1)?.text === ';') tokens.pop();
   const word = i => tokens[i]?.type === 4 ? foldIdentifier(tokens[i].text) : '';
-  const depth = [];
-  let level = 0;
-  for (let i = 0; i < tokens.length; i++) {
-    depth[i] = level;
-    if (tokens[i].text === '(') level++;
-    if (tokens[i].text === ')') level--;
-  }
-  depth[tokens.length] = level;
-  let main = 0, prefix = '';
-  if (word(0) === 'with') {
-    main = tokens.findIndex((token, i) => depth[i] === 0 && tokens[i - 1]?.text === ')'
-      && ['insert', 'update', 'delete', 'merge'].includes(word(i)));
-    if (main < 0) main = 0;
-    else prefix = text(0, main);
-  }
-  const covered = [];
-  if (prefix && await parse(`${prefix} SELECT 1`)) covered.push([0, main]);
-
-  const identifier = start => {
+  const bytes = new TextEncoder().encode(sql), decoder = new TextDecoder();
+  const text = (start, end = tokens.length) => decoder.decode(bytes.slice(tokens[start]?.start ?? bytes.length, tokens[end]?.start ?? bytes.length));
+  let i = 0;
+  const take = keyword => word(i) === keyword ? (++i, true) : false;
+  const identifier = () => {
     const parts = [];
-    for (let i = start; i < tokens.length; i += 2) {
-      if (![0, 4].includes(tokens[i].type)) break;
-      const value = tokens[i].text;
+    do {
+      if (![0, 4].includes(tokens[i]?.type)) return null;
+      const value = tokens[i++].text;
       parts.push(value.startsWith('"') ? value.slice(1, -1).replaceAll('""', '"') : value);
-      if (tokens[i + 1]?.text !== '.') break;
-    }
+      if (tokens[i]?.text !== '.') break;
+      i++;
+    } while (parts.length < 3);
     return parts;
   };
-  // Existing write targets also supply columns for target-column diagnostics.
-  // CREATE destinations are excluded: they have not been created.
-  const command = word(main);
-  let target = -1;
-  if (command === 'update' || command === 'analyze' || command === 'copy') target = main + 1;
-  if (['insert', 'merge'].includes(command)) target = tokens.findIndex((_, i) => i > main && depth[i] === 0 && word(i) === 'into') + 1;
-  if (command === 'delete') target = main + 2;
-  if (command === 'alter' && word(main + 1) === 'table') target = main + 2;
-  if (command === 'vacuum') target = main + (word(main + 1) === 'analyze' ? 2 : 1);
-  if (target > 0 && tokens[target]?.text !== '(') {
-    const parts = identifier(target);
-    if (parts.length) add(parts);
-  }
-  for (let i = main; i < tokens.length; i++) if (word(i) === 'references') {
-    const parts = identifier(i + 1);
-    if (parts.length) add(parts);
-  }
-
-  for (let start = main; start < tokens.length; start++) {
-    if (covered.some(([a, b]) => start >= a && start < b)) continue;
-    const keyword = word(start);
-    const rootClause = depth[start] === 0 && ['from', 'using'].includes(keyword);
-    const queryStart = ['select', 'with', 'values', 'pivot', 'unpivot'].includes(keyword)
-      || (['from', 'table'].includes(keyword) && ['(', 'as'].includes(foldIdentifier(tokens[start - 1]?.text ?? '')));
-    if (!queryStart && !rootClause) continue;
-    let limit = start + 1;
-    while (limit < tokens.length && !(tokens[limit].text === ')' && depth[limit] === depth[start])) limit++;
-    for (let end = limit; end > start; end--) {
-      if (depth[end] !== depth[start] && end !== limit) continue;
-      const fragment = keyword === 'using' ? `FROM ${text(start + 1, end)}` : text(start, end);
-      if (await parse(prefix + fragment)) { covered.push([start, end]); break; }
+  const columns = () => {
+    if (tokens[i]?.text !== '(') return true;
+    i++;
+    do {
+      if (![0, 4].includes(tokens[i]?.type)) return false;
+      i++;
+      if (tokens[i]?.text !== ',') break;
+      i++;
+    } while (i < tokens.length);
+    return tokens[i++]?.text === ')';
+  };
+  let target = null, end = tokens.length;
+  if (take('create')) {
+    if (take('or') && !take('replace')) return [];
+    take('temp') || take('temporary');
+    if (!take('table') && !take('view')) return [];
+    if (take('if') && !(take('not') && take('exists'))) return [];
+    if (!identifier() || !columns() || !take('as')) return [];
+    // DuckDB admits WITH [NO] DATA after a CREATE query, outside its SELECT tree.
+    if (word(end - 3) === 'with' && word(end - 2) === 'no' && word(end - 1) === 'data') end -= 3;
+    else if (word(end - 2) === 'with' && word(end - 1) === 'data') end -= 2;
+  } else if (take('insert')) {
+    if (!take('into') || !(target = identifier())) return [];
+    // A parenthesized source query occupies the same position as the optional
+    // target column list. If it is not a list, serialize it intact as the query.
+    const start = i;
+    if (!columns()) i = start;
+    // RETURNING belongs to INSERT, not its source query. Only a top-level token
+    // can end that query; strings, comments and nested queries cannot do so.
+    let depth = 0;
+    for (let j = i; j < end; j++) {
+      if (tokens[j].text === '(') depth++;
+      else if (tokens[j].text === ')') depth--;
+      else if (!depth && word(j) === 'returning') { end = j; break; }
     }
-  }
+  } else if (take('update') || (take('delete') && take('from'))) {
+    target = identifier();
+    if (!target) return [];
+    // Rule 2(c) deliberately describes only the existing target, even when
+    // UPDATE/DELETE have FROM, USING or subqueries elsewhere in the statement.
+    const quoted = target.map(part => `"${part.replaceAll('"', '""')}"`).join('.');
+    return await parse(`SELECT * FROM ${quoted}`) ? [...names.values()] : [];
+  } else return [];
+  if (i >= end || !await parse(text(i, end))) return [];
+  if (target) add(target);
   return [...names.values()];
 }

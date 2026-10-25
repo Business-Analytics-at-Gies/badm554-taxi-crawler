@@ -162,7 +162,12 @@ for (const [label, sql, pattern, table] of WRITE_COLUMN_ERRORS) {
     const expected = (await h.call('inspect', table)).columns;
     const out = await h.call('query', sql);
     assert.match(out.error, pattern);
-    assert.deepEqual(help(out, table).columns, expected);
+    if (['insert target column', 'update target column'].includes(label)) {
+      assert.deepEqual(help(out, table).columns, expected);
+    } else {
+      // R5 scope rule 2: ALTER, ANALYZE, VACUUM and constraints are excluded.
+      assert.deepEqual(out.errorHelp, []);
+    }
     const before = await snapshot();
     const answer = await h.call('queryAnswer', sql);
     assert.equal(answer.refused, true);
@@ -176,10 +181,15 @@ for (const [label, sql, expectedTables = ['trips_raw']] of QUERY_WRAPPERS) {
     await q('CREATE TABLE destination(memo INTEGER); CREATE TABLE rides(unrelated INTEGER)');
     const out = await h.call('query', sql);
     assert.match(out.error, /VendorID/);
-    assert.ok(columns(help(out)).includes('vendor_id'));
+    const excluded = ['CTE INSERT SELECT', 'MERGE subquery', 'EXPLAIN query', 'PREPARE query',
+      'recursive CTE INSERT', 'CTE UPDATE with a subquery'].includes(label);
+    const targetOnly = ['UPDATE subquery and FROM', 'DELETE subquery and USING'].includes(label);
+    if (excluded) assert.deepEqual(out.errorHelp, []); // R5 scope rule 2: closed wrappers.
+    else if (targetOnly) assert.deepEqual(columns(help(out, 'destination')), ['memo']); // Rule 2(c).
+    else assert.ok(columns(help(out)).includes('vendor_id'));
     assert.equal(out.errorHelp.some(item => item.table === 'rides'), false, 'a CTE name is not a physical input');
     assert.equal(out.errorHelp.some(item => item.table === 'notes'), false, 'failed CREATE destinations are not input tables');
-    assert.deepEqual(out.errorHelp.map(item => item.table).sort(), [...expectedTables].sort());
+    assert.deepEqual(out.errorHelp.map(item => item.table).sort(), excluded ? [] : targetOnly ? ['destination'] : [...expectedTables].sort()); // R5 scope rule 2.
     const before = await snapshot();
     const answer = await h.call('queryAnswer', sql);
     assert.equal(answer.refused, true, 'write and administrative wrappers remain Scratch-only');
