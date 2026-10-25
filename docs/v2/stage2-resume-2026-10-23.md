@@ -603,6 +603,29 @@ As the plan specifies, with these R1 changes:
 - The history list labels each entry `scratch` or `answer`.
 - "Load" puts a past query back into the box it came from, without running it. Undo restores that
   box's previous text.
+- Scope of error help (added 10-24 after code reviews 18 and 19). Help is a convenience: a wrong
+  column list is worse than none, and a missing list leaves only DuckDB's own error, which stays
+  in every case.
+  1. **Certainty.** List a table only when the statement's tree shows that the statement reads
+     it and the name resolves to that one table or view in that box (Scratch: the workspace;
+     Answer: the pristine given tables). A CTE name never falls back to a table of the same
+     name. If any part the help needs does not serialize or resolve, show no list.
+  2. **Supported statements, a closed list.** (a) A statement whose root serializes with
+     `json_serialize_sql` (the SELECT family, with CTEs, set operations and subqueries).
+     (b) `CREATE [OR REPLACE] [TEMP] TABLE|VIEW [IF NOT EXISTS] name [(columns)] AS <query>` and
+     `INSERT INTO name [(columns)] <query>`: the help reads the `<query>` part, found from DuckDB's
+     own tokens, under rule 1; for `INSERT` it also lists the target table. (c) `UPDATE name ...`
+     and `DELETE FROM name ...`: the target table only. Every other statement gets no list by
+     design (for example `CREATE INDEX`, `COMMENT ON`, constraints, `ALTER`, `PIVOT` and
+     `UNPIVOT` statements, `MERGE`, `COPY`). A missing list for a statement outside this list is
+     not a defect.
+  3. **Bounded work.** The help makes a fixed, small number of engine calls per failing
+     statement, whatever its length: no parse attempt per token or per candidate region.
+  4. **Error forms.** Recognition matches the whole diagnostic, including quoted names that hold
+     line breaks. The verification note lists every unknown or missing column form found so far
+     and how it was found, each with its outcome: a list, or no list by design (no source table,
+     as in `SELECT VendorID;`, or a statement outside rule 2). It claims no completeness beyond
+     that method.
 
 ## Out of scope here
 
