@@ -136,3 +136,50 @@ test('an existing database keeps its question counts after the upgrade', async t
     await app.close();
   }
 });
+
+// Review of 11fe423. Breaks if settle() moves after a branch that returns early: the reservation
+// would stay 'reserved' at the full estimate and the saved turn would stay inflight.
+for (const stop_reason of ['refusal', 'max_tokens']) {
+  test(`a ${stop_reason} stop settles at actual cost and closes the turn`, async t => {
+    const f = await live(t, async () => new Response(
+      JSON.stringify({ content: [{ type: 'text', text: 'Synthetic partial' }], stop_reason, usage }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ));
+    assert.equal((await f.request('/api/rerun/tutor/ask', ask)).status, 200);
+    const store = f.app.rerun.store;
+    const row = store.chat.prepare('SELECT status,amount,reserved FROM ledger').get();
+    assert.equal(row.status, 'settled');
+    assert.ok(row.amount < row.reserved);
+    assert.equal(store.turn('dev').inflight, false);
+    assert.equal((await f.request('/api/rerun/me')).body.tutor.questions_left, 39);
+  });
+}
+
+// Breaks if settle() runs after reply validation: tokens the provider did bill would stay
+// 'unknown' at the estimate, though the reply reported its real usage.
+test('a billed reply with unsupported content settles at actual cost and refunds the question', async t => {
+  const f = await live(t, async () => providerOk([{ type: 'synthetic_unsupported_block' }]));
+  assert.equal((await f.request('/api/rerun/tutor/ask', ask)).status, 502);
+  assert.equal(f.app.rerun.store.chat.prepare('SELECT status FROM ledger').get().status, 'settled');
+  assert.equal((await f.request('/api/rerun/me')).body.tutor.questions_left, 40);
+});
+
+// Breaks if a network failure or a missing key is silent in the log, as the 10-24 failure was.
+test('a failure with no provider reply is logged by a searchable label, without secrets', async t => {
+  const lines = [];
+  t.mock.method(console, 'error', (...args) => { lines.push(args.map(String).join(' ')); });
+  const f = await live(t, async () => { throw new TypeError('synthetic network failure'); });
+  await f.request('/api/rerun/tutor/ask', ask);
+  const log = lines.join('\n');
+  assert.match(log, /tutor_model_failed/);
+  assert.match(log, /TypeError/);
+  for (const secret of [KEY, QUESTION]) assert.ok(!log.includes(secret), secret);
+});
+
+test('a provider rejection log line carries the searchable label', async t => {
+  const lines = [];
+  t.mock.method(console, 'error', (...args) => { lines.push(args.map(String).join(' ')); });
+  const f = await live(t, async () => providerError(401, 'authentication_error'));
+  await f.request('/api/rerun/tutor/ask', ask);
+  assert.match(lines.join('\n'), /tutor_model_rejected/);
+});

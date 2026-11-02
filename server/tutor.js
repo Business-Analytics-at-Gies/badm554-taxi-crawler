@@ -94,8 +94,7 @@ class Tutor {
         // Thinking uses the same 3000-token output allowance as visible text.
         const estimate = (inputBound(payload) * price.cacheWrite + payload.max_tokens * price.output) / 1e6;
         reservation = this.store.reserve(session, quota, estimate, question !== undefined);
-        if (question !== undefined) state.questionReservation = reservation;
-        state.questionRow = state.questionReservation ? this.store.questionRow(state.questionReservation) : state.questionRow;
+        if (question !== undefined) state.questionRow = this.store.questionRow(reservation);
         state.inflight = true;
         state.messages = payload.messages;
         this.store.transaction(() => {
@@ -105,6 +104,9 @@ class Tutor {
         started = true;
         question = undefined;
         const response = await this.model(payload);
+        this.store.settle(reservation, costUsd(response.usage, price), response.usage);
+        reservation = null;
+        state.inflight = false;
         if (!Array.isArray(response.content)) throw new Error('Invalid model reply');
         // Older synthetic fixtures omit stop_reason; live replies must supply it.
         const reason = response.stop_reason ?? (this.config.fake ? (response.content.some(b => b?.type === 'tool_use') ? 'tool_use' : 'end_turn') : undefined);
@@ -150,9 +152,6 @@ class Tutor {
         }
         const calls = response.content.filter(b => b.type === 'tool_use');
         if (calls.length > 20) throw new Error('Too many tool calls');
-        this.store.settle(reservation, costUsd(response.usage, price), response.usage);
-        reservation = null;
-        state.inflight = false;
         if (calls.length && state.rounds >= 8) refuse(400, 'bad_turn', 'This question reached its tool limit. Please ask a new question.');
         if (calls.length) state.rounds++;
         state.pending = []; state.internalResults = [];
@@ -176,6 +175,9 @@ class Tutor {
         // Each repair call gets its own reservation, shutdown check and round bound.
       }
     } catch (error) {
+      if (!(error instanceof HttpError) && !(error instanceof ModelHttpError)) {
+        console.error('tutor_model_failed', typeof error?.name === 'string' ? error.name : 'Error');
+      }
       if (reservation) {
         if (error instanceof ModelHttpError) this.store.reject(reservation);
         else this.store.unknown(reservation);

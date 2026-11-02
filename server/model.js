@@ -62,7 +62,7 @@ async function liveResponse(config, payload, fetchImpl = fetch) {
     try { body = await response.json(); } catch {}
     const providerErrorType = typeof body?.error?.type === 'string' ? body.error.type : 'unknown';
     const requestId = (typeof body?.request_id === 'string' && body.request_id) || response.headers.get('request-id') || 'unknown';
-    console.error(response.status, providerErrorType, requestId);
+    console.error('tutor_model_rejected', response.status, providerErrorType, requestId);
     throw new ModelHttpError(response.status, providerErrorType, requestId);
   }
   return response.json();
