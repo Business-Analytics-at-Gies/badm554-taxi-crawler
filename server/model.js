@@ -1,6 +1,16 @@
 const { randomUUID } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 
+class ModelHttpError extends Error {
+  constructor(status, providerErrorType, requestId) {
+    super('Model provider returned a non-success response');
+    this.name = 'ModelHttpError';
+    this.status = status;
+    this.providerErrorType = providerErrorType;
+    this.requestId = requestId;
+  }
+}
+
 // USD per million tokens, maintained only in this table.
 // Source: docs/server-live-fixes.md, Claude's bundled API reference (2026-10-06).
 const PRICES = {
@@ -47,7 +57,14 @@ async function liveResponse(config, payload, fetchImpl = fetch) {
     method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify(payload), signal: AbortSignal.timeout(45000),
   });
-  if (!response.ok) throw new Error('Model request failed');
+  if (!response.ok) {
+    let body;
+    try { body = await response.json(); } catch {}
+    const providerErrorType = typeof body?.error?.type === 'string' ? body.error.type : 'unknown';
+    const requestId = (typeof body?.request_id === 'string' && body.request_id) || response.headers.get('request-id') || 'unknown';
+    console.error(response.status, providerErrorType, requestId);
+    throw new ModelHttpError(response.status, providerErrorType, requestId);
+  }
   return response.json();
 }
 
@@ -72,4 +89,4 @@ function fakeResponse(messages) {
     usage: { input_tokens: 100, output_tokens: 30, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
   };
 }
-module.exports = { fakeResponse, PRICES, costUsd, inputBound, requestPayload, liveResponse };
+module.exports = { fakeResponse, ModelHttpError, PRICES, costUsd, inputBound, requestPayload, liveResponse };
