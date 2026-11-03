@@ -1,0 +1,50 @@
+.start-page {
+  max-width: 58rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+.start-page > h1 {
+  color: var(--navy);
+  font-size: 1.8rem;
+  margin: .5rem 0 1rem;
+}
+.start-page section {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 0 0 1rem;
+  padding: .75rem 1rem;
+}
+.start-page h2 {
+  color: var(--navy);
+  font-size: 1.25rem;
+  margin: 0 0 .5rem;
+}
+.start-page h3 {
+  font-size: 1.05rem;
+  margin: .9rem 0 .35rem;
+}
+.start-page p { margin: .35rem 0 .65rem; }
+.start-page a { overflow-wrap: anywhere; }
+.start-page table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+}
+.start-page th,
+.start-page td {
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+  padding: .35rem .45rem;
+  text-align: left;
+  vertical-align: top;
+}
+.start-page th { width: 10rem; }
+.start-floor { border-top: 1px solid var(--line); padding: .6rem 0; }
+.start-links { margin: .35rem 0; padding-left: 1.2rem; }
+.start-links li { margin: .2rem 0; }
+@media(max-width: 30rem) {
+  .start-page { padding: .75rem; }
+  .start-page section { padding: .65rem .75rem; }
+  .start-page th { width: 8rem; }
+}

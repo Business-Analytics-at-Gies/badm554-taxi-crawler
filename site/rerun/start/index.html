@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>About The Rerun · BADM 554</title>
+  <link rel="stylesheet" href="/learn/learn.css">
+  <link rel="stylesheet" href="/rerun/rerun.css">
+  <link rel="stylesheet" href="/rerun/start/start.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the page</a>
+  <header class="top">
+    <p class="brand"><span class="brand-name">The Rerun</span><span class="brand-sub">BADM 554</span></p>
+    <a class="pilot-link" href="/rerun/">The game</a>
+  </header>
+  <main id="main" class="start-page">
+    <h1>About The Rerun</h1>
+
+    <section id="intro" aria-labelledby="intro-title">
+      <h2 id="intro-title">The game</h2>
+      <p>Write one pipeline script. It must give the right answer every time it runs, on any day.</p>
+      <p>The game has three floors.</p>
+    </section>
+
+    <section id="data" aria-labelledby="data-title">
+      <h2 id="data-title">The data</h2>
+      <p>These are real New York City TLC yellow taxi trips from January 2024. The game uses 7,171 trips, delivered as three daily loads. Day 1 has 2,400 trips. <code>loaded_at</code> names the load, not the pickup date.</p>
+      <p>The course added re-sends and corrections to teach pipelines, and these are not TLC errors.</p>
+      <p>Read the <a href="https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page" target="_blank" rel="noopener">TLC trip record data page</a> and the <a href="https://www.nyc.gov/assets/tlc/downloads/pdf/data_dictionary_trip_records_yellow.pdf" target="_blank" rel="noopener">yellow taxi data dictionary (PDF)</a>.</p>
+      <h3>Column meanings</h3>
+      <table>
+        <tbody>
+          <tr><th scope="row"><code>trip_id</code></th><td>This game's stable id for a trip.</td></tr>
+          <tr><th scope="row"><code>row_id</code></th><td>This game's id for a row in a load.</td></tr>
+          <tr><th scope="row"><code>vendor_id</code></th><td>A code for the provider that supplied the record.</td></tr>
+          <tr><th scope="row"><code>pickup_at</code></th><td>The date and time when the meter was engaged.</td></tr>
+          <tr><th scope="row"><code>dropoff_at</code></th><td>The date and time when the meter was disengaged.</td></tr>
+          <tr><th scope="row"><code>passenger_count</code></th><td>The number of passengers in the vehicle.</td></tr>
+          <tr><th scope="row"><code>trip_distance</code></th><td>The trip distance in miles reported by the meter.</td></tr>
+          <tr><th scope="row"><code>pu_location_id</code></th><td>The TLC Taxi Zone where the meter was engaged.</td></tr>
+          <tr><th scope="row"><code>do_location_id</code></th><td>The TLC Taxi Zone where the meter was disengaged.</td></tr>
+          <tr><th scope="row"><code>payment_type</code></th><td>A numeric code for how the passenger paid.</td></tr>
+          <tr><th scope="row"><code>fare_amount</code></th><td>The time-and-distance fare calculated by the meter.</td></tr>
+          <tr><th scope="row"><code>tip_amount</code></th><td>The tip amount. Card tips are included; cash tips are not.</td></tr>
+          <tr><th scope="row"><code>total_amount</code></th><td>The total amount charged to passengers. Cash tips are not included.</td></tr>
+          <tr><th scope="row"><code>loaded_at</code></th><td>This game's time when the load arrived.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="concepts" aria-labelledby="concepts-title">
+      <h2 id="concepts-title">What each floor teaches</h2>
+      <article class="start-floor">
+        <h3>Floor 1: Run it twice</h3>
+        <p><strong>Task:</strong> Run the same pipeline twice.</p>
+        <p><strong>Why:</strong> An append can double the output.</p>
+        <ul class="start-links">
+          <li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M6/I4/#the-double-load-the-silent-disaster" target="_blank" rel="noopener">Textbook M6I4: Run It Again, the double-load</a></li>
+          <li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M6/I4/#the-fix-start-from-a-known-state" target="_blank" rel="noopener">Textbook M6I4: Run It Again, start from a known state</a></li>
+          <li><a href="https://canvas.illinois.edu/courses/70436/pages/week-9-tuesday-class" target="_blank" rel="noopener">In-person section: Week 9 Tuesday Class</a></li>
+        </ul>
+      </article>
+      <article class="start-floor">
+        <h3>Floor 2: A new day</h3>
+        <p><strong>Task:</strong> Add a day and keep one row per trip.</p>
+        <p><strong>Why:</strong> A new delivery is not always a new trip.</p>
+        <ul class="start-links">
+          <li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M6/I4/#why-it-happens-loads-that-only-add" target="_blank" rel="noopener">Textbook M6I4: Run It Again, loads that only add</a></li>
+          <li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M3/I3/#pattern-1-rank-rows-within-a-group" target="_blank" rel="noopener">Textbook M3I3: Pattern 1, rank rows within a group</a></li>
+          <li><a href="https://canvas.illinois.edu/courses/70436/pages/week-9-tuesday-class" target="_blank" rel="noopener">In-person section: Week 9 Tuesday Class</a></li>
+        </ul>
+      </article>
+      <article class="start-floor">
+        <h3>Floor 3: Late corrections and rebuild</h3>
+        <p><strong>Task:</strong> Keep the latest trip version and rebuild from raw data.</p>
+        <p><strong>Why:</strong> Raw data can rebuild the result.</p>
+        <ul class="start-links">
+          <li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M6/I4/#rebuildability-the-raw-copy-pays-off" target="_blank" rel="noopener">Textbook M6I4: Run It Again, the raw copy pays off</a></li>
+          <li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M6/I2/#extract-copy-faithfully-change-nothing" target="_blank" rel="noopener">Textbook M6I2: Copy faithfully, change nothing</a></li>
+          <li><a href="https://vishalsachdev.github.io/badm554-textbook/modules/M3/I3/#pattern-1-rank-rows-within-a-group" target="_blank" rel="noopener">Textbook M3I3: Pattern 1, rank rows within a group</a></li>
+          <li><a href="https://canvas.illinois.edu/courses/70436/pages/week-9-thursday-class" target="_blank" rel="noopener">In-person section: Week 9 Thursday Class</a></li>
+        </ul>
+      </article>
+    </section>
+
+    <section id="tutor" aria-labelledby="tutor-title">
+      <h2 id="tutor-title">The tutor</h2>
+      <p>The tutor sees the game’s guide, your pipeline, and recent query results. It uses its own copy of the raw data.</p>
+      <p>You get 40 questions a day and four questions a minute. A failed answer does not use a question.</p>
+    </section>
+
+    <section id="privacy" aria-labelledby="privacy-title">
+      <h2 id="privacy-title">Privacy</h2>
+      <p>Your tutor messages go to Anthropic's API to get an answer. Your name and NetID are not sent.</p>
+      <p>Chats stay on the course server under a random ID. They are deleted after final grades. Forget me deletes your chat.</p>
+      <p>Do not type personal information.</p>
+    </section>
+
+    <section id="credit" aria-labelledby="credit-title">
+      <h2 id="credit-title">Credit</h2>
+      <p>Earn 1% extra credit for all three floors and one improvement issue. Codes are due Fri 11-06, 11:59 PM CST.</p>
+      <p><a href="https://github.com/Business-Analytics-at-Gies/badm554-taxi-crawler/issues/new?template=rerun-improvement.yml" target="_blank" rel="noopener">File one Rerun improvement issue</a>.</p>
+      <p><a class="top-btn" href="/rerun/">Start the game</a></p>
+    </section>
+  </main>
+</body>
+</html>
