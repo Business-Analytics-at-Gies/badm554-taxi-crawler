@@ -67,6 +67,15 @@ test.describe('open window',()=>{
   await page.goto(base+'/rerun/');
   await expect(page.locator('#guide a[href="/rerun/start/"]')).toHaveCount(1);
  });
+
+ // Breaks if the game's floor-link handler swallows the click (review of ce59350: it sat in .rooms).
+ test('clicking About The Rerun in the game opens the landing page',async({page})=>{
+  await page.goto(base+'/rerun/');await expect(page.locator('#engine-status')).toHaveText('SQL ready');
+  if((await page.viewportSize()).width<901)await page.getByRole('tab',{name:'Guide',exact:true}).click();
+  await page.locator('#guide a[href="/rerun/start/"]').click();
+  await expect(page).toHaveURL(/\/rerun\/start\/$/);
+  await expect(page.locator('h1')).toBeVisible();
+ });
 });
 
 // Breaks if the new page bypasses the opening gate.
