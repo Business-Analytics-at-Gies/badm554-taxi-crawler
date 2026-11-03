@@ -20,13 +20,14 @@ Crawler is planned in `docs/v2/plan-as-approved.md`.
 
 ## Current Focus
 
-- [ ] The Rerun is live until Mon 10-26, 11:59 PM CDT. No change to `site/rerun/`, `server/rerun*`,
-      `data/rerun/` or `tools/rerun/` before then.
-- [ ] v2 stage 2 (R0 to R5, under `docs/decisions/2026-10-23-v2-grading-and-gates.md`) is built and
-      reviewed (r23 SHIP, 10-25), held on `v2/stage2`. Merge after Mon 10-26, green on all suites.
-- [ ] #32: real-iPhone tap test on a non-live URL.
-- [ ] Stage 1's 1.2 and 1.3 rework lives on `v2/stage2` and merges with it, not on its own
-      (`docs/decisions/2026-10-23-v2-grading-and-gates.md`).
+- [ ] #33 The Rerun tutor: fix built and reviewed on `fix/rerun-tutor-33` (`a5101bb`, pushed, not
+      merged). Blocked on a new Anthropic key in `~/.taxi-crawler-anthropic-key` (old key: 401).
+      Then: local end-to-end test (`e2e33` script pattern: dev auth, temp DB, test window), merge,
+      new key on Azure, deploy with the window still closed, final #33 comment, window config to
+      inperson via `badm554/_agent-inbox/`. Do not set `RERUN_OPENS_AT`/`RERUN_CLOSES_AT`.
+- [ ] v2 stage 2 (R0 to R5, with stage 1's 1.2 and 1.3 rework) is held on `v2/stage2` (r23 SHIP,
+      10-25). The hold ended 10-26; control merges once green on all four suites.
+- [ ] #32: real-iPhone tap test on a non-live URL (the old phone-test server is gone).
 
 ## Roadmap
 
@@ -37,21 +38,18 @@ Crawler is planned in `docs/v2/plan-as-approved.md`.
 - [ ] v2 stage 3 (one page per floor, Help controls), stage 4 (tutor gate), release checklist
 - [ ] Stage 5 map (option 2, smaller, unless lens use is near zero) and stage 6 floors
 - [ ] Student API proxy (`proxy` branch, P3 SHIP, release steps pending)
-- [ ] Rename the repo to a general name after 10-26
+- [ ] Rename the repo to a general name (unblocked since 10-26)
 
 ## Session Log
 
-### 2026-10-25
+### 2026-11-02
 
-- Completed: v2 stage 2 resume R0 to R5 built by Codex and reviewed to SHIP (R3b spec in 18
-  rounds; code reviews r9 to r23; last SHIP at `191eb14`), held on `v2/stage2` at `f298284`.
-  Pilot lens use counted (0 calls). R5 error help scope closed in the spec. Run log:
-  `docs/v2/crew-runbook.md`.
-- Open for Vishal (via control): (1) Tailscale Serve admin click for the #32 phone test (server
-  in pane w5Y:p2, port 3754, worktree `-phonetest`); (2) map: switch to option 3, since lens use
-  was 0?; (3) confirm the merge route (stage 1 rework merges with `v2/stage2` after 10-26);
-  (4) arithmetic and CAST have no learning-graph concept and pass as untaught overrides: add
-  concepts or keep the overrides?; (5) delete the auto memory `project-anthropic-data-exception`
-  (it repeats lines 16-18 here)?
-- Next: after Mon 10-26, merge `v2/stage2` (control merges) once green on all four suites;
-  #32 tap test; issue comments and closures wait for control; stages 3 and 4.
+- Completed: #33 diagnosed. The live API key returns 401; the same key settled all 175 pilot
+  calls through 10-17; all 6 Rerun calls on 10-24 failed. With that key under a test window, the old
+  code reproduces the fault (40 to 37). Codex built the fix (failed calls refund the question but
+  still count for the rate limit, rejected calls hold no money, clear message, logged
+  `tutor_model_rejected`/`tutor_model_failed`); one regression caught in review; independent
+  review SHIP; server 84/84. Status comments on #33 (claimed, blocked).
+- Next: new key from Vishal, then the #33 steps above. Open for Vishal from 10-25: map option 3?,
+  arithmetic/CAST concepts?, delete memories `project-anthropic-data-exception` and
+  `feedback-codex-does-most` (both repeat this file)?

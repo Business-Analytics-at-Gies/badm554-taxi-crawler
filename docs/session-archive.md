@@ -2,6 +2,17 @@
 
 Older session log entries moved out of `CLAUDE.md`.
 
+### 2026-10-25
+
+- Completed: v2 stage 2 resume R0 to R5 built by Codex and reviewed to SHIP (R3b spec in 18
+  rounds; code reviews r9 to r23; last SHIP at `191eb14`), held on `v2/stage2` at `f298284`.
+  Pilot lens use counted (0 calls). R5 error help scope closed in the spec. Run log:
+  `docs/v2/crew-runbook.md`.
+- Open for Vishal (via control): (1) Tailscale Serve admin click for the #32 phone test;
+  (2) map: switch to option 3, since lens use was 0?; (3) confirm the merge route; (4) arithmetic
+  and CAST: add concepts or keep the overrides?; (5) delete the auto memory
+  `project-anthropic-data-exception`?
+
 ### 2026-10-23
 
 - Completed: issue triage; the merged `-rerun` and `-server` worktrees removed (`crew/server`
