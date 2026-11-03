@@ -38,6 +38,9 @@ class Store {
       );
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY,value TEXT);
     `);
+    const questionColumns = new Set(this.chat.prepare('PRAGMA table_info(questions)').all().map(column => column.name));
+    if (!questionColumns.has('refunded')) this.chat.exec('ALTER TABLE questions ADD COLUMN refunded INTEGER NOT NULL DEFAULT 0');
+    if (!questionColumns.has('request_id')) this.chat.exec('ALTER TABLE questions ADD COLUMN request_id TEXT');
     this.identity.exec(`
       CREATE TABLE IF NOT EXISTS principals (subject TEXT PRIMARY KEY, quota TEXT UNIQUE NOT NULL);
       CREATE TABLE IF NOT EXISTS sessions (
@@ -99,7 +102,7 @@ class Store {
     const today = day(this.now());
     return {
       spent: this.chat.prepare('SELECT COALESCE(SUM(amount),0) AS n FROM ledger WHERE quota=? AND day=?').get(quota, today).n / 1e9,
-      questions: this.chat.prepare('SELECT COUNT(*) AS n FROM questions WHERE quota=? AND day=?').get(quota, today).n,
+      questions: this.chat.prepare('SELECT COUNT(*) AS n FROM questions WHERE quota=? AND day=? AND refunded=0').get(quota, today).n,
     };
   }
   reserve(session, quota, usd, first) {
@@ -114,7 +117,7 @@ class Store {
       const id = randomUUID();
       this.chat.prepare('INSERT INTO ledger VALUES (?,?,?,?,?,?,?,?)').run(id, session, quota, today, amount, amount, 'reserved', this.now());
       this.chat.prepare('INSERT INTO request_log VALUES (?,?,?,?,?,?,?,?,?)').run(id, session, new Date(this.now()).toISOString(), 'reserved', null, null, null, null, amount / 1e9);
-      if (first) this.chat.prepare('INSERT INTO questions VALUES (?,?,?)').run(quota, today, this.now());
+      if (first) this.chat.prepare('INSERT INTO questions (quota,day,at,refunded,request_id) VALUES (?,?,?,0,?)').run(quota, today, this.now(), id);
       return id;
     });
   }
@@ -129,6 +132,18 @@ class Store {
         usage.input_tokens, usage.output_tokens, usage.cache_creation_input_tokens || 0, usage.cache_read_input_tokens || 0, amount / 1e9, id,
       );
     });
+  }
+  reject(id) {
+    this.transaction(() => {
+      this.chat.prepare("UPDATE ledger SET amount=0,status='rejected' WHERE id=? AND status='reserved'").run(id);
+      this.chat.prepare("UPDATE request_log SET status='rejected',cost_usd=0 WHERE id=? AND status='reserved'").run(id);
+    });
+  }
+  refundQuestion(rowid) {
+    if (rowid !== undefined) this.chat.prepare('UPDATE questions SET refunded=1 WHERE rowid=? AND refunded=0').run(rowid);
+  }
+  questionRow(id) {
+    return id ? this.chat.prepare('SELECT rowid FROM questions WHERE request_id=?').get(id)?.rowid : undefined;
   }
   unknown(id) {
     this.transaction(() => {

@@ -1,6 +1,6 @@
 const { randomUUID } = require('node:crypto');
 const { refuse, HttpError } = require('./errors');
-const { fakeResponse, liveResponse, requestPayload, inputBound, costUsd, PRICES } = require('./model');
+const { fakeResponse, ModelHttpError, liveResponse, requestPayload, inputBound, costUsd, PRICES } = require('./model');
 const { validate } = require('./tool-validation');
 
 function object(value, keys, required = keys) {
@@ -94,6 +94,7 @@ class Tutor {
         // Thinking uses the same 3000-token output allowance as visible text.
         const estimate = (inputBound(payload) * price.cacheWrite + payload.max_tokens * price.output) / 1e6;
         reservation = this.store.reserve(session, quota, estimate, question !== undefined);
+        if (question !== undefined) state.questionRow = this.store.questionRow(reservation);
         state.inflight = true;
         state.messages = payload.messages;
         this.store.transaction(() => {
@@ -174,10 +175,20 @@ class Tutor {
         // Each repair call gets its own reservation, shutdown check and round bound.
       }
     } catch (error) {
-      if (reservation) this.store.unknown(reservation);
+      if (!(error instanceof HttpError) && !(error instanceof ModelHttpError)) {
+        console.error('tutor_model_failed', typeof error?.name === 'string' ? error.name : 'Error');
+      }
+      if (reservation) {
+        if (error instanceof ModelHttpError) this.store.reject(reservation);
+        else this.store.unknown(reservation);
+      }
+      if (!(error instanceof HttpError)) this.store.refundQuestion(state.questionRow);
       if (started) this.store.saveTurn(session, { ...state, inflight: false, done: true, pending: [], internalResults: [], messages: [] });
       if (error instanceof HttpError || (!started && !reservation)) throw error;
-      refuse(502, 'upstream_error', 'The tutor could not finish that answer. Please try again.');
+      const message = error instanceof ModelHttpError && [400, 401, 403, 404].includes(error.status)
+        ? 'A problem on our side stopped the tutor. It did not use your question. Please try again later. The game still works.'
+        : 'The tutor is busy or could not be reached. It did not use your question. Please try again in a minute. The game still works.';
+      refuse(502, 'upstream_error', message);
     }
   }
 }
