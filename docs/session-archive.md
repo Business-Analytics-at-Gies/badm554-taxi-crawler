@@ -2,6 +2,18 @@
 
 Older session log entries moved out of `CLAUDE.md`.
 
+### 2026-11-02
+
+- Completed: #33 diagnosed. The live API key returns 401; the same key settled all 175 pilot
+  calls through 10-17; all 6 Rerun calls on 10-24 failed. With that key under a test window, the old
+  code reproduces the fault (40 to 37). Codex built the fix (failed calls refund the question but
+  still count for the rate limit, rejected calls hold no money, clear message, logged
+  `tutor_model_rejected`/`tutor_model_failed`); one regression caught in review; independent
+  review SHIP; server 84/84. Status comments on #33 (claimed, blocked).
+- 11-03: new key in; the old code also works with it, so the key was the only cause. Merged
+  `7f3590b`, new key on Azure, deployed (6 files match by checksum, /healthz 200, still closed).
+  Final #33 comment and inperson inbox note posted.
+
 ### 2026-10-25
 
 - Completed: v2 stage 2 resume R0 to R5 built by Codex and reviewed to SHIP (R3b spec in 18
