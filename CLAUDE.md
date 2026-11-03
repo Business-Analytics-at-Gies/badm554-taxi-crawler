@@ -20,11 +20,10 @@ Crawler is planned in `docs/v2/plan-as-approved.md`.
 
 ## Current Focus
 
-- [ ] #33 The Rerun tutor: fix built and reviewed on `fix/rerun-tutor-33` (`a5101bb`, pushed, not
-      merged). Blocked on a new Anthropic key in `~/.taxi-crawler-anthropic-key` (old key: 401).
-      Then: local end-to-end test (`e2e33` script pattern: dev auth, temp DB, test window), merge,
-      new key on Azure, deploy with the window still closed, final #33 comment, window config to
-      inperson via `badm554/_agent-inbox/`. Do not set `RERUN_OPENS_AT`/`RERUN_CLOSES_AT`.
+- [ ] #33 fixed and deployed 11-03 (`7f3590b`; cause: dead API key, replaced). The Rerun stays
+      closed. On Vishal's dates, set `RERUN_CLOSES_AT` (config sent to inperson,
+      `badm554/_agent-inbox/2026-11-03-taxi-crawler-rerun-tutor-fixed-window-config.md`); close
+      #33 after the TA re-test passes.
 - [ ] v2 stage 2 (R0 to R5, with stage 1's 1.2 and 1.3 rework) is held on `v2/stage2` (r23 SHIP,
       10-25). The hold ended 10-26; control merges once green on all four suites.
 - [ ] #32: real-iPhone tap test on a non-live URL (the old phone-test server is gone).
@@ -50,6 +49,9 @@ Crawler is planned in `docs/v2/plan-as-approved.md`.
   still count for the rate limit, rejected calls hold no money, clear message, logged
   `tutor_model_rejected`/`tutor_model_failed`); one regression caught in review; independent
   review SHIP; server 84/84. Status comments on #33 (claimed, blocked).
-- Next: new key from Vishal, then the #33 steps above. Open for Vishal from 10-25: map option 3?,
-  arithmetic/CAST concepts?, delete memories `project-anthropic-data-exception` and
-  `feedback-codex-does-most` (both repeat this file)?
+- 11-03: new key in; the old code also works with it, so the key was the only cause. Merged
+  `7f3590b`, new key on Azure, deployed (6 files match by checksum, /healthz 200, still closed).
+  Final #33 comment and inperson inbox note posted.
+- Next: window dates from Vishal, then `RERUN_CLOSES_AT`; TA re-test; close #33. Open from 10-25:
+  map option 3?, arithmetic/CAST concepts?, delete memories `project-anthropic-data-exception`
+  and `feedback-codex-does-most` (both repeat this file)?
