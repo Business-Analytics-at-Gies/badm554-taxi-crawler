@@ -22,7 +22,7 @@ test('layout, complete scrolling guides, requirement and no horizontal page scro
  await expect(page.locator('#floor1')).toContainText('CREATE OR REPLACE');
  await expect(page.locator('#floor1')).toContainText('trip_id names the trip');
  await expect(page.locator('#guide')).toContainText('1% extra credit for all three floors plus one improvement issue');
- await expect(page.locator('#guide')).toContainText('Mon 10-26, 11:59 PM CDT');
+ await expect(page.locator('#guide')).toContainText('Fri 11-06, 11:59 PM CST');
  await expect(page.getByRole('link',{name:'File one Rerun improvement issue'})).toHaveAttribute('href',/template=rerun-improvement.yml/);
  await noOverflow(page);
  await page.getByRole('link',{name:'Floor 3',exact:true}).click();await idle(page);
