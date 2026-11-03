@@ -50,5 +50,5 @@ Crawler is planned in `docs/v2/plan-as-approved.md`.
   two wrong link labels. All deploys checked by live checksums and /healthz. Notes to inperson
   for the Canvas assignment and announcement. Plans: `docs/rerun/*-plan-as-approved.md`.
 - Next: after 11-06, aggregates and #34 triage; v2 stage 3 gets the same Background links;
-  `v2/stage2` merge (control); #32 phone test. Open: map option 3?, arithmetic/CAST concepts?,
-  delete memories `project-anthropic-data-exception` and `feedback-codex-does-most`?
+  `v2/stage2` merge (control); #32 phone test. Open: map option 3?, arithmetic/CAST concepts?
+  (Both repo-duplicate auto memories deleted 11-03.)
