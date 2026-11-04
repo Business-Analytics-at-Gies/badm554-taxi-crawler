@@ -22,7 +22,7 @@ Crawler is planned in `docs/v2/plan-as-approved.md`.
 
 - [ ] The Rerun is open until Fri 11-06, 11:59 PM CST (`RERUN_CLOSES_AT=2026-11-07T05:59:00Z`,
       budget 50 USD). Landing page `/rerun/start/` live. After the close: count codes and tutor
-      cost (aggregates only); triage #34 and any new `rerun-feedback` issues.
+      cost (aggregates only); triage new `rerun-feedback` issues (#35, #39 already set for v2).
 - [ ] v2 stage 2 (R0 to R5, with stage 1's 1.2 and 1.3 rework) is held on `v2/stage2` (r23 SHIP,
       10-25). The hold ended 10-26; control merges once green on all four suites.
 - [ ] #32: real-iPhone tap test on a non-live URL (the old phone-test server is gone).
@@ -49,6 +49,10 @@ Crawler is planned in `docs/v2/plan-as-approved.md`.
   About link inside `.rooms` was dead with JavaScript on (`app.js` swallows clicks there), and
   two wrong link labels. All deploys checked by live checksums and /healthz. Notes to inperson
   for the Canvas assignment and announcement. Plans: `docs/rerun/*-plan-as-approved.md`.
-- Next: after 11-06, aggregates and #34 triage; v2 stage 3 gets the same Background links;
+- Evening: learner issues triaged (`docs/rerun/feedback-fixes-plan-as-approved.md`). #34, #36,
+  #38 fixed in-window (revenue formula, workshop steps, "Day d of N"), deployed `87cd459`, closed;
+  #37 told it does not qualify, closed; #35, #39 for v2. Issue form now says what counts
+  (`d35a784`); Canvas wording sent to inperson. fix33 and fb worktrees removed.
+- Next: after 11-06, aggregates and triage of new issues; v2 stage 3 gets the same Background links;
   `v2/stage2` merge (control); #32 phone test. Open: map option 3?, arithmetic/CAST concepts?
   (Both repo-duplicate auto memories deleted 11-03.)
