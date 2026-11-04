@@ -9,6 +9,15 @@ body:
         Thanks for testing The Rerun. This repository is **public** and shows your GitHub username.
         Leave out names, NetIDs, email addresses, grades and other personal information.
         Paste the issue link with your three RERUN codes into the Canvas assignment.
+
+        **What counts for the extra credit.** The issue must propose one specific change to the game
+        and say what happened while you played that made you want it. Praise alone ("it's good",
+        "no changes") does not count. A good issue:
+        - Has a title that names the change, for example "Floor 2: show the day number next to the buttons".
+        - Says exactly what should be different: which button, text, table or message.
+        - Gives the moment that caused it: what you tried, what you expected, what you saw.
+        - Covers one change. File a second issue for a second idea.
+        Good examples: [#34](https://github.com/Business-Analytics-at-Gies/badm554-taxi-crawler/issues/34), [#36](https://github.com/Business-Analytics-at-Gies/badm554-taxi-crawler/issues/36).
   - type: dropdown
     id: where
     attributes:
@@ -20,13 +29,13 @@ body:
     id: what
     attributes:
       label: What should change?
-      description: Describe one concrete improvement.
+      description: Describe one concrete change. Name the button, text, table or message, and what it should do instead.
     validations:
       required: true
   - type: textarea
     id: why
     attributes:
       label: Why would it help?
-      description: What happened while you played?
+      description: What happened while you played? What did you try, what did you expect, and what did you see?
     validations:
       required: true
