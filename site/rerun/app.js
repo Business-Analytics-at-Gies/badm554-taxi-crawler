@@ -48,7 +48,7 @@ function buttons(){
  $('next-day').disabled=busy||!engineReady||workspace.day()>=floor;
  $('pipeline').readOnly=busy;$('scratch').readOnly=busy;
 }
-function dayStatus(){ $('day-status').textContent=`Day ${workspace.day()} · ${runs} pipeline run${runs===1?'':'s'} on this day`; }
+function dayStatus(){ $('day-status').textContent=`Day ${workspace.day()} of ${floor} · ${runs} pipeline run${runs===1?'':'s'} on this day`; }
 async function act(fn){if(busy)return;busy=true;buttons();try{await fn();}catch(e){$('game-message').textContent=e.message||'The action could not finish. Please try again.';}finally{busy=false;buttons();}}
 function table(headers,rows){
  const t=document.createElement('table'),head=t.createTHead().insertRow();
@@ -78,6 +78,7 @@ async function resetWorkspace(){
 async function selectFloor(n){
  if(busy){syncFloorHash(floor);return;}savePipeline();floor=n;syncFloorHash(n);$('floor-picker').value=String(n);showGuide(n);loadPipeline();$('scratch').value='';
  await act(resetWorkspace);
+ $('game-message').textContent=n>1?'This floor starts on day 1. Run your pipeline, then use Next day.':'This floor has one day. There is no later day to load.';
 }
 $('floor-picker').value=String(floor);syncFloorHash(floor);showGuide(floor);loadPipeline();
 $('floor-picker').addEventListener('change',()=>selectFloor(Number($('floor-picker').value)));
