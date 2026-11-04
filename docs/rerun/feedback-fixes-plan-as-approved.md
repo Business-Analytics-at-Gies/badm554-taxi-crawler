@@ -3,6 +3,8 @@
 Created: 2026-11-03
 Last Updated: 2026-11-03
 
+**Outcome (2026-11-03, 11:30 PM CST):** built by Codex (`85078d0`), merged `73e6e8d`, `87cd459`; four suites green (UI 133 and 131, server 84, db 271); deployed with Vishal's yes, 4 live files match by checksum, /healthz 200, window still open. Replies posted; #34, #36, #38 closed as done; #37 closed as not planned (does not qualify); #35 and #39 open for v2. Issue form now explains what counts (`d35a784`); Canvas text sent to inperson.
+
 Vishal (2026-11-03): "triage rerun-feedback to fix things that are better done now". The window
 is open until Fri 11-06, 11:59 PM CST, so only fixes that help learners this week, change no
 check or pass rule, and carry low risk are made now. The rest wait for v2.
@@ -15,6 +17,7 @@ check or pass rule, and carry low risk are made now. The rest wait for v2.
 | #34 | Explain the order of the workshop buttons | **Fix now.** The order is only in the guide's "Try it" line, away from the buttons. A learner pressed Check floor first and skipped the predict, run, run-again loop. |
 | #38 | Floor change left the workshop on day 1 | **Fix now, without auto-advance.** Each floor starts on day 1 by design: the learner must see their pipeline survive each new day. Make that visible instead. |
 | #35 | Show a diff between the first and second run | **v2.** A new results view; too large for a mid-window change. Partly helped by the #34 steps line (compare counts after each run). |
+| #39 | Summary of new and duplicate rows after Next day | **v2, rows-delivered summary only.** Counting duplicates would give away Floor 2. Arrived after triage. |
 | #37 | None ("No it's good"; the tutor helped) | **No change.** Retitle only. |
 
 ## Changes (`site/rerun/index.html`, `site/rerun/app.js`)
